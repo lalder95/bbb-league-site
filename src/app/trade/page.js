@@ -255,19 +255,19 @@ export default function Trade() {
               {impact && (
                 <div className="mt-4 space-y-4">
                   <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">Current Cap Space:</h3>
+                    <h3 className="text-sm font-bold mb-2 text-white/70">Before Trade:</h3>
                     <CapImpactDisplay impact={impact.before} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">Incoming Cap:</h3>
+                    <h3 className="text-sm font-bold mb-2 text-white/70">Receiving:</h3>
                     <CapImpactDisplay impact={impact.incoming} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">Outgoing Cap:</h3>
+                    <h3 className="text-sm font-bold mb-2 text-white/70">Sending Away:</h3>
                     <CapImpactDisplay impact={impact.outgoing} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">Remaining Cap Space:</h3>
+                    <h3 className="text-sm font-bold mb-2 text-white/70">After Trade:</h3>
                     <CapImpactDisplay impact={impact.after} />
                   </div>
                 </div>
