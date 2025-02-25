@@ -40,44 +40,46 @@ export default function Trade() {
   const [teamB, setTeamB] = useState('');
   const [showSummary, setShowSummary] = useState(false);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
-        const text = await response.text();
-        
-        const rows = text.split('\n');
-        const parsedData = rows.slice(1)
-          .filter(row => row.trim())
-          .map(row => {
-            const values = row.split(',');
-            const status = values[14];
-            const isActive = status === 'Active';
-            
-            return {
-              id: values[0],
-              playerName: values[1],
-              team: values[33],
-              position: values[21],
-              status: status,
-              curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
-              year2: isActive ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
-              year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
-              year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
-              isActive: isActive
-            };
-          });
-        
-        setPlayers(parsedData);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
+useEffect(() => {
+  async function fetchData() {
+    try {
+      const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+      const text = await response.text();
+      
+      const rows = text.split('\n');
+      const parsedData = rows.slice(1)
+        .filter(row => row.trim())
+        .map(row => {
+          const values = row.split(',');
+          const status = values[14];
+          const isActive = status === 'Active';
+          
+          return {
+            id: values[0],
+            playerName: values[1],
+            team: values[33],
+            position: values[21],
+            status: status,
+            curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
+            year2: isActive ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
+            year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
+            year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
+            isActive: isActive
+          };
+        })
+        // Filter out expired contracts
+        .filter(player => player.status === 'Active');
+      
+      setPlayers(parsedData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    fetchData();
-  }, []);
+  fetchData();
+}, []);
 
   const uniqueTeams = [...new Set(players.map(player => player.team))].sort();
 
@@ -257,14 +259,6 @@ export default function Trade() {
                   <div>
                     <h3 className="text-sm font-bold mb-2 text-white/70">Before Trade:</h3>
                     <CapImpactDisplay impact={impact.before} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">Receiving:</h3>
-                    <CapImpactDisplay impact={impact.incoming} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">Sending Away:</h3>
-                    <CapImpactDisplay impact={impact.outgoing} />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold mb-2 text-white/70">After Trade:</h3>

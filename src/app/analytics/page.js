@@ -42,6 +42,7 @@ export default function Analytics() {
 
   const calculateTeamInvestments = () => {
     const investments = {};
+    const counts = {};
     
     players.forEach(player => {
       if (!investments[player.team]) {
@@ -53,16 +54,34 @@ export default function Analytics() {
           TE: 0,
           DeadCap: 0,
         };
+        
+        counts[player.team] = {
+          QB: 0,
+          RB: 0,
+          WR: 0,
+          TE: 0,
+          DeadCap: 0,
+        };
       }
       
       if (player.isActive) {
         investments[player.team][player.position] += player.curYear;
+        counts[player.team][player.position]++;
       } else {
         investments[player.team].DeadCap += player.curYear;
+        counts[player.team].DeadCap++;
       }
     });
 
-    return Object.values(investments);
+    // Combine the data
+    return Object.entries(investments).map(([team, values]) => ({
+      ...values,
+      QB_count: counts[team].QB,
+      RB_count: counts[team].RB,
+      WR_count: counts[team].WR,
+      TE_count: counts[team].TE,
+      DeadCap_count: counts[team].DeadCap,
+    }));
   };
 
   const CustomTooltip = ({ active, payload, label }) => {
@@ -70,11 +89,15 @@ export default function Analytics() {
       return (
         <div className="bg-[#001A2B] border border-white/10 rounded p-3">
           <p className="font-bold mb-2">{label}</p>
-          {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }}>
-              {entry.name}: ${entry.value.toFixed(1)}
-            </p>
-          ))}
+          {payload.map((entry, index) => {
+            const position = entry.dataKey;
+            const count = payload[0].payload[`${position}_count`] || 0;
+            return (
+              <p key={index} style={{ color: entry.color }}>
+                {position}: ${entry.value.toFixed(1)} ({count})
+              </p>
+            );
+          })}
           <p className="border-t border-white/10 mt-2 pt-2">
             Total: ${payload.reduce((sum, entry) => sum + entry.value, 0).toFixed(1)}
           </p>
@@ -115,24 +138,29 @@ export default function Analytics() {
           
           <div className="w-full overflow-x-auto">
             <BarChart
+              layout="vertical"
               width={1000}
-              height={500}
+              height={600}
               data={data}
-              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              margin={{ top: 20, right: 30, left: 120, bottom: 5 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" horizontal={false} />
               <XAxis 
-                dataKey="team" 
-                stroke="#fff"
-              />
-              <YAxis 
+                type="number"
+                domain={[0, 300]}
                 stroke="#fff"
                 label={{ 
                   value: 'Cap Space ($)', 
-                  angle: -90, 
-                  position: 'insideLeft',
+                  position: 'insideBottom',
+                  offset: -5,
                   style: { fill: '#fff' }
                 }}
+              />
+              <YAxis 
+                type="category"
+                dataKey="team" 
+                stroke="#fff"
+                width={100}
               />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
