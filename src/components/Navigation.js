@@ -13,7 +13,8 @@ export default function Navigation() {
   };
 
   const navLinks = [
-    { href: '/', label: 'Player Contracts' },
+    { href: '/', label: 'Home' },
+    { href: '/player-contracts', label: 'Player Contracts' },
     { href: '/salary-cap', label: 'Cap Space' },
     { href: '/rules', label: 'Rules & Resources' },
     { href: '/analytics', label: 'Analytics' },

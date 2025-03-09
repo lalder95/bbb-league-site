@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // Sample data - with division information added
 const champions = [
@@ -26,14 +26,18 @@ const champions = [
       pointsAgainst: 1510.34
     },
 
-    quote: "After years of heartbreaking losses, finally capturing this championship feels surreal. The season was a roller coaster, but my team peaked at exactly the right time.",
+    quote: "Matt like football. Other people bad at football. Matt good at football.",
     teamPhoto: "/2024-championlogo.png", // CHANGE TEAM PHOTO PATH
     keyPlayers: [
-      { name: "Jayden Daniels", position: "QB" },
-      { name: "Mike Evans", position: "WR" },
-      { name: "Alvin Kamara", position: "RB" },
-      { name: "Jaylen Waddle", position: "WR" },
-      { name: "Mark Andrews", position: "TE" }
+      { name: "Joe Burrow", position: "QB", nflTeam: "Cincinnati Bengals", photo: "/players/joe-burrow.png" },
+      { name: "Jayden Daniels", position: "QB", nflTeam: "Washington Commanders", photo: "/players/jayden-daniels.png" },
+      { name: "Mike Evans", position: "WR", nflTeam: "Tampa Bay Buccaneers", photo: "/players/mike-evans.png" },
+      { name: "Davante Adams", position: "WR", nflTeam: "Las Vegas Raiders/New York Jets", photo: "/players/davante-adams.png" },
+      { name: "Keenan Allen", position: "WR", nflTeam: "Chicago Bears", photo: "/players/keenan-allen.png" },
+      { name: "Alvin Kamara", position: "RB", nflTeam: "New Orleans Saints", photo: "/players/alvin-kamara.png" },
+      { name: "Najee Harris", position: "RB", nflTeam: "Pittsburgh Steelers", photo: "/players/najee-harris.png" },
+      { name: "Travis Etienne", position: "RB", nflTeam: "Jacksonville Jaguars", photo: "/players/travis-etienne.png" },
+      { name: "Mark Andrews", position: "TE", nflTeam: "Baltimore Ravens", photo: "/players/mark-andrews.png" }
     ]
   },
   {
@@ -58,21 +62,44 @@ const champions = [
       pointsFor: 1943,
       pointsAgainst: 1552
     },
-    playoffBracket: "/images/2023-bracket.png",
     quote: "This championship was a testament to patience in the draft and aggressive moves on the waiver wire. Building around McCaffrey was the best decision I ever made.",
     teamPhoto: "/images/2023-team.png",
     keyPlayers: [
-      { name: "Christian McCaffrey", position: "RB" },
-      { name: "Josh Allen", position: "QB" },
-      { name: "CeeDee Lamb", position: "WR" },
-      { name: "Travis Kelce", position: "TE" },
-      { name: "Mike Evans", position: "WR" }
+      { name: "Christian McCaffrey", position: "RB", nflTeam: "SF", photo: "/players/christian-mccaffrey.png" },
+      { name: "Josh Allen", position: "QB", nflTeam: "BUF", photo: "/players/josh-allen.png" },
+      { name: "CeeDee Lamb", position: "WR", nflTeam: "DAL", photo: "/players/ceedee-lamb.png" },
+      { name: "Travis Kelce", position: "TE", nflTeam: "KC", photo: "/players/travis-kelce.png" },
+      { name: "Mike Evans", position: "WR", nflTeam: "TB", photo: "/players/mike-evans.png" }
     ]
   }
 ];
 
+// Image component with error handling
+const PlayerImage = ({ src, alt, position }) => {
+  const [imageError, setImageError] = useState(false);
+  
+  return imageError ? (
+    <div className="w-full h-full flex items-center justify-center text-white/30">
+      <span>{position}</span>
+    </div>
+  ) : (
+    <img 
+      src={src} 
+      alt={alt}
+      className="w-full h-full object-cover"
+      onError={() => setImageError(true)}
+    />
+  );
+};
+
 export default function HallOfFame() {
   const [selectedChampion, setSelectedChampion] = useState(champions[0]);
+  const [mvpImageError, setMvpImageError] = useState(false);
+
+  // Group players by position
+  const getPlayersByPosition = (position) => {
+    return selectedChampion.keyPlayers.filter(player => player.position === position);
+  };
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
@@ -95,7 +122,10 @@ export default function HallOfFame() {
           {champions.map(champion => (
             <button
               key={champion.year}
-              onClick={() => setSelectedChampion(champion)}
+              onClick={() => {
+                setSelectedChampion(champion);
+                setMvpImageError(false); // Reset error state when changing champion
+              }}
               className={`px-6 py-3 rounded-lg ${
                 selectedChampion.year === champion.year 
                   ? 'bg-[#FF4B1F] text-white' 
@@ -115,20 +145,25 @@ export default function HallOfFame() {
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-[#FF4B1F]">{selectedChampion.year} Champion</h2>
                 <div className="mt-4 flex items-center gap-4">
-                  <div className="bg-[#FF4B1F]/20 p-4 rounded-lg">
-                    <div className="text-3xl font-bold text-[#FF4B1F]">{selectedChampion.userName}</div>
-                    <div className="text-white/70">{selectedChampion.teamName}</div>
+                  <div className="flex items-center gap-4">
+                    {/* Team Photo removed from here and moved to Winner's Quote section */}
                     
-                    {/* Division Information */}
-                    <div className="flex items-center mt-2 pt-2 border-t border-white/10">
-                      {selectedChampion.division.logo && (
-                        <img 
-                          src={selectedChampion.division.logo} 
-                          alt={selectedChampion.division.name}
-                          className="w-6 h-6 mr-2"
-                        />
-                      )}
-                      <span className="text-sm text-white/70">{selectedChampion.division.name}</span>
+                    <div className="bg-[#FF4B1F]/20 p-4 rounded-lg">
+                      <div className="text-3xl font-bold text-[#FF4B1F]">{selectedChampion.userName}</div>
+                      <div className="text-white/70">{selectedChampion.teamName}</div>
+                      
+                      {/* Division Information */}
+                      <div className="flex items-center mt-2 pt-2 border-t border-white/10">
+                        {selectedChampion.division.logo && (
+                          <img 
+                            src={selectedChampion.division.logo} 
+                            alt={selectedChampion.division.name}
+                            className="w-6 h-6 mr-2"
+                            onError={(e) => e.target.style.display = 'none'}
+                          />
+                        )}
+                        <span className="text-sm text-white/70">{selectedChampion.division.name}</span>
+                      </div>
                     </div>
                   </div>
                   
@@ -149,20 +184,136 @@ export default function HallOfFame() {
 
               <div className="mb-6">
                 <h3 className="text-xl font-bold mb-4">Winner's Quote</h3>
-                <div className="bg-black/20 p-4 rounded-lg italic border-l-4 border-[#FF4B1F]">
-                  "{selectedChampion.quote}"
+                <div className="flex items-start gap-4">
+                  {selectedChampion.teamPhoto && (
+                    <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden border border-white/20">
+                      <img 
+                        src={selectedChampion.teamPhoto}
+                        alt={`${selectedChampion.teamName} logo`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    </div>
+                  )}
+                  <div className="bg-black/20 p-4 rounded-lg italic border-l-4 border-[#FF4B1F] flex-1">
+                    "{selectedChampion.quote}"
+                  </div>
                 </div>
               </div>
 
               <div>
                 <h3 className="text-xl font-bold mb-4">Championship Team</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {selectedChampion.keyPlayers.map((player, index) => (
-                    <div key={index} className="bg-black/20 p-3 rounded-lg text-center">
-                      <div className="font-bold truncate">{player.name}</div>
-                      <div className="text-sm text-white/70">{player.position}</div>
-                    </div>
-                  ))}
+                
+                {/* Quarterbacks Section */}
+                <div className="mb-4">
+                  <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Quarterbacks</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {getPlayersByPosition("QB").map((player, index) => (
+                      <div key={`qb-${index}`} className="bg-black/20 p-3 rounded-lg flex items-center">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-black/30 mr-3">
+                          {player.photo ? (
+                            <PlayerImage 
+                              src={player.photo}
+                              alt={player.name}
+                              position="QB"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white/30">
+                              <span>QB</span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-bold">{player.name}</div>
+                          <div className="text-sm text-[#FF4B1F]/80">{player.nflTeam}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Wide Receivers Section */}
+                <div className="mb-4">
+                  <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Wide Receivers</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {getPlayersByPosition("WR").map((player, index) => (
+                      <div key={`wr-${index}`} className="bg-black/20 p-3 rounded-lg flex items-center">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-black/30 mr-3">
+                          {player.photo ? (
+                            <PlayerImage 
+                              src={player.photo}
+                              alt={player.name}
+                              position="WR"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white/30">
+                              <span>WR</span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-bold">{player.name}</div>
+                          <div className="text-sm text-[#FF4B1F]/80">{player.nflTeam}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Running Backs Section */}
+                <div className="mb-4">
+                  <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Running Backs</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {getPlayersByPosition("RB").map((player, index) => (
+                      <div key={`rb-${index}`} className="bg-black/20 p-3 rounded-lg flex items-center">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-black/30 mr-3">
+                          {player.photo ? (
+                            <PlayerImage 
+                              src={player.photo}
+                              alt={player.name}
+                              position="RB"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white/30">
+                              <span>RB</span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-bold">{player.name}</div>
+                          <div className="text-sm text-[#FF4B1F]/80">{player.nflTeam}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Tight Ends Section */}
+                <div className="mb-4">
+                  <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Tight Ends</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {getPlayersByPosition("TE").map((player, index) => (
+                      <div key={`te-${index}`} className="bg-black/20 p-3 rounded-lg flex items-center">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-black/30 mr-3">
+                          {player.photo ? (
+                            <PlayerImage 
+                              src={player.photo}
+                              alt={player.name}
+                              position="TE"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white/30">
+                              <span>TE</span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-bold">{player.name}</div>
+                          <div className="text-sm text-[#FF4B1F]/80">{player.nflTeam}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -174,19 +325,20 @@ export default function HallOfFame() {
                 
                 {/* MVP Player Photo */}
                 <div className="mb-4 flex justify-center">
-                  {selectedChampion.mvpPlayer.photo ? (
-                    <div className="w-40 h-40 rounded-full border-4 border-[#FF4B1F] overflow-hidden">
+                  <div className="w-40 h-40 rounded-full border-4 border-[#FF4B1F] overflow-hidden bg-black/30">
+                    {selectedChampion.mvpPlayer.photo && !mvpImageError ? (
                       <img 
                         src={selectedChampion.mvpPlayer.photo} 
                         alt={selectedChampion.mvpPlayer.name}
                         className="w-full h-full object-cover"
+                        onError={() => setMvpImageError(true)}
                       />
-                    </div>
-                  ) : (
-                    <div className="w-40 h-40 rounded-full border-4 border-[#FF4B1F] bg-black/30 flex items-center justify-center">
-                      <span className="text-white/50">No photo</span>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/50">
+                        <span>{selectedChampion.mvpPlayer.position}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="flex flex-col items-center mb-4">
@@ -209,24 +361,6 @@ export default function HallOfFame() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Playoff Bracket (placeholder) */}
-        <div className="bg-black/30 rounded-lg border border-white/10 p-6 mb-8">
-          <h3 className="text-xl font-bold mb-4">Playoff Bracket</h3>
-          <div className="flex items-center justify-center h-64 bg-black/20 rounded-lg border border-dashed border-white/20">
-            {selectedChampion.playoffBracket ? (
-              <img 
-                src={selectedChampion.playoffBracket}
-                alt={`${selectedChampion.year} Playoff Bracket`}
-                className="max-w-full max-h-full object-contain"
-              />
-            ) : (
-              <div className="text-white/50">
-                Playoff bracket visualization will be displayed here
-              </div>
-            )}
           </div>
         </div>
       </div>
