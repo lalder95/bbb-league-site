@@ -1,11 +1,22 @@
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { readFileSync } from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs'; // Changed from bcrypt to bcryptjs
 
 // Get the absolute path to the users.json file
 const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+
+// Helper function to read users from file
+async function readUsersFile() {
+  try {
+    const fsPromises = await import('fs/promises');
+    const data = await fsPromises.readFile(usersFilePath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error reading users file:', error);
+    return [];
+  }
+}
 
 export const authOptions = {
   providers: [
@@ -18,8 +29,7 @@ export const authOptions = {
       async authorize(credentials) {
         try {
           // Read users from the JSON file
-          const usersData = readFileSync(usersFilePath, 'utf8');
-          const users = JSON.parse(usersData);
+          const users = await readUsersFile();
           
           // Find the user by username
           const user = users.find(user => user.username === credentials.username);

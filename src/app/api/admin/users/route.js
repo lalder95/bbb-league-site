@@ -4,12 +4,14 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import bcryptjs from 'bcryptjs';
 
-// Use dynamic import for fs with error handling
+// Get the absolute path to the users.json file
+const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+
+// Use dynamic import for fs with error handling - no node: prefix
 async function readUsersFile() {
   try {
-    const { readFile } = await import('node:fs/promises');
-    const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-    const data = await readFile(usersFilePath, 'utf8');
+    const fsPromises = await import('fs/promises');
+    const data = await fsPromises.readFile(usersFilePath, 'utf8');
     return JSON.parse(data);
   } catch (error) {
     console.error('Error reading users file:', error);
@@ -19,9 +21,8 @@ async function readUsersFile() {
 
 async function writeUsersFile(users) {
   try {
-    const { writeFile } = await import('node:fs/promises');
-    const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-    await writeFile(usersFilePath, JSON.stringify(users, null, 2));
+    const fsPromises = await import('fs/promises');
+    await fsPromises.writeFile(usersFilePath, JSON.stringify(users, null, 2));
     return true;
   } catch (error) {
     console.error('Error writing users file:', error);

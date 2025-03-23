@@ -8,5 +8,14 @@
     "passwordChangeRequired": false,
     "createdAt": "2025-03-23T11:08:00.000Z",
     "passwordLastChanged": "2025-03-23T16:55:47.708Z"
+  },
+  {
+    "id": "2",
+    "username": "Henrypavlak3",
+    "email": "",
+    "password": "$2b$10$Kw.Fe.RwhcCiWvqdUWJIquIQWXVNZKAPGZ9p5SGR4yPKW0E3PcXHq",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:30:10.140Z"
   }
 ]
