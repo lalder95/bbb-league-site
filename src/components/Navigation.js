@@ -16,6 +16,7 @@ export default function Navigation() {
 
   const navLinks = [
     { href: '/', label: 'Home' },
+    { href: '/my-team', label: 'My Team' },
     { href: '/player-contracts', label: 'Player Contracts' },
     { href: '/salary-cap', label: 'Cap Space' },
     { href: '/rules', label: 'Rules & Resources' },
