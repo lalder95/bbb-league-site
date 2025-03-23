@@ -8,7 +8,7 @@ export default function UserManagement() {
   const router = useRouter();
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [newUser, setNewUser] = useState({ username: '', email: '', isAdmin: false });
+  const [newUser, setNewUser] = useState({ username: '', email: '', isAdmin: false, sleeperId: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -62,7 +62,7 @@ export default function UserManagement() {
       }
       
       setSuccess(`User created successfully! Temporary password: ${tempPassword}`);
-      setNewUser({ username: '', email: '', isAdmin: false });
+      setNewUser({ username: '', email: '', isAdmin: false, sleeperId: '' });
       fetchUsers();
     } catch (err) {
       setError(err.message);

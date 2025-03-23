@@ -1,47 +1,20 @@
+// src/app/api/admin/users/route.js
 import { NextResponse } from 'next/server';
-import path from 'path';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import bcryptjs from 'bcryptjs';
-
-// Get the absolute path to the users.json file
-const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-
-// Use dynamic import for fs with error handling - no node: prefix
-async function readUsersFile() {
-  try {
-    const fsPromises = await import('fs/promises');
-    const data = await fsPromises.readFile(usersFilePath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading users file:', error);
-    return [];
-  }
-}
-
-async function writeUsersFile(users) {
-  try {
-    const fsPromises = await import('fs/promises');
-    await fsPromises.writeFile(usersFilePath, JSON.stringify(users, null, 2));
-    return true;
-  } catch (error) {
-    console.error('Error writing users file:', error);
-    return false;
-  }
-}
+import { getUsers } from '@/lib/auth-helpers';
+import bcrypt from 'bcryptjs';
 
 export async function GET(request) {
   try {
-    // Get session for debugging
+    // Check authentication
     const session = await getServerSession(authOptions);
-    console.log("Admin API - Session:", session ? {
-      id: session?.user?.id,
-      name: session?.user?.name,
-      role: session?.user?.role
-    } : 'No session');
+    if (!session || session.user.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    // Read users from file
-    const users = await readUsersFile();
+    // Get users using our helper
+    const users = await getUsers();
     
     // Remove passwords before sending to client
     const safeUsers = users.map(({ password, ...user }) => user);
@@ -57,13 +30,11 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    // Get session for debugging
+    // Check authentication
     const session = await getServerSession(authOptions);
-    console.log("Admin API POST - Session:", session ? {
-      id: session?.user?.id,
-      name: session?.user?.name,
-      role: session?.user?.role
-    } : 'No session');
+    if (!session || session.user.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     
     const { username, email, password, isAdmin, passwordChangeRequired, sleeperId } = await request.json();
     
@@ -75,8 +46,8 @@ export async function POST(request) {
       );
     }
     
-    // Read existing users
-    const users = await readUsersFile();
+    // Get existing users
+    const users = await getUsers();
     
     // Check if username already exists
     if (users.some(user => user.username === username)) {
@@ -86,17 +57,9 @@ export async function POST(request) {
       );
     }
     
-    // Only check email uniqueness if an email was provided
-    if (email && users.some(user => user.email === email)) {
-      return NextResponse.json(
-        { error: 'Email already exists' },
-        { status: 400 }
-      );
-    }
-    
     // Hash the password
     const saltRounds = 10;
-    const hashedPassword = await bcryptjs.hash(password, saltRounds);
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
     
     // Create new user
     const newUser = {
@@ -107,15 +70,25 @@ export async function POST(request) {
       role: isAdmin ? 'admin' : 'user',
       passwordChangeRequired: passwordChangeRequired || false,
       createdAt: new Date().toISOString(),
-      sleeperId: sleeperId || "", // New field for SleeperID
-      lastLogin: null // New field for last login timestamp
+      sleeperId: sleeperId || "",
+      lastLogin: null
     };
     
     // Add to users array
     users.push(newUser);
     
-    // Write back to file
-    await writeUsersFile(users);
+    // Store updated users
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        const fsPromises = await import('fs/promises');
+        const path = await import('path');
+        const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+        await fsPromises.writeFile(usersFilePath, JSON.stringify(users, null, 2));
+      } catch (fileError) {
+        console.error('Error writing users file:', fileError);
+        // Continue anyway, as we have in-memory updates
+      }
+    }
     
     // Return user without password
     const { password: _, ...safeUser } = newUser;
