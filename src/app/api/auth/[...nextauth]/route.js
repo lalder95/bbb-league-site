@@ -18,6 +18,31 @@ async function readUsersFile() {
   }
 }
 
+// Helper function to update a user's last login timestamp
+async function updateLastLogin(userId) {
+  try {
+    const fsPromises = await import('fs/promises');
+    
+    // Read users file
+    const data = await fsPromises.readFile(usersFilePath, 'utf8');
+    const users = JSON.parse(data);
+    
+    // Find user and update last login
+    const userIndex = users.findIndex(user => user.id === userId);
+    if (userIndex !== -1) {
+      users[userIndex].lastLogin = new Date().toISOString();
+      
+      // Write back to file
+      await fsPromises.writeFile(usersFilePath, JSON.stringify(users, null, 2));
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error updating last login:', error);
+    return false;
+  }
+}
+
 export const authOptions = {
   providers: [
     CredentialsProvider({
@@ -52,12 +77,16 @@ export const authOptions = {
           }
           
           if (passwordMatch) {
+            // Update last login timestamp
+            updateLastLogin(user.id);
+            
             return {
               id: user.id,
               name: user.username,
               email: user.email,
               role: user.role || 'user',
-              passwordChangeRequired: user.passwordChangeRequired || false
+              passwordChangeRequired: user.passwordChangeRequired || false,
+              sleeperId: user.sleeperId || "" // Include in the session
             };
           }
           
@@ -82,6 +111,7 @@ export const authOptions = {
       session.user.id = token.id;
       session.user.role = token.role;
       session.user.passwordChangeRequired = token.passwordChangeRequired;
+      session.user.sleeperId = token.sleeperId; // Add to session
       return session;
     },
     async jwt({ token, user }) {
@@ -89,6 +119,7 @@ export const authOptions = {
         token.id = user.id;
         token.role = user.role;
         token.passwordChangeRequired = user.passwordChangeRequired;
+        token.sleeperId = user.sleeperId; // Add to token
       }
       return token;
     },

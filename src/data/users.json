@@ -7,15 +7,128 @@
     "role": "admin",
     "passwordChangeRequired": false,
     "createdAt": "2025-03-23T11:08:00.000Z",
-    "passwordLastChanged": "2025-03-23T16:55:47.708Z"
+    "passwordLastChanged": "2025-03-23T16:55:47.708Z",
+    "lastLogin": "2025-03-23T20:41:41.043Z"
   },
   {
     "id": "2",
-    "username": "Henrypavlak3",
+    "username": "aintEZBNwheezE",
     "email": "",
-    "password": "$2b$10$Kw.Fe.RwhcCiWvqdUWJIquIQWXVNZKAPGZ9p5SGR4yPKW0E3PcXHq",
+    "password": "$2b$10$/BnqdmCx/KoYrfvEwuY3IuEc9s3q.d.9OyoQ3rj/grmzxEDfJ5G1e",
     "role": "user",
     "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:30:10.140Z"
+    "createdAt": "2025-03-23T20:44:44.438Z",
+    "sleeperId": "913497379737829376",
+    "lastLogin": null
+  },
+  {
+    "id": "3",
+    "username": "Chewy2552",
+    "email": "",
+    "password": "$2b$10$3B.zVjGodGtjJkyUQPu/yuKv0oNKatP3P.35qJn4823o.MbfliI5C",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:44:53.897Z",
+    "sleeperId": "756760079197458432",
+    "lastLogin": null
+  },
+  {
+    "id": "4",
+    "username": "Delusional1",
+    "email": "",
+    "password": "$2b$10$eIDzU910QmbqD1rCUNvfxe.dPfUg7todVgwXYiAhXFI4MsIfYwanq",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:01.263Z",
+    "sleeperId": "696154532161347584",
+    "lastLogin": null
+  },
+  {
+    "id": "5",
+    "username": "DylanBears2022",
+    "email": "",
+    "password": "$2b$10$f9kBfG5oFf4XK8AoVEbf0eh9f65h1ujFne8.LpFe2ltshZyoTQwKu",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:06.734Z",
+    "sleeperId": "820806976639475712",
+    "lastLogin": null
+  },
+  {
+    "id": "6",
+    "username": "EthanL21",
+    "email": "",
+    "password": "$2b$10$rlXfucKL7EUmGReuAe4Dt.uzfeMQh2bBPpdxe2hA7Tp8Wqqi0WHg.",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:12.173Z",
+    "sleeperId": "885739177386393600",
+    "lastLogin": null
+  },
+  {
+    "id": "7",
+    "username": "Henrypavlak3",
+    "email": "",
+    "password": "$2b$10$fCC5.vuPzxKgNj9UV6Xy9OGmAccvray9SL02flNoISSHNaFjS/85y",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:17.293Z",
+    "sleeperId": "885724639740096512",
+    "lastLogin": null
+  },
+  {
+    "id": "8",
+    "username": "jwalwer81",
+    "email": "",
+    "password": "$2b$10$D17oo4nZJZVmzkLRswzDR.gJL6YBYt.XGXRQ.2ro5w/4NGhBgUBS.",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:22.318Z",
+    "sleeperId": "672674056419475456",
+    "lastLogin": null
+  },
+  {
+    "id": "9",
+    "username": "mlthomas5095",
+    "email": "",
+    "password": "$2b$10$miaL6AWSl346wprZEq74Guprd7TI6EsA7OmxWfwHNUwMrWxM9lw/6",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:28.337Z",
+    "sleeperId": "717639328456572928",
+    "lastLogin": null
+  },
+  {
+    "id": "10",
+    "username": "Schoontang",
+    "email": "",
+    "password": "$2b$10$3P8oLGQRXf1nx0.cUwAV2ONrbf1HD4Zq.TnaKj0RuLhz.xPeDB/R6",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:32.601Z",
+    "sleeperId": "600829464699531264",
+    "lastLogin": null
+  },
+  {
+    "id": "11",
+    "username": "tylercrain",
+    "email": "",
+    "password": "$2b$10$QdoVYnM4rNGTK0Lgz7z1Vee6Lgt49NSZIvj3GZ24ex7k44VbhFqT6",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:37.273Z",
+    "sleeperId": "608494374518607872",
+    "lastLogin": null
+  },
+  {
+    "id": "12",
+    "username": "Vikingsfan80",
+    "email": "",
+    "password": "$2b$10$5GK2ScS7SMML9kQoNxn4kOrx.BbaFkqsJp3Pnp75Y.312uwrlUMUi",
+    "role": "user",
+    "passwordChangeRequired": true,
+    "createdAt": "2025-03-23T20:45:42.055Z",
+    "sleeperId": "820483197975519232",
+    "lastLogin": null
   }
 ]

@@ -65,7 +65,7 @@ export async function POST(request) {
       role: session?.user?.role
     } : 'No session');
     
-    const { username, email, password, isAdmin, passwordChangeRequired } = await request.json();
+    const { username, email, password, isAdmin, passwordChangeRequired, sleeperId } = await request.json();
     
     // Validate input
     if (!username || !password) {
@@ -102,11 +102,13 @@ export async function POST(request) {
     const newUser = {
       id: (users.length + 1).toString(),
       username,
-      email: email || "", // Use empty string if email is not provided
-      password: hashedPassword, // Store the hashed password
+      email: email || "",
+      password: hashedPassword,
       role: isAdmin ? 'admin' : 'user',
       passwordChangeRequired: passwordChangeRequired || false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      sleeperId: sleeperId || "", // New field for SleeperID
+      lastLogin: null // New field for last login timestamp
     };
     
     // Add to users array

@@ -160,7 +160,19 @@ export default function UserManagement() {
                     value={newUser.email}
                     onChange={(e) => setNewUser({...newUser, email: e.target.value})}
                     className="w-full p-2 rounded bg-white/5 border border-white/10 text-white"
-                    // Email is now optional - removed the required attribute
+                    placeholder="Optional"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="sleeperId" className="block mb-1">Sleeper ID</label>
+                  <input
+                    id="sleeperId"
+                    type="text"
+                    value={newUser.sleeperId}
+                    onChange={(e) => setNewUser({...newUser, sleeperId: e.target.value})}
+                    className="w-full p-2 rounded bg-white/5 border border-white/10 text-white"
+                    placeholder="Optional"
                   />
                 </div>
                 
