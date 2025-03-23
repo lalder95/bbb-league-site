@@ -1,0 +1,12 @@
+[
+  {
+    "id": "1",
+    "username": "lalder",
+    "email": "lalder95@gmail.com",
+    "password": "$2b$10$OGOg3fKMqq04MQm4ijLx5utIkqfpoo43n1qnGIOdJiabg8ccPheUy",
+    "role": "admin",
+    "passwordChangeRequired": false,
+    "createdAt": "2025-03-23T11:08:00.000Z",
+    "passwordLastChanged": "2025-03-23T16:55:47.708Z"
+  }
+]
