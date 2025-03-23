@@ -45,18 +45,21 @@ export default function Login() {
         password,
         redirect: false,
       });
-
-      console.log("SignIn result:", result);
-
+  
+      console.log("SignIn result:", result || 'No result returned');
+  
+      if (!result) {
+        throw new Error('Authentication failed - no response');
+      }
+  
       if (result.error) {
         throw new Error(result.error);
       }
       
-      // Don't redirect here - let the useEffect handle it based on session data
-      
+      // Rest of your login logic
     } catch (err) {
       console.error("Login error:", err);
-      setError(err.message || 'Invalid username or password');
+      setError(err?.message || 'Authentication failed');
     } finally {
       setIsLoading(false);
     }

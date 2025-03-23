@@ -10,10 +10,18 @@ const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
 async function readUsersFile() {
   try {
     const fsPromises = await import('fs/promises');
-    const data = await fsPromises.readFile(usersFilePath, 'utf8');
-    return JSON.parse(data);
+    try {
+      const data = await fsPromises.readFile(usersFilePath, 'utf8');
+      return JSON.parse(data);
+    } catch (fileError) {
+      console.error('Error reading users file:', fileError);
+      // Provide fallback for production
+      return process.env.NODE_ENV === 'production' 
+        ? JSON.parse(process.env.DEFAULT_USERS || '[]') 
+        : [];
+    }
   } catch (error) {
-    console.error('Error reading users file:', error);
+    console.error('Error importing fs:', error);
     return [];
   }
 }
