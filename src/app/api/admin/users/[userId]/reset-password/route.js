@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../auth/[...nextauth]/route';
 import bcrypt from 'bcryptjs';
-import { updateUserPassword } from '@/lib/db-helpers'; // We'll create this file next
+import { updateUserPassword } from '@/lib/db-helpers';
 
 export async function POST(request, { params }) {
   try {
@@ -13,11 +13,6 @@ export async function POST(request, { params }) {
     let session;
     try {
       session = await getServerSession(authOptions);
-      console.log('Session retrieved for reset password:', session ? {
-        userId: session.user?.id,
-        name: session.user?.name,
-        role: session.user?.role
-      } : 'No session found');
     } catch (sessionError) {
       console.error('Error getting session for reset password:', sessionError);
     }
@@ -56,7 +51,7 @@ export async function POST(request, { params }) {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     
-    // Update the user's password in the database
+    // Update the user's password in MongoDB
     const result = await updateUserPassword(userId, hashedPassword, passwordChangeRequired);
     
     if (!result.success) {
@@ -65,7 +60,7 @@ export async function POST(request, { params }) {
     
     return NextResponse.json({ 
       success: true,
-      message: "Password reset successfully. The user will need to use this new password on their next login."
+      message: "Password reset successfully and saved to database."
     });
     
   } catch (error) {
