@@ -13,6 +13,11 @@ export async function POST(request, { params }) {
     let session;
     try {
       session = await getServerSession(authOptions);
+      console.log('Session retrieved for reset password:', session ? {
+        userId: session.user?.id,
+        name: session.user?.name,
+        role: session.user?.role
+      } : 'No session found');
     } catch (sessionError) {
       console.error('Error getting session for reset password:', sessionError);
     }

@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import { getAllUsers } from '@/lib/memory-db';
+import { getAllUsers, addUser } from '@/lib/db-helpers';
 import bcrypt from 'bcryptjs';
 
 export async function GET(request) {
@@ -37,8 +37,8 @@ export async function GET(request) {
       }
     }
 
-    // Regular path - get users using our helper
-    console.log('Fetching users from memory database');
+    // Regular path - get users using our MongoDB helper
+    console.log('Fetching users from MongoDB');
     const users = await getAllUsers();
     console.log(`Found ${users.length} users`);
     
@@ -53,39 +53,6 @@ export async function GET(request) {
     }, { status: 500 });
   }
 }
-
-// If you need the POST endpoint for creating users, you'll need to add this function 
-// to your memory-db.js file:
-/*
-export async function addUser(newUser) {
-  await initializeDb();
-  
-  // Check if username already exists
-  const existing = users.find(user => user.username === newUser.username);
-  if (existing) {
-    return { success: false, error: "Username already exists" };
-  }
-  
-  // Add user to memory
-  users.push(newUser);
-  
-  // Try to write back to file in development mode
-  if (process.env.NODE_ENV === 'development') {
-    try {
-      const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-      fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf8');
-      console.log(`New user added and saved to file: ${newUser.username}`);
-      return { success: true, persisted: true, user: newUser };
-    } catch (e) {
-      console.warn('Could not save to users.json file:', e.message);
-      // Continue with in-memory update
-    }
-  }
-  
-  console.log(`New user added in memory: ${newUser.username}`);
-  return { success: true, persisted: false, user: newUser };
-}
-*/
 
 export async function POST(request) {
   try {
@@ -140,13 +107,16 @@ export async function POST(request) {
       lastLogin: null
     };
     
-    // This needs the addUser function from the commented section above
-    // For now, just return a success message
-    console.log('New user would be created:', newUser.username);
+    // Add the user to MongoDB
+    const result = await addUser(newUser);
+    
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
     
     return NextResponse.json({ 
       success: true,
-      message: 'User created successfully (in-memory only)'
+      message: 'User created successfully and persisted to database'
     });
   } catch (error) {
     console.error('Failed to create user:', error);
