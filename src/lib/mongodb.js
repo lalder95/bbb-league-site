@@ -24,4 +24,11 @@ if (process.env.NODE_ENV === 'development') {
   clientPromise = client.connect();
 }
 
+
+clientPromise.then(() => {
+    console.log('Successfully connected to MongoDB Atlas');
+  }).catch(err => {
+    console.error('Failed to connect to MongoDB:', err);
+  });
+
 export default clientPromise;
