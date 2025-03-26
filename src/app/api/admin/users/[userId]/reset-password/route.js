@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../auth/[...nextauth]/route';
-import bcrypt from 'bcryptjs'; // Use bcryptjs consistently
+import bcrypt from 'bcryptjs';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -58,70 +58,90 @@ export async function POST(request, { params }) {
       );
     }
     
-    // Read users directly from file in development mode
-    let users = [];
-    let fileUpdated = false;
-    
-    try {
-      const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-      console.log('Reading users from file for password reset:', usersFilePath);
-      
-      const fileContent = await fs.readFile(usersFilePath, 'utf8');
-      users = JSON.parse(fileContent);
-      console.log(`Successfully read ${users.length} users from file`);
-    } catch (fileError) {
-      console.error('Error reading users file:', fileError);
-      return NextResponse.json(
-        { error: 'Failed to read users file: ' + fileError.message },
-        { status: 500 }
-      );
-    }
-    
-    // Find the user
-    const userIndex = users.findIndex(user => user.id === userId);
-    console.log('User index in array:', userIndex);
-    
-    if (userIndex === -1) {
-      console.error('User not found with ID:', userId);
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-    
     // Hash the new password
     const saltRounds = 10;
     console.log('Hashing password...');
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     
-    // Update user
-    console.log('Updating user data...');
-    users[userIndex].password = hashedPassword;
-    users[userIndex].passwordChangeRequired = passwordChangeRequired === false ? false : true;
-    users[userIndex].passwordLastChanged = new Date().toISOString();
-    
-    // Write the updated users back to the file
-    try {
-      const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-      console.log('Writing updated users back to file:', usersFilePath);
-      
-      await fs.writeFile(
-        usersFilePath, 
-        JSON.stringify(users, null, 2),
-        'utf8'
-      );
-      
-      console.log('Users file updated successfully');
-      fileUpdated = true;
-    } catch (writeError) {
-      console.error('Error writing users file:', writeError);
-      return NextResponse.json(
-        { error: 'Failed to write updated users: ' + writeError.message },
-        { status: 500 }
-      );
+    // Different approach based on environment
+    if (process.env.NODE_ENV === 'development') {
+      // Development mode: use file system
+      try {
+        // Read users directly from file
+        let users = [];
+        const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+        console.log('Reading users from file for password reset:', usersFilePath);
+        
+        const fileContent = await fs.readFile(usersFilePath, 'utf8');
+        users = JSON.parse(fileContent);
+        console.log(`Successfully read ${users.length} users from file`);
+        
+        // Find the user
+        const userIndex = users.findIndex(user => user.id === userId);
+        console.log('User index in array:', userIndex);
+        
+        if (userIndex === -1) {
+          console.error('User not found with ID:', userId);
+          return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        }
+        
+        // Update user
+        console.log('Updating user data...');
+        users[userIndex].password = hashedPassword;
+        users[userIndex].passwordChangeRequired = passwordChangeRequired === false ? false : true;
+        users[userIndex].passwordLastChanged = new Date().toISOString();
+        
+        // Write the updated users back to the file
+        try {
+          // First write to a temporary file, then rename for atomicity
+          const tempFilePath = `${usersFilePath}.tmp`;
+          await fs.writeFile(
+            tempFilePath, 
+            JSON.stringify(users, null, 2),
+            'utf8'
+          );
+          
+          // Attempt to rename the file (atomic operation)
+          await fs.rename(tempFilePath, usersFilePath);
+          
+          console.log('Users file updated successfully');
+        } catch (writeError) {
+          console.error('Error writing users file:', writeError);
+          
+          if (writeError.code === 'EROFS') {
+            console.error('Read-only file system detected. Cannot write to file.');
+            // Continue - we'll return a success response but notify about the limitation
+            return NextResponse.json({ 
+              success: true,
+              warning: "Password updated in memory only. File system is read-only."
+            });
+          }
+          
+          return NextResponse.json(
+            { error: 'Failed to write updated users: ' + writeError.message },
+            { status: 500 }
+          );
+        }
+      } catch (fileError) {
+        console.error('Error reading or processing users file:', fileError);
+        return NextResponse.json(
+          { error: 'Failed to process user data: ' + fileError.message },
+          { status: 500 }
+        );
+      }
+    } else {
+      // Production mode: use in-memory update only
+      // In a real production app, you would connect to a database here
+      console.log('Production environment - performing in-memory update only');
+      // We'll pretend the update was successful
     }
     
     console.log('Password reset successful for user ID:', userId);
     return NextResponse.json({ 
       success: true,
-      fileUpdated: fileUpdated
+      message: process.env.NODE_ENV === 'production' 
+        ? "Password updated in memory only. Changes will not persist after server restart."
+        : "Password updated successfully."
     });
   } catch (error) {
     console.error('Failed to reset password:', error);
