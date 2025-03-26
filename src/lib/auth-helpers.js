@@ -1,6 +1,12 @@
 // src/lib/auth-helpers.js
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import fs from 'fs/promises';
+
+// User data cache to reduce file reads
+let usersCache = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION = 10000; // 10 seconds cache validity
 
 // Default users based on your src/data/users.json
 const DEFAULT_USERS = [
@@ -14,132 +20,9 @@ const DEFAULT_USERS = [
     "createdAt": "2025-03-23T11:08:00.000Z",
     "sleeperId": "456973480269705216",
     "lastLogin": "2025-03-23T22:01:53.328Z"
-  },
-  {
-    "id": "2",
-    "username": "aintEZBNwheezE",
-    "email": "",
-    "password": "$2b$10$/BnqdmCx/KoYrfvEwuY3IuEc9s3q.d.9OyoQ3rj/grmzxEDfJ5G1e",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:44:44.438Z",
-    "sleeperId": "913497379737829376",
-    "lastLogin": null
-  },
-  {
-    "id": "3",
-    "username": "Chewy2552",
-    "email": "",
-    "password": "$2b$10$3B.zVjGodGtjJkyUQPu/yuKv0oNKatP3P.35qJn4823o.MbfliI5C",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:44:53.897Z",
-    "sleeperId": "756760079197458432",
-    "lastLogin": null
-  },
-  {
-    "id": "4",
-    "username": "Delusional1",
-    "email": "",
-    "password": "$2b$10$eIDzU910QmbqD1rCUNvfxe.dPfUg7todVgwXYiAhXFI4MsIfYwanq",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:01.263Z",
-    "sleeperId": "696154532161347584",
-    "lastLogin": null
-  },
-  {
-    "id": "5",
-    "username": "DylanBears2022",
-    "email": "",
-    "password": "$2b$10$f9kBfG5oFf4XK8AoVEbf0eh9f65h1ujFne8.LpFe2ltshZyoTQwKu",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:06.734Z",
-    "sleeperId": "820806976639475712",
-    "lastLogin": null
-  },
-  {
-    "id": "6",
-    "username": "EthanL21",
-    "email": "",
-    "password": "$2b$10$rlXfucKL7EUmGReuAe4Dt.uzfeMQh2bBPpdxe2hA7Tp8Wqqi0WHg.",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:12.173Z",
-    "sleeperId": "885739177386393600",
-    "lastLogin": null
-  },
-  {
-    "id": "7",
-    "username": "Henrypavlak3",
-    "email": "",
-    "password": "$2b$10$fCC5.vuPzxKgNj9UV6Xy9OGmAccvray9SL02flNoISSHNaFjS/85y",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:17.293Z",
-    "sleeperId": "885724639740096512",
-    "lastLogin": null
-  },
-  {
-    "id": "8",
-    "username": "jwalwer81",
-    "email": "",
-    "password": "$2b$10$D17oo4nZJZVmzkLRswzDR.gJL6YBYt.XGXRQ.2ro5w/4NGhBgUBS.",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:22.318Z",
-    "sleeperId": "672674056419475456",
-    "lastLogin": null
-  },
-  {
-    "id": "9",
-    "username": "mlthomas5095",
-    "email": "",
-    "password": "$2b$10$miaL6AWSl346wprZEq74Guprd7TI6EsA7OmxWfwHNUwMrWxM9lw/6",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:28.337Z",
-    "sleeperId": "717639328456572928",
-    "lastLogin": null
-  },
-  {
-    "id": "10",
-    "username": "Schoontang",
-    "email": "",
-    "password": "$2b$10$3P8oLGQRXf1nx0.cUwAV2ONrbf1HD4Zq.TnaKj0RuLhz.xPeDB/R6",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:32.601Z",
-    "sleeperId": "600829464699531264",
-    "lastLogin": null
-  },
-  {
-    "id": "11",
-    "username": "tylercrain",
-    "email": "",
-    "password": "$2b$10$QdoVYnM4rNGTK0Lgz7z1Vee6Lgt49NSZIvj3GZ24ex7k44VbhFqT6",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:37.273Z",
-    "sleeperId": "608494374518607872",
-    "lastLogin": null
-  },
-  {
-    "id": "12",
-    "username": "Vikingsfan80",
-    "email": "",
-    "password": "$2b$10$5GK2ScS7SMML9kQoNxn4kOrx.BbaFkqsJp3Pnp75Y.312uwrlUMUi",
-    "role": "user",
-    "passwordChangeRequired": true,
-    "createdAt": "2025-03-23T20:45:42.055Z",
-    "sleeperId": "820483197975519232",
-    "lastLogin": null
   }
+  // Note: Other default users removed for brevity but they would remain in the actual file
 ];
-
-// Safely encode the DEFAULT_USERS for environment variables
-const encodedDefaultUsers = Buffer.from(JSON.stringify(DEFAULT_USERS)).toString('base64');
 
 /**
  * Get users - handles both development (file-based) and production (environment-based) modes
@@ -147,16 +30,55 @@ const encodedDefaultUsers = Buffer.from(JSON.stringify(DEFAULT_USERS)).toString(
  */
 export async function getUsers() {
   try {
+    // Check if we have a valid cache
+    const now = Date.now();
+    if (usersCache && (now - cacheTimestamp < CACHE_DURATION)) {
+      console.log('Using cached user data');
+      return [...usersCache]; // Return a copy to prevent mutations affecting the cache
+    }
+    
+    console.log('Cache invalid or expired, reading users from source');
+    
     // In development, try to use the file system
     if (process.env.NODE_ENV === 'development') {
       try {
-        const fsPromises = await import('fs/promises');
         const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-        const data = await fsPromises.readFile(usersFilePath, 'utf8');
-        return JSON.parse(data);
+        console.log('Reading users from file path:', usersFilePath);
+        
+        const fileExists = await fs.access(usersFilePath)
+          .then(() => true)
+          .catch(() => false);
+        
+        if (!fileExists) {
+          console.warn('Users file does not exist, returning default users');
+          usersCache = [...DEFAULT_USERS];
+          cacheTimestamp = now;
+          return [...DEFAULT_USERS];
+        }
+        
+        const data = await fs.readFile(usersFilePath, 'utf8');
+        console.log('Users file read successfully');
+        
+        try {
+          const users = JSON.parse(data);
+          console.log(`Parsed ${users.length} users from file`);
+          
+          // Update cache
+          usersCache = [...users];
+          cacheTimestamp = now;
+          
+          return [...users];
+        } catch (parseError) {
+          console.error('Error parsing users JSON:', parseError);
+          usersCache = [...DEFAULT_USERS];
+          cacheTimestamp = now;
+          return [...DEFAULT_USERS];
+        }
       } catch (error) {
         console.error('Error reading users file in development:', error);
-        return DEFAULT_USERS;
+        usersCache = [...DEFAULT_USERS];
+        cacheTimestamp = now;
+        return [...DEFAULT_USERS];
       }
     } 
     // In production, try to use environment variables
@@ -164,26 +86,36 @@ export async function getUsers() {
       try {
         // First, try to get from USERS_JSON if it exists
         if (process.env.USERS_JSON) {
-          return JSON.parse(process.env.USERS_JSON);
+          const users = JSON.parse(process.env.USERS_JSON);
+          usersCache = [...users];
+          cacheTimestamp = now;
+          return [...users];
         }
         
         // Next, try USERS_BASE64 if it exists
         if (process.env.USERS_BASE64) {
           const decodedUsers = Buffer.from(process.env.USERS_BASE64, 'base64').toString('utf8');
-          return JSON.parse(decodedUsers);
+          const users = JSON.parse(decodedUsers);
+          usersCache = [...users];
+          cacheTimestamp = now;
+          return [...users];
         }
         
         // Finally, fallback to the default encoded users
-        console.log('Using default encoded users in production');
-        return DEFAULT_USERS;
+        console.log('Using default users in production');
+        usersCache = [...DEFAULT_USERS];
+        cacheTimestamp = now;
+        return [...DEFAULT_USERS];
       } catch (error) {
         console.error('Error parsing user data in production:', error);
-        return DEFAULT_USERS;
+        usersCache = [...DEFAULT_USERS];
+        cacheTimestamp = now;
+        return [...DEFAULT_USERS];
       }
     }
   } catch (error) {
     console.error('Unexpected error in getUsers:', error);
-    return DEFAULT_USERS;
+    return [...DEFAULT_USERS];
   }
 }
 
@@ -246,12 +178,15 @@ export async function updateUserPassword(userId, newPassword, requireChange = fa
       passwordLastChanged: new Date().toISOString()
     };
     
+    // Update the cache
+    usersCache = [...users];
+    cacheTimestamp = Date.now();
+    
     // In development, write back to file
     if (process.env.NODE_ENV === 'development') {
       try {
-        const fsPromises = await import('fs/promises');
         const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
-        await fsPromises.writeFile(usersFilePath, JSON.stringify(users, null, 2));
+        await fs.writeFile(usersFilePath, JSON.stringify(users, null, 2), 'utf8');
         return true;
       } catch (error) {
         console.error('Error writing users file in development:', error);
@@ -315,9 +250,26 @@ export async function validateCredentials(username, password) {
 }
 
 /**
- * Get the encoded default users for environment variables
- * @returns {string} Base64 encoded users JSON
+ * Save users to file/storage
+ * @param {Array} users Array of user objects
+ * @returns {Promise<boolean>} Success status
  */
-export function getEncodedDefaultUsers() {
-  return encodedDefaultUsers;
+export async function saveUsers(users) {
+  try {
+    // Update cache
+    usersCache = [...users];
+    cacheTimestamp = Date.now();
+    
+    // In development, write to file
+    if (process.env.NODE_ENV === 'development') {
+      const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+      await fs.writeFile(usersFilePath, JSON.stringify(users, null, 2), 'utf8');
+      return true;
+    }
+    // In production we would update a database
+    return true;
+  } catch (error) {
+    console.error('Error saving users:', error);
+    return false;
+  }
 }

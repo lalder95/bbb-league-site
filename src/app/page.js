@@ -182,8 +182,8 @@ export default function Home() {
         const processedMatchups = processMatchups(matchupsData, users, rosters);
         setMatchups(processedMatchups);
         
-        // Process standings
-        const processedStandings = processStandings(rosters, users);
+        // Process standings with division information
+        const processedStandings = processStandings(rosters, users, leagueInfo);
         setStandings(processedStandings);
         
         // Fetch news from your API route
@@ -238,28 +238,170 @@ export default function Home() {
     return Object.values(matchupPairs);
   }
   
-  // Helper function to process standings data
-  function processStandings(rosters, users) {
-    return rosters
-      .map(roster => {
-        const user = users.find(u => u.user_id === roster.owner_id);
-        return {
-          rosterId: roster.roster_id,
-          teamName: user?.display_name || user?.team_name || `Team ${roster.roster_id}`,
-          avatar: user?.avatar,
-          wins: roster.settings?.wins || 0,
-          losses: roster.settings?.losses || 0,
-          ties: roster.settings?.ties || 0,
-          pointsFor: roster.settings?.fpts || 0,
-          pointsAgainst: roster.settings?.fpts_against || 0,
-        };
-      })
-      .sort((a, b) => {
-        // Sort by wins, then points
+  // Helper function to process standings data with division support
+  function processStandings(rosters, users, league) {
+    // Extract division information from league settings
+    const divisionNames = {};
+    if (league?.settings?.divisions) {
+      // Sleeper supports up to 10 divisions (based on their API patterns)
+      for (let i = 1; i <= 10; i++) {
+        const divName = league.settings[`division_${i}`];
+        if (divName) {
+          divisionNames[i] = divName;
+        }
+      }
+    }
+
+    // Process each roster with division information
+    const teamsData = rosters.map(roster => {
+      const user = users.find(u => u.user_id === roster.owner_id);
+      return {
+        rosterId: roster.roster_id,
+        teamName: user?.display_name || user?.team_name || `Team ${roster.roster_id}`,
+        avatar: user?.avatar,
+        wins: roster.settings?.wins || 0,
+        losses: roster.settings?.losses || 0,
+        ties: roster.settings?.ties || 0,
+        pointsFor: roster.settings?.fpts || 0,
+        pointsAgainst: roster.settings?.fpts_against || 0,
+        division: roster.settings?.division || 0, // Division ID
+        divisionName: divisionNames[roster.settings?.division] || `Division ${roster.settings?.division || 1}`
+      };
+    });
+
+    // Group by division
+    const divisions = {};
+    teamsData.forEach(team => {
+      const divId = team.division;
+      if (!divisions[divId]) {
+        divisions[divId] = [];
+      }
+      divisions[divId].push(team);
+    });
+
+    // Sort each division by wins, then points
+    Object.keys(divisions).forEach(divId => {
+      divisions[divId].sort((a, b) => {
         if (a.wins !== b.wins) return b.wins - a.wins;
         return b.pointsFor - a.pointsFor;
       });
+    });
+
+    return { 
+      divisions,
+      divisionNames
+    };
   }
+
+  // Offseason Content Component for when no matchups are available
+  const OffseasonContent = () => {
+    return (
+      <div className="bg-black/20 rounded-lg border border-white/10 p-6">
+        <h3 className="text-xl font-bold mb-4 text-center">Offseason Mode</h3>
+        <div className="space-y-4">
+          <div className="text-center">
+            <p className="mb-4">There are no active matchups at this time.</p>
+            <p className="mb-2">While you wait for the next season, you can:</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-black/30 p-4 rounded-lg">
+              <h4 className="font-semibold mb-2">Prepare Your Roster</h4>
+              <p className="text-sm text-white/70">Review your player contracts and plan your salary cap strategy for the upcoming season.</p>
+              <Link href="/my-team" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
+                View My Team →
+              </Link>
+            </div>
+            <div className="bg-black/30 p-4 rounded-lg">
+              <h4 className="font-semibold mb-2">League History</h4>
+              <p className="text-sm text-white/70">Check out past champions and league records from previous seasons.</p>
+              <Link href="/hall-of-fame" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
+                View Hall of Fame →
+              </Link>
+            </div>
+            <div className="bg-black/30 p-4 rounded-lg">
+              <h4 className="font-semibold mb-2">Offseason Guide</h4>
+              <p className="text-sm text-white/70">Review important dates and deadlines for the offseason.</p>
+              <Link href="/offseason" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
+                View Offseason Guide →
+              </Link>
+            </div>
+            <div className="bg-black/30 p-4 rounded-lg">
+              <h4 className="font-semibold mb-2">Trade Calculator</h4>
+              <p className="text-sm text-white/70">Explore potential trades and plan your team's future.</p>
+              <Link href="/trade" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
+                Open Trade Calculator →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Standings Section Component
+  const StandingsSection = ({ standingsData }) => {
+    if (!standingsData || Object.keys(standingsData.divisions || {}).length === 0) {
+      return (
+        <div className="text-center text-white/70 py-8">
+          No standings data available
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        {Object.keys(standingsData.divisions).map(divId => (
+          <div key={divId} className="mb-6 last:mb-0">
+            <h3 className="text-lg font-semibold mb-3 border-b border-white/20 pb-2">
+              {standingsData.divisionNames[divId] || `Division ${divId}`}
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 text-white/70">
+                    <th className="py-2 text-left pl-2">Team</th>
+                    <th className="py-2 text-center">Record</th>
+                    <th className="py-2 text-center">PF</th>
+                    <th className="py-2 text-center">PA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standingsData.divisions[divId].map((team) => (
+                    <tr 
+                      key={team.rosterId}
+                      className="border-b last:border-0 border-white/5 hover:bg-white/5 transition-colors"
+                    >
+                      <td className="py-3 pl-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
+                            {team.avatar ? (
+                              <img 
+                                src={`https://sleepercdn.com/avatars/${team.avatar}`} 
+                                alt={team.teamName}
+                                className="w-full h-full object-cover" 
+                              />
+                            ) : (
+                              <span className="text-sm font-bold text-[#FF4B1F]">
+                                {team.teamName?.charAt(0) || 'T'}
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-medium truncate">{team.teamName}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 text-center">{team.wins}-{team.losses}{team.ties > 0 ? `-${team.ties}` : ''}</td>
+                      <td className="py-3 text-center">{(team.pointsFor / 100).toFixed(1)}</td>
+                      <td className="py-3 text-center">{(team.pointsAgainst / 100).toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
   
   if (loading) {
     return (
@@ -332,12 +474,22 @@ export default function Home() {
                   { teamName: 'Team D', points: 130.2, projected: 125.6 }
                 ]
               ]);
-              setStandings([
-                { teamName: 'Team A', wins: 5, losses: 2, pointsFor: 845.2, pointsAgainst: 732.1 },
-                { teamName: 'Team D', wins: 4, losses: 3, pointsFor: 812.7, pointsAgainst: 798.3 },
-                { teamName: 'Team B', wins: 3, losses: 4, pointsFor: 778.9, pointsAgainst: 802.5 },
-                { teamName: 'Team C', wins: 2, losses: 5, pointsFor: 721.4, pointsAgainst: 825.3 }
-              ]);
+              setStandings({
+                divisions: {
+                  1: [
+                    { rosterId: 1, teamName: 'Team A', wins: 5, losses: 2, pointsFor: 845.2, pointsAgainst: 732.1 },
+                    { rosterId: 2, teamName: 'Team B', wins: 3, losses: 4, pointsFor: 778.9, pointsAgainst: 802.5 }
+                  ],
+                  2: [
+                    { rosterId: 3, teamName: 'Team D', wins: 4, losses: 3, pointsFor: 812.7, pointsAgainst: 798.3 },
+                    { rosterId: 4, teamName: 'Team C', wins: 2, losses: 5, pointsFor: 721.4, pointsAgainst: 825.3 }
+                  ]
+                },
+                divisionNames: {
+                  1: "East Division",
+                  2: "West Division"
+                }
+              });
               setCurrentWeek(8);
               setNews([
                 { title: 'Sample News Item 1', link: '#', category: 'News', timestamp: new Date().toString() },
@@ -447,64 +599,14 @@ export default function Home() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center text-white/70 py-8">
-                  No current matchups available
-                </div>
+                <OffseasonContent />
               )}
             </div>
             
             {/* Standings Section */}
             <div className="bg-black/30 rounded-lg border border-white/10 p-6">
               <h2 className="text-xl font-bold mb-6 text-[#FF4B1F]">League Standings</h2>
-              
-              {standings.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b border-white/10 text-white/70">
-                        <th className="py-2 text-left pl-2">Team</th>
-                        <th className="py-2 text-center">Record</th>
-                        <th className="py-2 text-center">PF</th>
-                        <th className="py-2 text-center">PA</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {standings.map((team, index) => (
-                        <tr 
-                          key={index}
-                          className="border-b last:border-0 border-white/5 hover:bg-white/5 transition-colors"
-                        >
-                          <td className="py-3 pl-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
-                                {team.avatar ? (
-                                  <img 
-                                    src={`https://sleepercdn.com/avatars/${team.avatar}`} 
-                                    alt={team.teamName}
-                                    className="w-full h-full object-cover" 
-                                  />
-                                ) : (
-                                  <span className="text-sm font-bold text-[#FF4B1F]">
-                                    {team.teamName?.charAt(0) || 'T'}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="font-medium truncate">{team.teamName}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 text-center">{team.wins}-{team.losses}{team.ties > 0 ? `-${team.ties}` : ''}</td>
-                          <td className="py-3 text-center">{(team.pointsFor / 100).toFixed(1)}</td>
-                          <td className="py-3 text-center">{(team.pointsAgainst / 100).toFixed(1)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center text-white/70 py-8">
-                  No standings data available
-                </div>
-              )}
+              <StandingsSection standingsData={standings} />
             </div>
           </div>
           

@@ -1,0 +1,124 @@
+// public/users.json
+// This is a public copy with passwords removed for emergency fallback
+[
+    {
+      "id": "1",
+      "username": "lalder",
+      "email": "lalder95@gmail.com",
+      "role": "admin",
+      "passwordChangeRequired": false,
+      "createdAt": "2025-03-23T11:08:00.000Z",
+      "sleeperId": "456973480269705216",
+      "lastLogin": "2025-03-23T22:05:43.216Z"
+    },
+    {
+      "id": "2",
+      "username": "aintEZBNwheezE",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:44:44.438Z",
+      "sleeperId": "913497379737829376",
+      "lastLogin": null
+    },
+    {
+      "id": "3",
+      "username": "Chewy2552",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:44:53.897Z",
+      "sleeperId": "756760079197458432",
+      "lastLogin": null
+    },
+    {
+      "id": "4",
+      "username": "Delusional1",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:01.263Z",
+      "sleeperId": "696154532161347584",
+      "lastLogin": null
+    },
+    {
+      "id": "5",
+      "username": "DylanBears2022",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:06.734Z",
+      "sleeperId": "820806976639475712",
+      "lastLogin": null
+    },
+    {
+      "id": "6",
+      "username": "EthanL21",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:12.173Z",
+      "sleeperId": "885739177386393600",
+      "lastLogin": null
+    },
+    {
+      "id": "7",
+      "username": "Henrypavlak3",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:17.293Z",
+      "sleeperId": "885724639740096512",
+      "lastLogin": null
+    },
+    {
+      "id": "8",
+      "username": "jwalwer81",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:22.318Z",
+      "sleeperId": "672674056419475456",
+      "lastLogin": null
+    },
+    {
+      "id": "9",
+      "username": "mlthomas5095",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:28.337Z",
+      "sleeperId": "717639328456572928",
+      "lastLogin": null
+    },
+    {
+      "id": "10",
+      "username": "Schoontang",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:32.601Z",
+      "sleeperId": "600829464699531264",
+      "lastLogin": null
+    },
+    {
+      "id": "11",
+      "username": "tylercrain",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:37.273Z",
+      "sleeperId": "608494374518607872",
+      "lastLogin": null
+    },
+    {
+      "id": "12",
+      "username": "Vikingsfan80",
+      "email": "",
+      "role": "user",
+      "passwordChangeRequired": true,
+      "createdAt": "2025-03-23T20:45:42.055Z",
+      "sleeperId": "820483197975519232",
+      "lastLogin": null
+    }
+  ]

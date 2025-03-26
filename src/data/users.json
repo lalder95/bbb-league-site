@@ -3,12 +3,13 @@
     "id": "1",
     "username": "lalder",
     "email": "lalder95@gmail.com",
-    "password": "$2b$10$OGOg3fKMqq04MQm4ijLx5utIkqfpoo43n1qnGIOdJiabg8ccPheUy",
+    "password": "$2b$10$csp2zqHxoCR9QJ5k0OvXMOh7hCPf9Oj6j98dDNW0iXlzXRVWad4iW",
     "role": "admin",
     "passwordChangeRequired": false,
     "createdAt": "2025-03-23T11:08:00.000Z",
     "sleeperId": "456973480269705216",
-    "lastLogin": "2025-03-23T22:05:43.216Z"
+    "lastLogin": "2025-03-23T22:05:43.216Z",
+    "passwordLastChanged": "2025-03-26T18:24:14.980Z"
   },
   {
     "id": "2",
