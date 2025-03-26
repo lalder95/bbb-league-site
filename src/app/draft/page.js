@@ -762,8 +762,8 @@ export default function DraftPage() {
                       .sort((a, b) => {
                         // First sort by round
                         if (a.round !== b.round) return a.round - b.round;
-                        // Then by original owner
-                        return a.originalOwner.localeCompare(b.originalOwner);
+                        // Then by pick position within the round
+                        return a.pickPosition - b.pickPosition;
                       })
                       .map((pick, index) => (
                         <tr key={index} className="border-b border-white/5 hover:bg-white/5">
@@ -843,7 +843,6 @@ export default function DraftPage() {
                     <th className="py-2 text-left">Team</th>
                     <th className="py-2 text-right">Total Obligation</th>
                     <th className="py-2 text-right">Draft Picks</th>
-                    <th className="py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -853,20 +852,9 @@ export default function DraftPage() {
                       className="border-b border-white/5 hover:bg-white/5 cursor-pointer transition-colors"
                       onClick={() => setSelectedTeam(teamName)}
                     >
-                      <td className="py-3 font-medium">{teamName}</td>
+                      <td className="py-3 font-medium text-[#FF4B1F] hover:underline">{teamName}</td>
                       <td className="py-3 text-right font-bold text-green-400">${teamObligations[teamName]}</td>
                       <td className="py-3 text-right">{teamPicks[teamName].currentPicks.length}</td>
-                      <td className="py-3 text-right">
-                        <button 
-                          className="text-[#FF4B1F] hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedTeam(teamName);
-                          }}
-                        >
-                          View Details
-                        </button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -877,7 +865,7 @@ export default function DraftPage() {
           {/* Rookie Salary Scale */}
           <div>
             <h4 className="text-lg font-semibold mb-3">Rookie Salary Scale</h4>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="bg-blue-500/20 p-4 rounded-lg">
                 <h5 className="font-bold mb-2 text-blue-400">First Round</h5>
                 <div className="space-y-1 text-sm">
@@ -886,19 +874,47 @@ export default function DraftPage() {
                     <span className="font-medium">$14</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>1.02-1.03</span>
+                    <span>1.02</span>
                     <span className="font-medium">$12</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>1.04-1.06</span>
+                    <span>1.03</span>
+                    <span className="font-medium">$12</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1.04</span>
                     <span className="font-medium">$10</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>1.07-1.09</span>
+                    <span>1.05</span>
+                    <span className="font-medium">$10</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1.06</span>
+                    <span className="font-medium">$10</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1.07</span>
                     <span className="font-medium">$8</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>1.10-1.12</span>
+                    <span>1.08</span>
+                    <span className="font-medium">$8</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1.09</span>
+                    <span className="font-medium">$8</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1.10</span>
+                    <span className="font-medium">$6</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1.11</span>
+                    <span className="font-medium">$6</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1.12</span>
                     <span className="font-medium">$6</span>
                   </div>
                 </div>
@@ -906,25 +922,163 @@ export default function DraftPage() {
               
               <div className="bg-green-500/20 p-4 rounded-lg">
                 <h5 className="font-bold mb-2 text-green-400">Second Round</h5>
-                <div className="flex justify-between">
-                  <span>All picks</span>
-                  <span className="font-medium">$4</span>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>2.01</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.02</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.03</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.04</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.05</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.06</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.07</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.08</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.09</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.10</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.11</span>
+                    <span className="font-medium">$4</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>2.12</span>
+                    <span className="font-medium">$4</span>
+                  </div>
                 </div>
               </div>
               
               <div className="bg-yellow-500/20 p-4 rounded-lg">
                 <h5 className="font-bold mb-2 text-yellow-500">Third Round</h5>
-                <div className="flex justify-between">
-                  <span>All picks</span>
-                  <span className="font-medium">$2</span>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>3.01</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.02</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.03</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.04</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.05</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.06</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.07</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.08</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.09</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.10</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.11</span>
+                    <span className="font-medium">$2</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>3.12</span>
+                    <span className="font-medium">$2</span>
+                  </div>
                 </div>
               </div>
               
-              <div className="bg-purple-500/20 p-4 rounded-lg col-span-3">
-                <h5 className="font-bold mb-2 text-purple-400">Fourth through Seventh Rounds</h5>
-                <div className="flex justify-between">
-                  <span>All picks</span>
-                  <span className="font-medium">$1</span>
+              <div className="bg-purple-500/20 p-4 rounded-lg">
+                <h5 className="font-bold mb-2 text-purple-400">Later Rounds</h5>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>4.01</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>4.02</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>4.03</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>5.01</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>5.02</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>5.03</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>6.01</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>6.02</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>6.03</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>7.01</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>7.02</span>
+                    <span className="font-medium">$1</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>7.03</span>
+                    <span className="font-medium">$1</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -941,9 +1095,8 @@ export default function DraftPage() {
                 className="bg-black/30 p-4 rounded-lg border border-white/10 hover:border-[#FF4B1F]/30 transition-colors cursor-pointer"
                 onClick={() => setSelectedTeam(teamName)}
               >
-                <h5 className="font-bold mb-2 flex justify-between items-center">
-                  <span>{teamName}</span>
-                  <button className="text-xs text-[#FF4B1F] hover:underline">Details</button>
+                <h5 className="font-bold mb-2 text-[#FF4B1F] hover:underline">
+                  {teamName}
                 </h5>
                 <div className="text-sm mb-2">
                   <span className="text-white/70">Total Obligation:</span>{' '}
@@ -953,7 +1106,7 @@ export default function DraftPage() {
                 {teamPicks[teamName].currentPicks.length > 0 ? (
                   <div className="space-y-1 text-sm">
                     {teamPicks[teamName].currentPicks
-                      .sort((a, b) => a.round !== b.round ? a.round - b.round : a.originalOwner.localeCompare(b.originalOwner))
+                      .sort((a, b) => a.round !== b.round ? a.round - b.round : a.pickPosition - b.pickPosition)
                       .map((pick, pickIndex) => (
                         <div key={pickIndex} className="flex justify-between">
                           <span>{pick.pickNumber} ({pick.originalOwner !== teamName ? `via ${pick.originalOwner}` : 'Own'})</span>
