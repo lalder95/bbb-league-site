@@ -1,0 +1,153 @@
+// src/lib/memory-db.js
+import fs from 'fs';
+import path from 'path';
+
+// Store users in memory
+let users = null;
+let initialized = false;
+
+// Function to initialize the database
+export async function initializeDb() {
+  if (initialized) return;
+  
+  try {
+    // Load users from JSON file if in development
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        // Dynamically try to read the file - this will work in development
+        const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+        if (fs.existsSync(usersFilePath)) {
+          const data = fs.readFileSync(usersFilePath, 'utf8');
+          users = JSON.parse(data);
+          console.log(`Loaded ${users.length} users from file directly`);
+          initialized = true;
+          return;
+        }
+      } catch (e) {
+        console.warn('Could not read users.json file directly:', e.message);
+        // Continue to other methods
+      }
+    }
+    
+    // Try to load from environment variable
+    if (process.env.USERS_JSON) {
+      try {
+        users = JSON.parse(process.env.USERS_JSON);
+        console.log(`Loaded ${users.length} users from environment variable`);
+        initialized = true;
+        return;
+      } catch (e) {
+        console.error('Error parsing USERS_JSON:', e);
+        // Continue to other methods
+      }
+    }
+    
+    // If we're here, we couldn't load from file or env var
+    // Use a hardcoded fallback based on your current users.json
+    users = [
+      {
+        "id": "1",
+        "username": "lalder",
+        "email": "lalder95@gmail.com",
+        "password": "$2b$10$csp2zqHxoCR9QJ5k0OvXMOh7hCPf9Oj6j98dDNW0iXlzXRVWad4iW",
+        "role": "admin",
+        "passwordChangeRequired": false,
+        "createdAt": "2025-03-23T11:08:00.000Z",
+        "sleeperId": "456973480269705216",
+        "lastLogin": "2025-03-23T22:05:43.216Z",
+        "passwordLastChanged": "2025-03-26T18:24:14.980Z"
+      }
+      // Add your other 11 users here, or load them dynamically during build
+    ];
+    
+    console.log(`Loaded ${users.length} users from fallback data`);
+    initialized = true;
+  } catch (error) {
+    console.error('Failed to initialize memory database:', error);
+    // Provide a fallback empty array if all else fails
+    users = [];
+    initialized = true;
+  }
+}
+
+// Get all users
+export async function getAllUsers() {
+  await initializeDb();
+  return [...users]; // Return a copy to avoid direct mutation
+}
+
+// Get user by ID
+export async function getUserById(id) {
+  await initializeDb();
+  return users.find(user => user.id === id) || null;
+}
+
+// Get user by username
+export async function getUserByUsername(username) {
+  await initializeDb();
+  return users.find(user => user.username === username) || null;
+}
+
+// Update user password
+export async function updateUserPassword(userId, hashedPassword, requireChange = true) {
+  await initializeDb();
+  
+  const userIndex = users.findIndex(user => user.id === userId);
+  if (userIndex === -1) {
+    return { success: false, error: "User not found" };
+  }
+  
+  // Update the user in memory
+  users[userIndex] = {
+    ...users[userIndex],
+    password: hashedPassword,
+    passwordChangeRequired: requireChange,
+    passwordLastChanged: new Date().toISOString()
+  };
+  
+  // Try to write back to file in development mode
+  if (process.env.NODE_ENV === 'development') {
+    try {
+      const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+      fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf8');
+      console.log(`Password updated and saved to file for user ${userId}`);
+      return { success: true, persisted: true };
+    } catch (e) {
+      console.warn('Could not save to users.json file:', e.message);
+      // Continue with in-memory update
+    }
+  }
+  
+  console.log(`Password updated in memory for user ${userId}`);
+  return { success: true, persisted: false };
+}
+
+// Add a new user
+export async function addUser(newUser) {
+  await initializeDb();
+  
+  // Check if username already exists
+  const existing = users.find(user => user.username === newUser.username);
+  if (existing) {
+    return { success: false, error: "Username already exists" };
+  }
+  
+  // Add user to memory
+  users.push(newUser);
+  
+  // Try to write back to file in development mode
+  if (process.env.NODE_ENV === 'development') {
+    try {
+      const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+      fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf8');
+      console.log(`New user added and saved to file: ${newUser.username}`);
+      return { success: true, persisted: true, user: newUser };
+    } catch (e) {
+      console.warn('Could not save to users.json file:', e.message);
+      // Continue with in-memory update
+    }
+  }
+  
+  console.log(`New user added in memory: ${newUser.username}`);
+  return { success: true, persisted: false, user: newUser };
+}
