@@ -1,6 +1,7 @@
+// src/app/layout.js
 import { Geist, Geist_Mono } from "next/font/google";
 import Navigation from '@/components/Navigation';
-import NewsTicker from '@/components/NewsTicker';
+import ConditionalNewsTicker from '@/components/ConditionalNewsTicker';
 import { Providers } from './providers';
 import "./globals.css";
 
@@ -26,7 +27,7 @@ export default function RootLayout({ children }) {
         <Providers>
           <Navigation />
           {children}
-          <NewsTicker />
+          <ConditionalNewsTicker />
         </Providers>
       </body>
     </html>
