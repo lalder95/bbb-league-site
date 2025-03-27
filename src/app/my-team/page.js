@@ -66,6 +66,24 @@ export default function MyTeam() {
     }
   }, [session, status]);
 
+  // Debug contracts data when it updates
+  useEffect(() => {
+    console.log("Contract data updated:", {
+      contractCount: contracts.length,
+      sampleContract: contracts.length > 0 ? contracts[0] : null
+    });
+    
+    // If we have contract data but the CurYear values aren't being summed correctly
+    if (contracts.length > 0) {
+      const totalSalary = contracts.reduce((sum, contract) => {
+        const curYear = parseFloat(contract.CurYear) || 0;
+        console.log(`Contract: ${contract.PlayerName || 'Unknown'}, CurYear: ${curYear}`);
+        return sum + curYear;
+      }, 0);
+      console.log("Total salary calculation:", totalSalary);
+    }
+  }, [contracts]);
+
   // Function to fetch team data from Sleeper API
   const fetchTeamData = async () => {
     console.log("fetchTeamData started");
@@ -384,6 +402,15 @@ export default function MyTeam() {
         bValue = bContract ? parseFloat(bContract.CurYear) || 0 : 0;
       }
       
+      // Handle final year sorting
+      if (sortConfig.key === 'finalYear') {
+        const aContract = getPlayerContract(a);
+        const bContract = getPlayerContract(b);
+        
+        aValue = aContract ? aContract.ContractFinalYear || '' : '';
+        bValue = bContract ? bContract.ContractFinalYear || '' : '';
+      }
+      
       if (aValue < bValue) {
         return sortConfig.direction === 'asc' ? -1 : 1;
       }
@@ -489,7 +516,7 @@ export default function MyTeam() {
           </div>
           {teamData && (
             <div>
-              <h2 className="text-xl font-medium">{session?.user?.name}'s Roster</h2>
+              <h2 className="text-xl font-medium">{session?.user?.name || 'My Team'} Roster</h2>
               <p className="text-white/70">{teamData.league.name} - {teamData.league.season} Season</p>
             </div>
           )}
@@ -523,9 +550,17 @@ export default function MyTeam() {
               <div>
                 <h3 className="text-lg font-semibold mb-2">Salary Cap</h3>
                 <div className="bg-black/20 p-4 rounded-lg">
-                  <div className="text-2xl font-bold">${contracts.reduce((sum, contract) => {
-                    return sum + (parseFloat(contract.CurYear) || 0);
-                  }, 0).toFixed(1)}</div>
+                  <div className="text-2xl font-bold">
+                    {contracts.length === 0 ? (
+                      'Loading...'
+                    ) : (
+                      `$${contracts.reduce((sum, contract) => {
+                        // Check various field names that might contain salary data
+                        const curYear = parseFloat(contract.CurYear || contract.curYear || contract.CurrentYear || 0);
+                        return sum + curYear;
+                      }, 0).toFixed(1)}`
+                    )}
+                  </div>
                   <div className="text-sm text-white/70">Current Year Cap Hit</div>
                 </div>
               </div>
@@ -578,12 +613,11 @@ export default function MyTeam() {
               <tr className="bg-black/40 border-b border-white/10">
                 {[
                   { key: 'name', label: 'Player Name' },
-                  { key: 'position', label: 'Pos' },
                   { key: 'team', label: 'Team' },
                   { key: 'age', label: 'Age' },
                   { key: 'ktcValue', label: 'KTC Value' },
                   { key: 'contractValue', label: 'Current Salary' },
-                  { key: 'futureValue', label: 'Future Salary' }
+                  { key: 'finalYear', label: 'Final Year' }
                 ].map(({ key, label }) => (
                   <th 
                     key={key}
@@ -621,36 +655,19 @@ export default function MyTeam() {
                         )}
                       </div>
                     </td>
-                    <td className="p-3">{player.position}</td>
                     <td className="p-3">{player.team}</td>
                     <td className="p-3">{player.age || '-'}</td>
                     <td className="p-3">
                       {ktcData ? (
-                        <div>
-                          <div className="font-bold">{ktcData.value || '-'}</div>
-                          <div className="text-xs text-white/70">
-                            {ktcData.positionRank ? `${ktcData.positionRank}` : '-'}
-                          </div>
-                        </div>
+                        <div className="font-bold">{ktcData.value || '-'}</div>
                       ) : '-'}
                     </td>
                     <td className="p-3 text-green-400 font-medium">
                       {playerContract ? formatContractValue(playerContract.CurYear) : '-'}
                     </td>
-                    <td className="p-3">
-                      {playerContract ? (
-                        <div className="flex gap-2">
-                          {parseFloat(playerContract.Year2) > 0 && (
-                            <span className="text-yellow-400">${parseFloat(playerContract.Year2).toFixed(1)}</span>
-                          )}
-                          {parseFloat(playerContract.Year3) > 0 && (
-                            <span className="text-orange-400">${parseFloat(playerContract.Year3).toFixed(1)}</span>
-                          )}
-                          {parseFloat(playerContract.Year4) > 0 && (
-                            <span className="text-red-400">${parseFloat(playerContract.Year4).toFixed(1)}</span>
-                          )}
-                        </div>
-                      ) : '-'}
+                    <td className="p-3 font-medium">
+                      {playerContract && playerContract.ContractFinalYear ? 
+                        playerContract.ContractFinalYear : '-'}
                     </td>
                   </tr>
                 );
@@ -676,14 +693,30 @@ export default function MyTeam() {
             <div className="bg-black/30 rounded-lg border border-white/10 p-6">
               <h3 className="text-lg font-semibold mb-4">Position Spending</h3>
               <div className="h-[300px]">
-                <PositionSpendingChart contracts={contracts} />
+                <PositionSpendingChart 
+                  contracts={contracts.map(contract => ({
+                    ...contract,
+                    // Ensure all possible field name variations are mapped
+                    Position: contract.Position || contract.position,
+                    CurYear: parseFloat(contract.CurYear || contract.curYear || contract.CurrentYear || 0)
+                  }))} 
+                />
               </div>
             </div>
             
             <div className="bg-black/30 rounded-lg border border-white/10 p-6">
               <h3 className="text-lg font-semibold mb-4">Future Cap Commitments</h3>
               <div className="h-[300px]">
-                <FutureCapChart contracts={contracts} />
+                <FutureCapChart 
+                  contracts={contracts.map(contract => ({
+                    ...contract,
+                    // Ensure all possible field name variations are mapped
+                    CurYear: parseFloat(contract.CurYear || contract.curYear || contract.CurrentYear || 0),
+                    Year2: parseFloat(contract.Year2 || contract.year2 || 0),
+                    Year3: parseFloat(contract.Year3 || contract.year3 || 0),
+                    Year4: parseFloat(contract.Year4 || contract.year4 || 0)
+                  }))} 
+                />
               </div>
             </div>
           </div>
