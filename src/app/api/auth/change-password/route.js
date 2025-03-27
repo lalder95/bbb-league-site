@@ -1,18 +1,24 @@
+// src/app/api/auth/change-password/route.js
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { readFileSync, writeFileSync } from 'fs';
-import path from 'path';
 import { authOptions } from '../[...nextauth]/route';
-import bcrypt from 'bcrypt';
-
-// Get the absolute path to the users.json file
-const usersFilePath = path.join(process.cwd(), 'src/data/users.json');
+import bcrypt from 'bcryptjs';
+import clientPromise from '@/lib/mongodb';
 
 export async function POST(request) {
   try {
-    // Try to get session using getServerSession
-    const session = await getServerSession(authOptions);
-    console.log("Change password API - Session:", session);
+    // Get the session
+    let session;
+    try {
+      session = await getServerSession(authOptions);
+      console.log("Change password API - Session:", session ? {
+        userId: session.user?.id,
+        name: session.user?.name,
+        role: session.user?.role
+      } : 'No session found');
+    } catch (sessionError) {
+      console.error('Error getting session for password change:', sessionError);
+    }
     
     // Get data from request body
     const body = await request.json();
@@ -22,39 +28,57 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 });
     }
     
-    // Read users from file
-    const usersData = readFileSync(usersFilePath, 'utf8');
-    const users = JSON.parse(usersData);
+    // Connect to MongoDB
+    const client = await clientPromise;
+    const db = client.db('bbb-league');
+    const usersCollection = db.collection('users');
     
-    // Find the user by username if session approach failed
-    let userIndex = -1;
+    // Find the user
+    let user;
+    let query = {};
     
     if (session && session.user.id) {
-      userIndex = users.findIndex(user => user.id === session.user.id);
-      console.log(`Using session user ID: ${session.user.id}, found at index: ${userIndex}`);
+      query = { id: session.user.id };
+      console.log(`Using session user ID: ${session.user.id}`);
     } else if (username) {
-      userIndex = users.findIndex(user => user.username === username);
-      console.log(`Using username from request: ${username}, found at index: ${userIndex}`);
+      // Case-insensitive username query
+      query = { username: { $regex: new RegExp('^' + username + '$', 'i') } };
+      console.log(`Using username from request: ${username}`);
+    } else {
+      return NextResponse.json({ error: 'No user identifier provided' }, { status: 400 });
     }
     
-    if (userIndex === -1) {
+    // Find user in MongoDB
+    user = await usersCollection.findOne(query);
+    
+    if (!user) {
+      console.error('User not found with query:', query);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
     
     // Hash the new password
     const saltRounds = 10;
+    console.log('Hashing new password...');
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
     
-    // Update password and remove passwordChangeRequired flag
-    users[userIndex].password = hashedPassword;
-    users[userIndex].passwordChangeRequired = false;
-    users[userIndex].passwordLastChanged = new Date().toISOString();
+    // Update the user in MongoDB
+    const result = await usersCollection.updateOne(
+      { _id: user._id },
+      { 
+        $set: { 
+          password: hashedPassword,
+          passwordChangeRequired: false,
+          passwordLastChanged: new Date().toISOString() 
+        } 
+      }
+    );
     
-    console.log(`Change password API - Updated user: ${users[userIndex].username}`);
+    if (result.matchedCount === 0) {
+      console.error('Failed to update user - no matches found');
+      return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
+    }
     
-    // Write back to file
-    writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-    
+    console.log(`Password changed successfully for user: ${user.username}`);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to change password:', error);

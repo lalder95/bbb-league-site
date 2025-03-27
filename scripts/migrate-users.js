@@ -1,20 +1,17 @@
 // scripts/migrate-users.js
-// require('dotenv').config({ path: '.env.local' }); // Comment out this line
-const { MongoClient } = require('mongodb');
+// const { MongoClient } = require('mongodb');
+const MongoClient = require('mongodb').MongoClient;
+const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 
 async function main() {
-  // Hardcode the connection string instead of reading from environment
+  // HARDCODED CONNECTION STRING - replace with your actual connection string
   const uri = "mongodb+srv://lalder:DZD2xEfDYqDJSKt5@cluster0.srnwfpv.mongodb.net/bbb-league?retryWrites=true&w=majority";
   
-  // Comment out this check since we're hardcoding the URI
-  // if (!uri) {
-  //   console.error('MONGODB_URI not found in environment variables');
-  //   process.exit(1);
-  // }
-
+  console.log('Using hardcoded connection string');
   console.log('Connecting to MongoDB...');
+  
   const client = new MongoClient(uri);
   
   try {
@@ -54,9 +51,22 @@ async function main() {
       console.log('Deleted existing users');
     }
     
-    // Insert users
-    const result = await usersCollection.insertMany(users);
-    console.log(`Successfully inserted ${result.insertedCount} users into MongoDB`);
+    // Hash passwords and prepare users for insertion
+    console.log('Hashing passwords for all users...');
+    const saltRounds = 10;
+    
+    const hashedUsers = await Promise.all(users.map(async (user) => {
+      // Check if password is already hashed (bcrypt hashes start with $2)
+      if (user.password && !user.password.startsWith('$2')) {
+        console.log(`Hashing password for user: ${user.username}`);
+        user.password = await bcrypt.hash(user.password, saltRounds);
+      }
+      return user;
+    }));
+    
+    // Insert users with hashed passwords
+    const result = await usersCollection.insertMany(hashedUsers);
+    console.log(`Successfully inserted ${result.insertedCount} users with hashed passwords into MongoDB`);
     
     // Verify users can be fetched
     console.log('\nVerifying users can be fetched from MongoDB:');
@@ -65,22 +75,22 @@ async function main() {
       const testUsername = users[0].username;
       console.log(`Looking up test user '${testUsername}'...`);
       
-      // Case sensitive lookup
-      const exactUser = await usersCollection.findOne({ username: testUsername });
-      console.log(`Exact match lookup: ${exactUser ? 'Found' : 'Not found'}`);
-      
       // Case insensitive lookup
-      const caseInsensitiveUser = await usersCollection.findOne({
+      const user = await usersCollection.findOne({
         username: { $regex: new RegExp('^' + testUsername + '$', 'i') }
       });
-      console.log(`Case-insensitive lookup: ${caseInsensitiveUser ? 'Found' : 'Not found'}`);
       
-      if (caseInsensitiveUser) {
-        console.log('Sample user field names:', Object.keys(caseInsensitiveUser));
+      if (user) {
+        console.log('User found successfully:');
+        console.log('Username:', user.username);
+        console.log('Password is hashed:', user.password.startsWith('$2'));
+        console.log('Field names:', Object.keys(user));
+      } else {
+        console.log(`❌ User '${testUsername}' not found! This is unexpected.`);
       }
     }
     
-    console.log('\nMigration complete! Your users have been copied to MongoDB.');
+    console.log('\nMigration complete! Your users have been copied to MongoDB with hashed passwords.');
     console.log('Make sure your environment variables are set correctly in your deployment.');
     
   } catch (err) {
