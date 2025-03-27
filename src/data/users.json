@@ -3,7 +3,7 @@
     "id": "1",
     "username": "lalder",
     "email": "lalder95@gmail.com",
-    "password": "$2b$10$csp2zqHxoCR9QJ5k0OvXMOh7hCPf9Oj6j98dDNW0iXlzXRVWad4iW",
+    "password": "12345",
     "role": "admin",
     "passwordChangeRequired": false,
     "createdAt": "2025-03-23T11:08:00.000Z",
