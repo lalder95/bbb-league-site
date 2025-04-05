@@ -1,7 +1,7 @@
 import React from 'react';
 
 const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeValidation, onClose }) => {
-  // Helper function to format salary value with color
+  // Helper function to format salary value
   const formatSalary = (value) => {
     return `$${value.toFixed(1)}`;
   };
@@ -12,6 +12,17 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
     if (value < 50) return "text-[#FF4B1F] font-bold";
     if (value < 100) return "text-yellow-400";
     return "text-green-400";
+  };
+
+  // Get position color
+  const getPositionColor = (position) => {
+    switch (position) {
+      case 'QB': return 'bg-red-500';
+      case 'RB': return 'bg-blue-500';
+      case 'WR': return 'bg-green-500';
+      case 'TE': return 'bg-purple-500';
+      default: return 'bg-gray-500';
+    }
   };
 
   // Calculate total contract value for each team's players
@@ -94,13 +105,7 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
                   selectedPlayersB.map((player, index) => (
                     <div key={index} className="bg-black/20 rounded p-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-full rounded-full ${
-                          player.position === 'QB' ? 'bg-red-500' :
-                          player.position === 'RB' ? 'bg-blue-500' :
-                          player.position === 'WR' ? 'bg-green-500' :
-                          player.position === 'TE' ? 'bg-purple-500' :
-                          'bg-gray-500'
-                        }`}></div>
+                        <div className={`w-2 h-10 rounded-l ${getPositionColor(player.position)}`}></div>
                         <div>
                           <div className="font-semibold">{player.playerName}</div>
                           <div className="text-xs text-white/70 flex gap-2">
@@ -169,13 +174,7 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
                   selectedPlayersA.map((player, index) => (
                     <div key={index} className="bg-black/20 rounded p-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-full rounded-full ${
-                          player.position === 'QB' ? 'bg-red-500' :
-                          player.position === 'RB' ? 'bg-blue-500' :
-                          player.position === 'WR' ? 'bg-green-500' :
-                          player.position === 'TE' ? 'bg-purple-500' :
-                          'bg-gray-500'
-                        }`}></div>
+                        <div className={`w-2 h-10 rounded-l ${getPositionColor(player.position)}`}></div>
                         <div>
                           <div className="font-semibold">{player.playerName}</div>
                           <div className="text-xs text-white/70 flex gap-2">
