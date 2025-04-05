@@ -1,16 +1,7 @@
 // src/lib/auth-helpers.js
-import bcrypt from 'bcryptjs';
-import { getUserByUsername } from './db-helpers';
-
-/**
- * Validate user credentials
- * @param {string} username Username
- * @param {string} password Password (plaintext)
- * @returns {Promise<Object|null>} User object without password or null if invalid
- */
 export async function validateCredentials(username, password) {
   try {
-    if (!username || !password) {
+    if (!username) {
       return null;
     }
     
@@ -20,7 +11,15 @@ export async function validateCredentials(username, password) {
       return null;
     }
     
-    // Compare passwords
+    // DEVELOPMENT MODE BYPASS - Skip password check on localhost
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`⚠️ DEVELOPMENT MODE: Password check bypassed for user: ${username}`);
+      // Return user without password
+      const { password: _, ...userWithoutPassword } = user;
+      return userWithoutPassword;
+    }
+    
+    // Production mode - Verify password
     let passwordMatch;
     try {
       passwordMatch = await bcrypt.compare(password, user.password);

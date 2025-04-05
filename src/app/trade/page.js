@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import TradeSummary from './TradeSummary';
 
 const PlayerCard = ({ player, onRemove, showRemove = true, onClick = null }) => (
   <div 
@@ -320,56 +321,14 @@ useEffect(() => {
         )}
 
         {showSummary && tradeValidation && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-[#001A2B] rounded-lg border border-white/10 p-6 max-w-2xl w-full m-4">
-              <h2 className="text-2xl font-bold mb-4 text-[#FF4B1F]">Trade Summary</h2>
-              
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-bold mb-2">{teamA} receives:</h3>
-                  <div className="space-y-2 mb-4">
-                    {selectedPlayersB.map(player => (
-                      <PlayerCard
-                        key={player.id}
-                        player={player}
-                        showRemove={false}
-                      />
-                    ))}
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-bold text-white/70">Cap Space After Trade:</div>
-                    <CapImpactDisplay impact={tradeValidation.impactA.after} />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-bold mb-2">{teamB} receives:</h3>
-                  <div className="space-y-2 mb-4">
-                    {selectedPlayersA.map(player => (
-                      <PlayerCard
-                        key={player.id}
-                        player={player}
-                        showRemove={false}
-                      />
-                    ))}
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-bold text-white/70">Cap Space After Trade:</div>
-                    <CapImpactDisplay impact={tradeValidation.impactB.after} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={() => setShowSummary(false)}
-                  className="px-4 py-2 bg-[#FF4B1F] rounded hover:bg-[#FF4B1F]/80 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
+          <TradeSummary 
+            teamA={teamA}
+            teamB={teamB}
+            selectedPlayersA={selectedPlayersA}
+            selectedPlayersB={selectedPlayersB}
+            tradeValidation={tradeValidation}
+            onClose={() => setShowSummary(false)}
+          />
         )}
 
         <div className="flex flex-col md:flex-row gap-6">
