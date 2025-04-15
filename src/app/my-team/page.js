@@ -2001,4 +2001,458 @@ export default function MyTeam() {
               {/* Team Detail Comparison */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Team Details Comparison
+                  <CardTitle>Team Details Comparison</CardTitle>
+                  <CardDescription>Team-by-team breakdown and comparisons</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-black/40 border-b border-white/10">
+                          <th className="p-3 text-left">Team</th>
+                          <th className="p-3 text-center">Cap Used</th>
+                          <th className="p-3 text-center">Avg Age</th>
+                          <th className="p-3 text-center">QB Spend</th>
+                          <th className="p-3 text-center">RB Spend</th>
+                          <th className="p-3 text-center">WR Spend</th>
+                          <th className="p-3 text-center">TE Spend</th>
+                          <th className="p-3 text-center">KTC Value</th>
+                          <th className="p-3 text-center">Value/$</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.keys(allTeamContracts).map((teamName) => {
+                          const team = allTeamContracts[teamName];
+                          const teamPlayers = allTeamPlayers[teamName] || [];
+                          const totalKtcValue = teamPlayers.reduce((sum, player) => sum + player.value, 0);
+                          const valuePerDollar = team.capSpent.curYear > 0 ? totalKtcValue / team.capSpent.curYear : 0;
+                          const isCurrentTeam = teamName === session?.user?.name;
+                          
+                          return (
+                            <tr 
+                              key={teamName}
+                              className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${isCurrentTeam ? 'bg-[#FF4B1F]/10' : ''}`}
+                            >
+                              <td className="p-3 font-medium">
+                                {isCurrentTeam ? (
+                                  <div className="flex items-center gap-2">
+                                    <span>{teamName}</span>
+                                    <span className="bg-[#FF4B1F]/20 text-[#FF4B1F] text-xs px-2 py-0.5 rounded">You</span>
+                                  </div>
+                                ) : (
+                                  teamName
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
+                                {formatSalary(team.capSpent.curYear)}
+                              </td>
+                              <td className="p-3 text-center">
+                                {team.averageAge.toFixed(1)}
+                              </td>
+                              <td className="p-3 text-center">
+                                {formatSalary(team.positionSpend.QB)}
+                              </td>
+                              <td className="p-3 text-center">
+                                {formatSalary(team.positionSpend.RB)}
+                              </td>
+                              <td className="p-3 text-center">
+                                {formatSalary(team.positionSpend.WR)}
+                              </td>
+                              <td className="p-3 text-center">
+                                {formatSalary(team.positionSpend.TE)}
+                              </td>
+                              <td className="p-3 text-center font-medium text-blue-400">
+                                {formatKtcValue(totalKtcValue)}
+                              </td>
+                              <td className="p-3 text-center font-medium text-green-400">
+                                {valuePerDollar.toFixed(1)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+                <CardFooter className="border-t border-white/10">
+                  <button 
+                    className="text-[#FF4B1F] hover:text-[#FF4B1F]/80 text-sm"
+                    onClick={() => setShowTeamComparison(true)}
+                  >
+                    Open Detailed Comparison
+                  </button>
+                </CardFooter>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+      
+      {/* Player Profile Modal */}
+      {selectedPlayer && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#001A2B] border border-white/10 rounded-lg max-w-2xl w-full shadow-2xl">
+            <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent p-4 border-b border-white/10 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold">{selectedPlayer.name}</h2>
+                <p className="text-white/70 text-sm">
+                  {selectedPlayer.position} • {selectedPlayer.team || 'N/A'} • Age: {selectedPlayer.age || 'N/A'}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedPlayer(null)}
+                className="text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Player Contract */}
+                <div className="bg-black/20 p-4 rounded-lg">
+                  <h3 className="font-bold mb-4">Contract Details</h3>
+                  
+                  {(() => {
+                    const contract = getPlayerContract(selectedPlayer);
+                    if (!contract) {
+                      return (
+                        <div className="text-white/70 italic">
+                          No contract information available
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Year 1:</span>
+                          <span className="font-bold text-green-400">
+                            {formatSalary(parseFloat(contract.CurYear) || 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Year 2:</span>
+                          <span className="font-bold text-yellow-400">
+                            {contract.Year2 ? formatSalary(parseFloat(contract.Year2) || 0) : '-'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Year 3:</span>
+                          <span className="font-bold text-orange-400">
+                            {contract.Year3 ? formatSalary(parseFloat(contract.Year3) || 0) : '-'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Year 4:</span>
+                          <span className="font-bold text-red-400">
+                            {contract.Year4 ? formatSalary(parseFloat(contract.Year4) || 0) : '-'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
+                          <span className="text-white/70">Contract Type:</span>
+                          <span className="font-bold">
+                            {contract.ContractType || 'Standard'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Final Year:</span>
+                          <span className="font-bold">
+                            {contract.ContractFinalYear || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+                
+                {/* Player Value */}
+                <div className="bg-black/20 p-4 rounded-lg">
+                  <h3 className="font-bold mb-4">Player Value</h3>
+                  
+                  {(() => {
+                    const ktcData = ktcValues[selectedPlayer.id] || ktcValues[selectedPlayer.name];
+                    const contract = getPlayerContract(selectedPlayer);
+                    const ktcValue = ktcData?.value || 0;
+                    const salary = contract ? parseFloat(contract.CurYear) || 0 : 0;
+                    const valueRatio = salary > 0 ? ktcValue / salary : 0;
+                    
+                    if (!ktcData) {
+                      return (
+                        <div className="text-white/70 italic">
+                          No value information available
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-white/70">KTC Value:</span>
+                          <span className="font-bold text-blue-400">
+                            {formatKtcValue(ktcValue)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Overall Rank:</span>
+                          <span className="font-bold">
+                            {ktcData.rank || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Position Rank:</span>
+                          <span className="font-bold">
+                            {ktcData.positionRank || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t border-white/10 pt-2 mt-2">
+                          <span className="text-white/70">Current Salary:</span>
+                          <span className="font-bold text-green-400">
+                            {formatSalary(salary)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/70">Value Per $:</span>
+                          <span className="font-bold text-yellow-400">
+                            {valueRatio.toFixed(1)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+              
+              {/* Player Stats & Information */}
+              <div className="mt-6 bg-black/20 p-4 rounded-lg">
+                <h3 className="font-bold mb-4">Player Information</h3>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-white/70">Age:</span>
+                    <span>{selectedPlayer.age || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/70">Experience:</span>
+                    <span>{selectedPlayer.experience || 0} {selectedPlayer.experience === 1 ? 'year' : 'years'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/70">Status:</span>
+                    <span>{selectedPlayer.status || 'Active'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/70">Injury:</span>
+                    <span className={selectedPlayer.injuryStatus ? 'text-red-400' : ''}>
+                      {selectedPlayer.injuryStatus || 'Healthy'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/70">Team:</span>
+                    <span>{selectedPlayer.team || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/70">Jersey #:</span>
+                    <span>{selectedPlayer.number || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-white/10 flex justify-end">
+              <button
+                onClick={() => setSelectedPlayer(null)}
+                className="px-4 py-2 bg-[#FF4B1F] rounded hover:bg-[#FF4B1F]/80 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Team Comparison Modal */}
+      {showTeamComparison && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#001A2B] border border-white/10 rounded-lg max-w-6xl w-full h-[80vh] shadow-2xl flex flex-col">
+            <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent p-4 border-b border-white/10 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold">Team Comparison</h2>
+                <p className="text-white/70 text-sm">
+                  Compare your team against others in the league
+                </p>
+              </div>
+              <button
+                onClick={() => setShowTeamComparison(false)}
+                className="text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 flex-1 overflow-y-auto">
+              <div className="space-y-6">
+                {/* Cap Space Comparison */}
+                <div>
+                  <h3 className="text-xl font-bold mb-4">Cap Space Utilization</h3>
+                  <div className="h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={Object.keys(allTeamContracts).map(team => ({
+                          name: team,
+                          used: allTeamContracts[team].capSpent.curYear,
+                          remaining: 300 - allTeamContracts[team].capSpent.curYear,
+                          isCurrentTeam: team === session?.user?.name
+                        }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+                        <XAxis dataKey="name" stroke="#fff" />
+                        <YAxis stroke="#fff" domain={[0, 300]} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Bar 
+                          dataKey="used" 
+                          stackId="a" 
+                          name="Cap Used"
+                          fill="#3b82f6"
+                        >
+                          {Object.keys(allTeamContracts).map((team, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={team === session?.user?.name ? '#FF4B1F' : '#3b82f6'} 
+                            />
+                          ))}
+                        </Bar>
+                        <Bar 
+                          dataKey="remaining" 
+                          stackId="a" 
+                          name="Cap Available" 
+                          fill="#22c55e" 
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                
+                {/* Position Spending Comparison */}
+                <div>
+                  <h3 className="text-xl font-bold mb-4">Position Spending by Team</h3>
+                  <div className="h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={Object.keys(allTeamContracts).map(team => ({
+                          name: team,
+                          QB: allTeamContracts[team].positionSpend.QB,
+                          RB: allTeamContracts[team].positionSpend.RB,
+                          WR: allTeamContracts[team].positionSpend.WR,
+                          TE: allTeamContracts[team].positionSpend.TE,
+                          isCurrentTeam: team === session?.user?.name
+                        }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+                        <XAxis dataKey="name" stroke="#fff" />
+                        <YAxis stroke="#fff" />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Bar dataKey="QB" name="QB" fill="#ef4444" />
+                        <Bar dataKey="RB" name="RB" fill="#3b82f6" />
+                        <Bar dataKey="WR" name="WR" fill="#22c55e" />
+                        <Bar dataKey="TE" name="TE" fill="#a855f7" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                
+                {/* Age Comparison */}
+                <div>
+                  <h3 className="text-xl font-bold mb-4">Team Age Comparison</h3>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={Object.keys(allTeamContracts).map(team => ({
+                          name: team,
+                          age: allTeamContracts[team].averageAge,
+                          isCurrentTeam: team === session?.user?.name
+                        }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+                        <XAxis dataKey="name" stroke="#fff" />
+                        <YAxis stroke="#fff" domain={[20, 30]} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="age" name="Average Age">
+                          {Object.keys(allTeamContracts).map((team, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={team === session?.user?.name ? '#FF4B1F' : '#3b82f6'} 
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                
+                {/* Value Comparison */}
+                <div>
+                  <h3 className="text-xl font-bold mb-4">Team Value and Value Per Dollar</h3>
+                  <div className="h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={Object.keys(allTeamContracts).map(team => {
+                          const teamPlayers = allTeamPlayers[team] || [];
+                          const totalValue = teamPlayers.reduce((sum, player) => sum + player.value, 0);
+                          const valuePerDollar = allTeamContracts[team].capSpent.curYear > 0 
+                            ? totalValue / allTeamContracts[team].capSpent.curYear 
+                            : 0;
+                          
+                          return {
+                            name: team,
+                            value: totalValue / 1000, // Scale down for visibility
+                            valuePerDollar: valuePerDollar,
+                            isCurrentTeam: team === session?.user?.name
+                          };
+                        })}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+                        <XAxis dataKey="name" stroke="#fff" />
+                        <YAxis yAxisId="left" stroke="#3b82f6" />
+                        <YAxis yAxisId="right" orientation="right" stroke="#22c55e" />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Bar 
+                          yAxisId="left" 
+                          dataKey="value" 
+                          name="KTC Value (thousands)" 
+                        >
+                          {Object.keys(allTeamContracts).map((team, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={team === session?.user?.name ? '#FF4B1F' : '#3b82f6'} 
+                            />
+                          ))}
+                        </Bar>
+                        <Bar 
+                          yAxisId="right" 
+                          dataKey="valuePerDollar" 
+                          name="Value Per $" 
+                          fill="#22c55e" 
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-white/10 flex justify-end">
+              <button
+                onClick={() => setShowTeamComparison(false)}
+                className="px-4 py-2 bg-[#FF4B1F] rounded hover:bg-[#FF4B1F]/80 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
