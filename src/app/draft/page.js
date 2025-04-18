@@ -299,9 +299,21 @@ export default function DraftPage() {
             getTeamName={getTeamNameWrapper} 
           />}
         
-        {/* Additional sections */}
-        <DraftResources />
-        <DraftStrategyTips />
+        {activeTab === 'mock-draft' && 
+          <MockDraft 
+            rosters={rosters}
+            users={users}
+            draftInfo={draftInfo}
+            draftOrder={draftOrder}
+          />}
+        
+        {/* Additional sections - only show on certain tabs */}
+        {(activeTab === 'draft-order' || activeTab === 'rookie-salaries') && (
+          <>
+            <DraftResources />
+            <DraftStrategyTips />
+          </>
+        )}
       </div>
     </main>
   );
