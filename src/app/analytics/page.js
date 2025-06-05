@@ -1,10 +1,20 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer } from 'recharts';
 
 export default function Analytics() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -119,57 +129,59 @@ export default function Analytics() {
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
-      <div className="bg-black/30 p-6 border-b border-white/10">
+      <div className={`${isMobile ? 'p-4' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
             <img 
               src="/logo.png" 
               alt="BBB League" 
-              className="h-16 w-16 transition-transform hover:scale-105"
+              className={`${isMobile ? 'h-12 w-12' : 'h-16 w-16'} transition-transform hover:scale-105`}
             />
-            <h1 className="text-3xl font-bold text-[#FF4B1F]">Analytics</h1>
+            <h1 className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>Analytics</h1>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-          <h2 className="text-xl font-bold mb-6 text-[#FF4B1F]">Team Investment by Position</h2>
+      <div className={`max-w-7xl mx-auto ${isMobile ? 'p-2' : 'p-6'}`}>
+        <div className={`bg-black/30 rounded-lg border border-white/10 ${isMobile ? 'p-3' : 'p-6'}`}>
+          <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>Team Investment by Position</h2>
           
-          <div className="w-full overflow-x-auto">
-            <BarChart
-              layout="vertical"
-              width={1000}
-              height={600}
-              data={data}
-              margin={{ top: 20, right: 30, left: 120, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" horizontal={false} />
-              <XAxis 
-                type="number"
-                domain={[0, 300]}
-                stroke="#fff"
-                label={{ 
-                  value: 'Cap Space ($)', 
-                  position: 'insideBottom',
-                  offset: -5,
-                  style: { fill: '#fff' }
-                }}
-              />
-              <YAxis 
-                type="category"
-                dataKey="team" 
-                stroke="#fff"
-                width={100}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
-              <Bar dataKey="QB" stackId="a" fill="#ef4444" />
-              <Bar dataKey="RB" stackId="a" fill="#3b82f6" />
-              <Bar dataKey="WR" stackId="a" fill="#22c55e" />
-              <Bar dataKey="TE" stackId="a" fill="#a855f7" />
-              <Bar dataKey="DeadCap" stackId="a" fill="#6b7280" />
-            </BarChart>
+          <div className="w-full" style={{ minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height={isMobile ? 400 : 600}>
+              <BarChart
+                layout="vertical"
+                data={data}
+                margin={{ top: 20, right: 10, left: isMobile ? 60 : 120, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" horizontal={false} />
+                <XAxis 
+                  type="number"
+                  domain={[0, 300]}
+                  stroke="#fff"
+                  label={isMobile ? undefined : { 
+                    value: 'Cap Space ($)', 
+                    position: 'insideBottom',
+                    offset: -5,
+                    style: { fill: '#fff' }
+                  }}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                />
+                <YAxis 
+                  type="category"
+                  dataKey="team" 
+                  stroke="#fff"
+                  width={isMobile ? 60 : 100}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: isMobile ? 10 : 14 }} />
+                <Bar dataKey="QB" stackId="a" fill="#ef4444" />
+                <Bar dataKey="RB" stackId="a" fill="#3b82f6" />
+                <Bar dataKey="WR" stackId="a" fill="#22c55e" />
+                <Bar dataKey="TE" stackId="a" fill="#a855f7" />
+                <Bar dataKey="DeadCap" stackId="a" fill="#6b7280" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>

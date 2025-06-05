@@ -30,21 +30,31 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
     return players.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
   };
 
+  // Calculate total KTC value for each team's players
+  const calculateTotalKTC = (players) => {
+    return players.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
+  };
+
   const teamAValue = calculateTotalValue(selectedPlayersA);
   const teamBValue = calculateTotalValue(selectedPlayersB);
-  
+  const teamAKTC = calculateTotalKTC(selectedPlayersA);
+  const teamBKTC = calculateTotalKTC(selectedPlayersB);
+
   // Format team names to capitalize first letter
   const formatTeamName = (name) => {
     if (!name) return 'Team';
     return name.charAt(0).toUpperCase() + name.slice(1);
   };
 
+  // Responsive check
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-2 md:px-4">
       <div className="bg-[#001A2B] border border-white/10 rounded-lg max-w-4xl w-full shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent p-4 border-b border-white/10">
-          <h2 className="text-2xl font-bold text-[#FF4B1F]">Trade Summary</h2>
+          <h2 className={`${isMobile ? "text-xl" : "text-2xl"} font-bold text-[#FF4B1F]`}>Trade Summary</h2>
           <p className="text-white/70 text-sm mt-1">
             Review the details of this trade before finalizing
           </p>
@@ -83,38 +93,43 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
         </div>
 
         {/* Trade Content */}
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className={`p-3 md:p-6`}>
+          <div className={`grid ${isMobile ? "grid-cols-1 gap-4" : "grid-cols-2 gap-6"}`}>
             {/* Team A Side */}
-            <div className="bg-black/30 rounded-lg border border-white/10 p-4">
+            <div className="bg-black/30 rounded-lg border border-white/10 p-3 md:p-4">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-[#FF4B1F]/20 flex items-center justify-center text-xl font-bold">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-[#FF4B1F]/20 flex items-center justify-center text-lg md:text-xl font-bold">
                   {formatTeamName(teamA)?.charAt(0) || 'A'}
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg">{formatTeamName(teamA)} Receives</h3>
-                  <p className="text-white/70 text-sm">
-                    {selectedPlayersB.length} player{selectedPlayersB.length !== 1 ? 's' : ''} • ${teamBValue.toFixed(1)} cap value
+                  <h3 className="font-bold text-base md:text-lg">{formatTeamName(teamA)} Receives</h3>
+                  <p className="text-white/70 text-xs md:text-sm">
+                    {selectedPlayersB.length} player{selectedPlayersB.length !== 1 ? 's' : ''} • ${teamBValue.toFixed(1)} cap value • KTC: {teamBKTC ? teamBKTC.toFixed(0) : 0}
                   </p>
                 </div>
               </div>
 
               {/* Players received */}
-              <div className="space-y-2 mb-6">
+              <div className="space-y-2 mb-4 md:mb-6">
                 {selectedPlayersB.length > 0 ? (
                   selectedPlayersB.map((player, index) => (
-                    <div key={index} className="bg-black/20 rounded p-3 flex items-center justify-between">
+                    <div key={index} className="bg-black/20 rounded p-2 md:p-3 flex flex-col md:flex-row md:items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-10 rounded-l ${getPositionColor(player.position)}`}></div>
+                        <div className={`w-2 h-8 md:h-10 rounded-l ${getPositionColor(player.position)}`}></div>
                         <div>
                           <div className="font-semibold">{player.playerName}</div>
-                          <div className="text-xs text-white/70 flex gap-2">
+                          <div className="text-xs text-white/70 flex gap-2 flex-wrap">
                             <span className="bg-black/30 px-1.5 py-0.5 rounded">{player.position}</span>
                             {player.team && <span>{player.team}</span>}
+                            <span className="bg-green-700/20 px-1.5 py-0.5 rounded">KTC: {player.ktcValue !== undefined ? player.ktcValue : '...'}</span>
+                          </div>
+                          <div className="text-xs text-white/50 flex gap-2 flex-wrap mt-1">
+                            <span className="bg-[#FF4B1F]/20 px-1 py-0.5 rounded">Contract: {player.contractType || 'N/A'}</span>
+                            <span className="bg-blue-500/20 px-1 py-0.5 rounded">Final Yr: {player.contractFinalYear || 'N/A'}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="text-green-400 font-bold">${parseFloat(player.curYear).toFixed(1)}</div>
+                      <div className="text-green-400 font-bold mt-2 md:mt-0">${parseFloat(player.curYear).toFixed(1)}</div>
                     </div>
                   ))
                 ) : (
@@ -124,27 +139,27 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
 
               {/* Cap Space Impact */}
               <div>
-                <h4 className="font-semibold text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
+                <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 1</div>
                     <div className={getCapSpaceColor(tradeValidation.impactA.after.curYear)}>
                       {formatSalary(tradeValidation.impactA.after.curYear)}
                     </div>
                   </div>
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 2</div>
                     <div className={getCapSpaceColor(tradeValidation.impactA.after.year2)}>
                       {formatSalary(tradeValidation.impactA.after.year2)}
                     </div>
                   </div>
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 3</div>
                     <div className={getCapSpaceColor(tradeValidation.impactA.after.year3)}>
                       {formatSalary(tradeValidation.impactA.after.year3)}
                     </div>
                   </div>
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 4</div>
                     <div className={getCapSpaceColor(tradeValidation.impactA.after.year4)}>
                       {formatSalary(tradeValidation.impactA.after.year4)}
@@ -155,35 +170,40 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
             </div>
 
             {/* Team B Side */}
-            <div className="bg-black/30 rounded-lg border border-white/10 p-4">
+            <div className="bg-black/30 rounded-lg border border-white/10 p-3 md:p-4">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-[#3b82f6]/20 flex items-center justify-center text-xl font-bold">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-[#3b82f6]/20 flex items-center justify-center text-lg md:text-xl font-bold">
                   {formatTeamName(teamB)?.charAt(0) || 'B'}
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg">{formatTeamName(teamB)} Receives</h3>
-                  <p className="text-white/70 text-sm">
-                    {selectedPlayersA.length} player{selectedPlayersA.length !== 1 ? 's' : ''} • ${teamAValue.toFixed(1)} cap value
+                  <h3 className="font-bold text-base md:text-lg">{formatTeamName(teamB)} Receives</h3>
+                  <p className="text-white/70 text-xs md:text-sm">
+                    {selectedPlayersA.length} player{selectedPlayersA.length !== 1 ? 's' : ''} • ${teamAValue.toFixed(1)} cap value • KTC: {teamAKTC ? teamAKTC.toFixed(0) : 0}
                   </p>
                 </div>
               </div>
 
               {/* Players received */}
-              <div className="space-y-2 mb-6">
+              <div className="space-y-2 mb-4 md:mb-6">
                 {selectedPlayersA.length > 0 ? (
                   selectedPlayersA.map((player, index) => (
-                    <div key={index} className="bg-black/20 rounded p-3 flex items-center justify-between">
+                    <div key={index} className="bg-black/20 rounded p-2 md:p-3 flex flex-col md:flex-row md:items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-10 rounded-l ${getPositionColor(player.position)}`}></div>
+                        <div className={`w-2 h-8 md:h-10 rounded-l ${getPositionColor(player.position)}`}></div>
                         <div>
                           <div className="font-semibold">{player.playerName}</div>
-                          <div className="text-xs text-white/70 flex gap-2">
+                          <div className="text-xs text-white/70 flex gap-2 flex-wrap">
                             <span className="bg-black/30 px-1.5 py-0.5 rounded">{player.position}</span>
                             {player.team && <span>{player.team}</span>}
+                            <span className="bg-green-700/20 px-1.5 py-0.5 rounded">KTC: {player.ktcValue !== undefined ? player.ktcValue : '...'}</span>
+                          </div>
+                          <div className="text-xs text-white/50 flex gap-2 flex-wrap mt-1">
+                            <span className="bg-[#FF4B1F]/20 px-1 py-0.5 rounded">Contract: {player.contractType || 'N/A'}</span>
+                            <span className="bg-blue-500/20 px-1 py-0.5 rounded">Final Yr: {player.contractFinalYear || 'N/A'}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="text-green-400 font-bold">${parseFloat(player.curYear).toFixed(1)}</div>
+                      <div className="text-green-400 font-bold mt-2 md:mt-0">${parseFloat(player.curYear).toFixed(1)}</div>
                     </div>
                   ))
                 ) : (
@@ -193,27 +213,27 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
 
               {/* Cap Space Impact */}
               <div>
-                <h4 className="font-semibold text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
+                <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 1</div>
                     <div className={getCapSpaceColor(tradeValidation.impactB.after.curYear)}>
                       {formatSalary(tradeValidation.impactB.after.curYear)}
                     </div>
                   </div>
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 2</div>
                     <div className={getCapSpaceColor(tradeValidation.impactB.after.year2)}>
                       {formatSalary(tradeValidation.impactB.after.year2)}
                     </div>
                   </div>
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 3</div>
                     <div className={getCapSpaceColor(tradeValidation.impactB.after.year3)}>
                       {formatSalary(tradeValidation.impactB.after.year3)}
                     </div>
                   </div>
-                  <div className="bg-black/20 p-2 rounded">
+                  <div className="bg-black/20 p-1 md:p-2 rounded">
                     <div className="text-xs text-white/70">Year 4</div>
                     <div className={getCapSpaceColor(tradeValidation.impactB.after.year4)}>
                       {formatSalary(tradeValidation.impactB.after.year4)}
@@ -225,7 +245,7 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
           </div>
 
           {/* Footer with legend and buttons */}
-          <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className={`mt-4 md:mt-6 flex flex-col sm:flex-row justify-between items-center gap-4`}>
             <div className="text-xs text-white/70 flex flex-wrap gap-x-4 gap-y-2">
               <div className="flex items-center">
                 <div className="w-3 h-3 bg-red-500 mr-1 rounded-full"></div>

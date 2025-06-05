@@ -27,9 +27,20 @@ export default function DraftPage() {
   const [users, setUsers] = useState([]);
   const [activeTab, setActiveTab] = useState('draft-order');
   const [draftOrder, setDraftOrder] = useState([]); // For storing the actual draft order
+  const [isMobile, setIsMobile] = useState(false);
 
   // Sleeper User ID - this should be your league commissioner's Sleeper ID
   const USER_ID = '456973480269705216';
+
+  // Mobile detection
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // First, find the correct BBB league
   useEffect(() => {
@@ -276,43 +287,49 @@ export default function DraftPage() {
       {/* Header and banner */}
       <DraftHeader draftInfo={draftInfo} />
       
-      <div className="max-w-7xl mx-auto p-6">
+      <div className={`max-w-7xl mx-auto ${isMobile ? 'p-2' : 'p-6'}`}>
         {/* Tab navigation */}
-        <DraftTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+        <div className={isMobile ? 'overflow-x-auto' : ''}>
+          <DraftTabs activeTab={activeTab} setActiveTab={setActiveTab} isMobile={isMobile} />
+        </div>
         
         {/* Active Tab Content */}
-        {activeTab === 'draft-order' && 
-          <DraftOrder draftInfo={draftInfo} draftOrder={draftOrder} />}
-        
-        {activeTab === 'traded-picks' && 
-          <TradedPicks tradedPicks={tradedPicks} tradeHistory={tradeHistory} users={users} rosters={rosters} />}
-        
-        {activeTab === 'past-drafts' && 
-          <PastDrafts pastDrafts={pastDrafts} getTeamName={getTeamNameWrapper} />}
-        
-        {activeTab === 'rookie-salaries' && 
-          <RookieSalaries 
-            rosters={rosters} 
-            tradedPicks={tradedPicks} 
-            draftInfo={draftInfo} 
-            draftOrder={draftOrder} 
-            getTeamName={getTeamNameWrapper} 
-          />}
-        
-        {activeTab === 'mock-draft' && 
-          <MockDraft 
-            rosters={rosters}
-            users={users}
-            draftInfo={draftInfo}
-            draftOrder={draftOrder}
-          />}
+        <div className={isMobile ? 'mt-2' : 'mt-6'}>
+          {activeTab === 'draft-order' && 
+            <DraftOrder draftInfo={draftInfo} draftOrder={draftOrder} isMobile={isMobile} />}
+          
+          {activeTab === 'traded-picks' && 
+            <TradedPicks tradedPicks={tradedPicks} tradeHistory={tradeHistory} users={users} rosters={rosters} isMobile={isMobile} />}
+          
+          {activeTab === 'past-drafts' && 
+            <PastDrafts pastDrafts={pastDrafts} getTeamName={getTeamNameWrapper} isMobile={isMobile} />}
+          
+          {activeTab === 'rookie-salaries' && 
+            <RookieSalaries 
+              rosters={rosters} 
+              tradedPicks={tradedPicks} 
+              draftInfo={draftInfo} 
+              draftOrder={draftOrder} 
+              getTeamName={getTeamNameWrapper}
+              isMobile={isMobile}
+            />}
+          
+          {activeTab === 'mock-draft' && 
+            <MockDraft 
+              rosters={rosters}
+              users={users}
+              draftInfo={draftInfo}
+              draftOrder={draftOrder}
+              isMobile={isMobile}
+            />}
+        </div>
         
         {/* Additional sections - only show on certain tabs */}
         {(activeTab === 'draft-order' || activeTab === 'rookie-salaries') && (
-          <>
-            <DraftResources />
-            <DraftStrategyTips />
-          </>
+          <div className={isMobile ? 'mt-2' : 'mt-6'}>
+            <DraftResources isMobile={isMobile} />
+            <DraftStrategyTips isMobile={isMobile} />
+          </div>
         )}
       </div>
     </main>

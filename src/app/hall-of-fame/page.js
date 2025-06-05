@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 // Sample data - with division information added
 const champions = [
@@ -8,8 +8,8 @@ const champions = [
     userName: "Chewy2552",
     teamName: "InPolesWeTrust",
     division: {
-      name: "Poor House Division",  // CHANGE DIVISION NAME
-      logo: "/Division3Logo.png"    // CHANGE DIVISION LOGO PATH
+      name: "Poor House Division",
+      logo: "/Division3Logo.png"
     },
     mvpPlayer: {
       name: "Joe Burrow",
@@ -17,7 +17,7 @@ const champions = [
       yards: 4918,
       touchdowns: 43,
       fantasyPoints: 458.82,
-      photo: "/2024-MVP.png"      // CHANGE MVP PHOTO PATH
+      photo: "/2024-MVP.png"
     },
     regularSeason: {
       wins: 11,
@@ -25,9 +25,8 @@ const champions = [
       pointsFor: 1729.16,
       pointsAgainst: 1510.34
     },
-
     quote: "Matt like football. Other people bad at football. Matt good at football.",
-    teamPhoto: "/2024-championlogo.png", // CHANGE TEAM PHOTO PATH
+    teamPhoto: "/2024-championlogo.png",
     keyPlayers: [
       { name: "Joe Burrow", position: "QB", nflTeam: "Cincinnati Bengals", photo: "/players/joe-burrow.png" },
       { name: "Jayden Daniels", position: "QB", nflTeam: "Washington Commanders", photo: "/players/jayden-daniels.png" },
@@ -46,7 +45,7 @@ const champions = [
     teamName: "TEST",
     division: {
       name: "West Division",
-      logo: "/images/west-division.png" // Add division logo path
+      logo: "/images/west-division.png"
     },
     mvpPlayer: {
       name: "TEST",
@@ -77,7 +76,6 @@ const champions = [
 // Image component with error handling
 const PlayerImage = ({ src, alt, position }) => {
   const [imageError, setImageError] = useState(false);
-  
   return imageError ? (
     <div className="w-full h-full flex items-center justify-center text-white/30">
       <span>{position}</span>
@@ -101,22 +99,25 @@ export default function HallOfFame() {
     return selectedChampion.keyPlayers.filter(player => player.position === position);
   };
 
+  // Responsive padding
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
-      <div className="bg-black/30 p-6 border-b border-white/10">
+      <div className={`${isMobile ? 'p-4' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
             <img 
               src="/logo.png" 
               alt="BBB League" 
-              className="h-16 w-16 transition-transform hover:scale-105"
+              className={`${isMobile ? 'h-12 w-12' : 'h-16 w-16'} transition-transform hover:scale-105`
             />
-            <h1 className="text-3xl font-bold text-[#FF4B1F]">Hall of Fame</h1>
+            <h1 className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>Hall of Fame</h1>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className={`max-w-7xl mx-auto ${isMobile ? 'p-2' : 'p-6'}`}>
         {/* Year selection */}
         <div className="flex overflow-x-auto space-x-4 mb-8 pb-2">
           {champions.map(champion => (
@@ -124,7 +125,7 @@ export default function HallOfFame() {
               key={champion.year}
               onClick={() => {
                 setSelectedChampion(champion);
-                setMvpImageError(false); // Reset error state when changing champion
+                setMvpImageError(false);
               }}
               className={`px-6 py-3 rounded-lg ${
                 selectedChampion.year === champion.year 
@@ -138,21 +139,17 @@ export default function HallOfFame() {
         </div>
 
         {/* Champion infographic */}
-        <div className="bg-black/30 rounded-lg border border-white/10 p-6 mb-8">
+        <div className={`bg-black/30 rounded-lg border border-white/10 ${isMobile ? 'p-3' : 'p-6'} mb-8`}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Champion details */}
             <div className="lg:col-span-2">
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-[#FF4B1F]">{selectedChampion.year} Champion</h2>
-                <div className="mt-4 flex items-center gap-4">
+                <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-[#FF4B1F]`}>{selectedChampion.year} Champion</h2>
+                <div className="mt-4 flex flex-col md:flex-row items-center gap-4">
                   <div className="flex items-center gap-4">
-                    {/* Team Photo removed from here and moved to Winner's Quote section */}
-                    
                     <div className="bg-[#FF4B1F]/20 p-4 rounded-lg">
-                      <div className="text-3xl font-bold text-[#FF4B1F]">{selectedChampion.userName}</div>
+                      <div className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>{selectedChampion.userName}</div>
                       <div className="text-white/70">{selectedChampion.teamName}</div>
-                      
-                      {/* Division Information */}
                       <div className="flex items-center mt-2 pt-2 border-t border-white/10">
                         {selectedChampion.division.logo && (
                           <img 
@@ -166,8 +163,7 @@ export default function HallOfFame() {
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex-1">
+                  <div className="flex-1 w-full">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-black/20 p-3 rounded-lg">
                         <div className="text-white/70 text-sm">Record</div>
@@ -183,7 +179,7 @@ export default function HallOfFame() {
               </div>
 
               <div className="mb-6">
-                <h3 className="text-xl font-bold mb-4">Winner's Quote</h3>
+                <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4`}>Winner's Quote</h3>
                 <div className="flex items-start gap-4">
                   {selectedChampion.teamPhoto && (
                     <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden border border-white/20">
@@ -202,8 +198,7 @@ export default function HallOfFame() {
               </div>
 
               <div>
-                <h3 className="text-xl font-bold mb-4">Championship Team</h3>
-                
+                <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4`}>Championship Team</h3>
                 {/* Quarterbacks Section */}
                 <div className="mb-4">
                   <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Quarterbacks</h4>
@@ -231,7 +226,6 @@ export default function HallOfFame() {
                     ))}
                   </div>
                 </div>
-                
                 {/* Wide Receivers Section */}
                 <div className="mb-4">
                   <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Wide Receivers</h4>
@@ -259,7 +253,6 @@ export default function HallOfFame() {
                     ))}
                   </div>
                 </div>
-                
                 {/* Running Backs Section */}
                 <div className="mb-4">
                   <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Running Backs</h4>
@@ -287,7 +280,6 @@ export default function HallOfFame() {
                     ))}
                   </div>
                 </div>
-                
                 {/* Tight Ends Section */}
                 <div className="mb-4">
                   <h4 className="text-lg font-semibold text-[#FF4B1F] mb-2">Tight Ends</h4>
@@ -317,12 +309,10 @@ export default function HallOfFame() {
                 </div>
               </div>
             </div>
-
             {/* MVP section with photo */}
             <div className="lg:col-span-1">
               <div className="bg-[#FF4B1F]/10 p-6 rounded-lg border border-[#FF4B1F]/30">
-                <h3 className="text-xl font-bold mb-4 text-center">Season MVP</h3>
-                
+                <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 text-center`}>Season MVP</h3>
                 {/* MVP Player Photo */}
                 <div className="mb-4 flex justify-center">
                   <div className="w-40 h-40 rounded-full border-4 border-[#FF4B1F] overflow-hidden bg-black/30">
@@ -340,7 +330,6 @@ export default function HallOfFame() {
                     )}
                   </div>
                 </div>
-                
                 <div className="flex flex-col items-center mb-4">
                   <div className="text-2xl font-bold">{selectedChampion.mvpPlayer.name}</div>
                   <div className="text-white/70">{selectedChampion.mvpPlayer.position}</div>

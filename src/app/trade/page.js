@@ -4,25 +4,37 @@ import TradeSummary from './TradeSummary';
 
 const PlayerCard = ({ player, onRemove, showRemove = true, onClick = null }) => (
   <div 
-    className={`flex items-center justify-between bg-white/5 p-2 rounded relative ${onClick ? 'cursor-pointer hover:bg-white/10' : ''}`}
+    className={`flex flex-col md:flex-row md:items-center justify-between bg-white/5 p-2 rounded relative ${onClick ? 'cursor-pointer hover:bg-white/10' : ''}`}
     onClick={onClick}
   >
-    <div className="flex items-center gap-2">
-      <span className="font-bold">{player.playerName}</span>
-      <span className="text-white/70">({player.position})</span>
-      <span className="text-green-400">${player.curYear.toFixed(1)}</span>
-      {player.year2 > 0 && <span className="text-yellow-400">${player.year2.toFixed(1)}</span>}
-      {player.year3 > 0 && <span className="text-orange-400">${player.year3.toFixed(1)}</span>}
-      {player.year4 > 0 && <span className="text-red-400">${player.year4.toFixed(1)}</span>}
+    <div className="flex flex-col md:flex-row md:items-center gap-2">
+      <div className="flex items-center gap-2">
+        <span className="font-bold">{player.playerName}</span>
+        <span className="text-white/70">({player.position})</span>
+        <span className="text-green-400">${player.curYear.toFixed(1)}</span>
+        {player.year2 > 0 && <span className="text-yellow-400">${player.year2.toFixed(1)}</span>}
+        {player.year3 > 0 && <span className="text-orange-400">${player.year3.toFixed(1)}</span>}
+        {player.year4 > 0 && <span className="text-red-400">${player.year4.toFixed(1)}</span>}
+      </div>
+      <div className="flex items-center gap-2 text-xs mt-1 md:mt-0">
+        <span className="bg-[#FF4B1F]/20 px-2 py-1 rounded">
+          Contract: {player.contractType || 'N/A'}
+        </span>
+        <span className="bg-blue-500/20 px-2 py-1 rounded">
+          Final Yr: {player.contractFinalYear || 'N/A'}
+        </span>
+        <span className="bg-green-700/20 px-2 py-1 rounded">
+          KTC: {player.ktcValue !== undefined ? player.ktcValue : '...'}
+        </span>
+      </div>
     </div>
-    
     {showRemove && (
       <button
         onClick={(e) => {
           e.stopPropagation();
           onRemove();
         }}
-        className="text-red-400 hover:text-red-300"
+        className="text-red-400 hover:text-red-300 mt-2 md:mt-0"
       >
         Remove
       </button>
@@ -41,46 +53,71 @@ export default function Trade() {
   const [teamB, setTeamB] = useState('');
   const [showSummary, setShowSummary] = useState(false);
 
-useEffect(() => {
-  async function fetchData() {
-    try {
-      const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
-      const text = await response.text();
-      
-      const rows = text.split('\n');
-      const parsedData = rows.slice(1)
-        .filter(row => row.trim())
-        .map(row => {
-          const values = row.split(',');
-          const status = values[14];
-          const isActive = status === 'Active';
-          
-          return {
-            id: values[0],
-            playerName: values[1],
-            team: values[33],
-            position: values[21],
-            status: status,
-            curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
-            year2: isActive ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
-            year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
-            year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
-            isActive: isActive
-          };
-        })
-        // Filter out expired contracts
-        .filter(player => player.status === 'Active');
-      
-      setPlayers(parsedData);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Fetch contract and KTC data
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        // Fetch contract data
+        const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+        const text = await response.text();
+        const rows = text.split('\n');
+        const parsedData = rows.slice(1)
+          .filter(row => row.trim())
+          .map(row => {
+            const values = row.split(',');
+            const status = values[14];
+            const isActive = status === 'Active';
+            return {
+              id: values[0],
+              playerName: values[1],
+              team: values[33],
+              position: values[21],
+              status: status,
+              contractType: values[2],
+              contractFinalYear: values[5],
+              curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
+              year2: isActive ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
+              year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
+              year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
+              isActive: isActive
+            };
+          })
+          .filter(player => player.status === 'Active');
 
-  fetchData();
-}, []);
+        // Fetch KTC values (mock endpoint, replace with real if available)
+        let ktcMap = {};
+        try {
+          const ktcRes = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_KTC.csv');
+          const ktcText = await ktcRes.text();
+          const ktcRows = ktcText.split('\n');
+          // Assume: Player Name, KTC Value
+          ktcRows.slice(1).forEach(row => {
+            const [name, value] = row.split(',');
+            if (name && value) {
+              ktcMap[name.trim().toLowerCase()] = parseFloat(value);
+            }
+          });
+        } catch (e) {
+          // If KTC fetch fails, just skip
+          ktcMap = {};
+        }
+
+        // Merge KTC values into player objects
+        const merged = parsedData.map(player => ({
+          ...player,
+          ktcValue: ktcMap[player.playerName.trim().toLowerCase()]
+        }));
+
+        setPlayers(merged);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, []);
 
   const uniqueTeams = [...new Set(players.map(player => player.team))].sort();
 

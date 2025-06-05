@@ -12,6 +12,16 @@ export default function Home() {
   const [showPositionDropdown, setShowPositionDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showTeamDropdown, setShowTeamDropdown] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -164,15 +174,15 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
-      <div className="bg-black/30 p-6 border-b border-white/10">
+      <div className={`${isMobile ? 'p-4' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
             <img 
               src="/logo.png" 
               alt="BBB League" 
-              className="h-16 w-16 transition-transform hover:scale-105"
+              className={isMobile ? "h-12 w-12 transition-transform hover:scale-105" : "h-16 w-16 transition-transform hover:scale-105"}
             />
-            <h1 className="text-3xl font-bold text-[#FF4B1F]">Player Contracts</h1>
+            <h1 className={isMobile ? "text-2xl font-bold text-[#FF4B1F]" : "text-3xl font-bold text-[#FF4B1F]"}>Player Contracts</h1>
           </div>
         </div>
       </div>
@@ -357,16 +367,38 @@ export default function Home() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-black/40 border-b border-white/10">
-                {[
-                  { key: 'playerName', label: 'Player Name' },
-                  { key: 'contractType', label: 'Contract Type' },
-                  { key: 'curYear', label: 'Cur Year' },
-                  { key: 'year2', label: 'Year 2' },
-                  { key: 'year3', label: 'Year 3' },
-                  { key: 'year4', label: 'Year 4' },
-                  { key: 'contractFinalYear', label: 'Final Year' },
-                  { key: 'team', label: 'Team' },
-                ].map(({ key, label }) => (
+                {{
+                  key: 'playerName',
+                  label: 'Player Name'
+                },
+                {
+                  key: 'contractType',
+                  label: 'Contract Type'
+                },
+                {
+                  key: 'curYear',
+                  label: 'Cur Year'
+                },
+                {
+                  key: 'year2',
+                  label: 'Year 2'
+                },
+                {
+                  key: 'year3',
+                  label: 'Year 3'
+                },
+                {
+                  key: 'year4',
+                  label: 'Year 4'
+                },
+                {
+                  key: 'contractFinalYear',
+                  label: 'Final Year'
+                },
+                {
+                  key: 'team',
+                  label: 'Team'
+                }}.map(({ key, label }) => (
                   <th 
                     key={key}
                     onClick={() => handleSort(key)}

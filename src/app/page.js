@@ -14,6 +14,17 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [currentWeek, setCurrentWeek] = useState(null);
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Sleeper User ID - your actual Sleeper user ID
   const USER_ID = '456973480269705216';
   const [leagueId, setLeagueId] = useState(null);
@@ -27,7 +38,7 @@ export default function Home() {
         setLoading(false);
         setError('Loading timeout reached. The data fetch is taking too long or has stalled. Check console for details.');
       }
-    }, 10000); // 10 seconds timeout
+    }, 10000); // 10 seconds timeout 
     
     return () => clearTimeout(loadingTimeout);
   }, [loading]);
@@ -296,36 +307,36 @@ export default function Home() {
   // Offseason Content Component for when no matchups are available
   const OffseasonContent = () => {
     return (
-      <div className="bg-black/20 rounded-lg border border-white/10 p-6">
-        <h3 className="text-xl font-bold mb-4 text-center">Offseason Mode</h3>
+      <div className="bg-black/20 rounded-lg border border-white/10 p-4 md:p-6">
+        <h3 className="text-lg md:text-xl font-bold mb-4 text-center">Offseason Mode</h3>
         <div className="space-y-4">
           <div className="text-center">
             <p className="mb-4">There are no active matchups at this time.</p>
             <p className="mb-2">While you wait for the next season, you can:</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-black/30 p-4 rounded-lg">
+            <div className="bg-black/30 p-3 md:p-4 rounded-lg">
               <h4 className="font-semibold mb-2">Prepare Your Roster</h4>
               <p className="text-sm text-white/70">Review your player contracts and plan your salary cap strategy for the upcoming season.</p>
               <Link href="/my-team" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
                 View My Team →
               </Link>
             </div>
-            <div className="bg-black/30 p-4 rounded-lg">
+            <div className="bg-black/30 p-3 md:p-4 rounded-lg">
               <h4 className="font-semibold mb-2">League History</h4>
               <p className="text-sm text-white/70">Check out past champions and league records from previous seasons.</p>
               <Link href="/hall-of-fame" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
                 View Hall of Fame →
               </Link>
             </div>
-            <div className="bg-black/30 p-4 rounded-lg">
+            <div className="bg-black/30 p-3 md:p-4 rounded-lg">
               <h4 className="font-semibold mb-2">Offseason Guide</h4>
               <p className="text-sm text-white/70">Review important dates and deadlines for the offseason.</p>
               <Link href="/offseason" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
                 View Offseason Guide →
               </Link>
             </div>
-            <div className="bg-black/30 p-4 rounded-lg">
+            <div className="bg-black/30 p-3 md:p-4 rounded-lg">
               <h4 className="font-semibold mb-2">Trade Calculator</h4>
               <p className="text-sm text-white/70">Explore potential trades and plan your team's future.</p>
               <Link href="/trade" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
@@ -473,7 +484,7 @@ export default function Home() {
                   { teamName: 'Team C', points: 95.7, projected: 100.1 },
                   { teamName: 'Team D', points: 130.2, projected: 125.6 }
                 ]
-              ]);
+              );
               setStandings({
                 divisions: {
                   1: [
@@ -510,28 +521,28 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       {/* Header Banner - Just the title, no navigation */}
-      <div className="bg-black/30 p-6 border-b border-white/10">
+      <div className={`${isMobile ? 'p-3' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <h1 className="text-3xl font-bold text-[#FF4B1F]">Budget Blitz Bowl</h1>
+          <h1 className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>Budget Blitz Bowl</h1>
         </div>
       </div>
 
       {/* League Info Banner */}
       <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent">
-        <div className="max-w-7xl mx-auto p-6">
-          <div className="flex flex-col md:flex-row items-center justify-between">
+        <div className={`max-w-7xl mx-auto ${isMobile ? 'p-3' : 'p-6'}`}>
+          <div className={`flex flex-col ${isMobile ? '' : 'md:flex-row'} items-center justify-between`}>
             <div>
-              <h2 className="text-2xl font-bold">{leagueData?.name || 'BBB League'}</h2>
+              <h2 className={`${isMobile ? 'text-lg' : 'text-2xl'} font-bold`}>{leagueData?.name || 'BBB League'}</h2>
               <p className="text-white/70">
                 {currentWeek ? `Week ${currentWeek}` : 'Fantasy Football'} | {leagueData?.season || 'Current'} Season
               </p>
             </div>
-            <div className="mt-4 md:mt-0">
+            <div className={`${isMobile ? 'mt-2' : 'mt-4 md:mt-0'}`}>
               <a 
                 href={`https://sleeper.app/leagues/${leagueId}`} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF4B1F] rounded hover:bg-[#FF4B1F]/80 transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF4B1F] rounded hover:bg-[#FF4B1F]/80 transition-colors text-sm"
               >
                 <span>View on Sleeper</span>
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -543,30 +554,30 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className={`max-w-7xl mx-auto ${isMobile ? 'p-2' : 'p-6'}`}>
+        <div className={`grid grid-cols-1 ${isMobile ? 'gap-4' : 'lg:grid-cols-3 gap-8'}`}>
           {/* Main Content (Matchups + Standings) */}
-          <div className="lg:col-span-2 space-y-8">
+          <div className={`${isMobile ? '' : 'lg:col-span-2'} space-y-6 md:space-y-8`}>
             {/* Matchups Section */}
-            <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-              <h2 className="text-xl font-bold mb-6 text-[#FF4B1F]">
+            <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
+              <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
                 {currentWeek ? `Week ${currentWeek} Matchups` : 'Current Matchups'}
               </h2>
               
               {matchups.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3 md:space-y-4">
                   {matchups.map((matchup, index) => (
                     <div 
                       key={index}
-                      className="bg-black/20 rounded-lg border border-white/10 p-4 hover:border-[#FF4B1F]/50 transition-colors"
+                      className="bg-black/20 rounded-lg border border-white/10 p-3 md:p-4 hover:border-[#FF4B1F]/50 transition-colors"
                     >
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                         {matchup.map((team, teamIndex) => (
                           <div 
                             key={teamIndex} 
-                            className={`flex items-center gap-4 ${teamIndex === 0 ? 'md:border-r md:border-white/10' : ''}`}
+                            className={`flex items-center gap-3 md:gap-4 ${teamIndex === 0 ? 'md:border-r md:border-white/10' : ''}`}
                           >
-                            <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
+                            <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
                               {team.avatar ? (
                                 <img 
                                   src={`https://sleepercdn.com/avatars/${team.avatar}`} 
@@ -574,17 +585,17 @@ export default function Home() {
                                   className="w-full h-full object-cover" 
                                 />
                               ) : (
-                                <span className="text-xl font-bold text-[#FF4B1F]">
+                                <span className="text-lg md:text-xl font-bold text-[#FF4B1F]">
                                   {team.teamName?.charAt(0) || 'T'}
                                 </span>
                               )}
                             </div>
                             <div className="flex-1">
                               <div className="font-bold truncate">{team.teamName}</div>
-                              <div className="flex gap-4">
+                              <div className="flex gap-3 md:gap-4">
                                 <div>
                                   <span className="text-xs text-white/50">Score</span>
-                                  <div className="font-bold text-lg">{team.points?.toFixed(1) || '0.0'}</div>
+                                  <div className="font-bold text-base md:text-lg">{team.points?.toFixed(1) || '0.0'}</div>
                                 </div>
                                 <div>
                                   <span className="text-xs text-white/50">Projected</span>
@@ -604,29 +615,29 @@ export default function Home() {
             </div>
             
             {/* Standings Section */}
-            <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-              <h2 className="text-xl font-bold mb-6 text-[#FF4B1F]">League Standings</h2>
+            <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
+              <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>League Standings</h2>
               <StandingsSection standingsData={standings} />
             </div>
           </div>
           
           {/* Sidebar (News + Quick Links) */}
-          <div className="space-y-8">
+          <div className="space-y-6 md:space-y-8">
             {/* News Section */}
-            <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-              <h2 className="text-xl font-bold mb-6 text-[#FF4B1F]">
+            <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
+              <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
                 Latest News
               </h2>
               
               {news.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3 md:space-y-4">
                   {news.map((item, index) => (
                     <a
                       key={index}
                       href={item.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-colors"
+                      className="block bg-black/20 rounded-lg p-3 md:p-4 hover:bg-black/30 transition-colors"
                     >
                       <h3 className="font-bold truncate">{item.title}</h3>
                       <div className="flex text-xs text-white/50 mt-2 justify-between">
@@ -637,15 +648,15 @@ export default function Home() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center text-white/70 py-8">
+                <div className="text-center text-white/70 py-6 md:py-8">
                   No news available
                 </div>
               )}
             </div>
             
             {/* Quick Links Section */}
-            <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-              <h2 className="text-xl font-bold mb-6 text-[#FF4B1F]">
+            <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
+              <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
                 Quick Links
               </h2>
               
@@ -689,7 +700,7 @@ function LinkCard({ title, description, href }) {
   return (
     <Link 
       href={href}
-      className="block bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-colors"
+      className="block bg-black/20 rounded-lg p-3 md:p-4 hover:bg-black/30 transition-colors"
     >
       <h3 className="font-bold">{title}</h3>
       <p className="text-sm text-white/70">{description}</p>

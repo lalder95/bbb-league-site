@@ -5,6 +5,16 @@ export default function SalaryCap() {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: 'team', direction: 'asc' });
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -180,15 +190,15 @@ export default function SalaryCap() {
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
-      <div className="bg-black/30 p-6 border-b border-white/10">
+      <div className={`${isMobile ? 'p-4' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
             <img 
               src="/logo.png" 
               alt="BBB League" 
-              className="h-16 w-16 transition-transform hover:scale-105"
+              className={isMobile ? "h-12 w-12 transition-transform hover:scale-105" : "h-16 w-16 transition-transform hover:scale-105"}
             />
-            <h1 className="text-3xl font-bold text-[#FF4B1F]">Salary Cap Space</h1>
+            <h1 className={isMobile ? "text-2xl font-bold text-[#FF4B1F]" : "text-3xl font-bold text-[#FF4B1F]"}>Salary Cap Space</h1>
           </div>
         </div>
       </div>
