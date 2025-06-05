@@ -51,7 +51,7 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-2 md:px-4">
-      <div className="bg-[#001A2B] border border-white/10 rounded-lg max-w-4xl w-full shadow-2xl overflow-hidden">
+      <div className="relative bg-[#001A2B] border border-white/10 rounded-lg max-w-4xl w-full shadow-2xl overflow-y-auto max-h-[90vh]">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent p-4 border-b border-white/10">
           <h2 className={`${isMobile ? "text-xl" : "text-2xl"} font-bold text-[#FF4B1F]`}>Trade Summary</h2>
@@ -245,7 +245,7 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
           </div>
 
           {/* Footer with legend and buttons */}
-          <div className={`mt-4 md:mt-6 flex flex-col sm:flex-row justify-between items-center gap-4`}>
+          <div className={`mt-4 md:mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 sticky bottom-0 bg-[#001A2B] py-3`}>
             <div className="text-xs text-white/70 flex flex-wrap gap-x-4 gap-y-2">
               <div className="flex items-center">
                 <div className="w-3 h-3 bg-red-500 mr-1 rounded-full"></div>
@@ -281,6 +281,8 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
               </button>
             </div>
           </div>
+          {/* Extra padding for mobile to ensure button is accessible */}
+          <div className="h-8 md:h-0" />
         </div>
       </div>
     </div>
