@@ -2,19 +2,21 @@
 import React, { useState, useEffect } from 'react';
 import TradeSummary from './TradeSummary';
 
+// Add: For animation
+import { CSSTransition, TransitionGroup } from 'react-transition-group';
+import './playerCardAnimations.css'; // You'll need to create this CSS file for the animation
+
 const PlayerCard = ({ player, onRemove, showRemove = true, onClick = null }) => (
   <div
     className={`bg-white/5 rounded p-2 mb-2 ${onClick ? 'cursor-pointer hover:bg-white/10' : ''}`}
     onClick={onClick}
   >
-    {/* Top row: Name, Position, NFL Team */}
+    {/* Top row: Name, Position */}
     <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
       <div className="font-bold text-base">{player.playerName}</div>
       <div className="flex items-center gap-2">
         <span className="bg-black/20 px-2 py-0.5 rounded text-sm">{player.position}</span>
-        {player.nflTeam && (
-          <span className="bg-black/20 px-2 py-0.5 rounded text-sm">{player.nflTeam}</span>
-        )}
+        {/* NFL team badge removed */}
       </div>
     </div>
     {/* Year headers */}
@@ -73,6 +75,16 @@ function TeamSection({
   tradeValidation,
   impact
 }) {
+  // Animation: Track which player was just added
+  const [justAddedId, setJustAddedId] = useState(null);
+
+  // When a player is added, set justAddedId for animation
+  const handleAddPlayer = (player) => {
+    setSelectedPlayers([...selectedPlayers, player]);
+    setJustAddedId(player.id);
+    setTimeout(() => setJustAddedId(null), 600); // Match animation duration
+  };
+
   return (
     <div className="flex-1 p-4">
       <div className="bg-black/30 rounded-lg border border-white/10 p-4">
@@ -103,23 +115,30 @@ function TeamSection({
 
             <div className="mb-4">
               <h3 className="text-sm font-bold mb-2 text-white/70">Selected Players:</h3>
-              <div className="space-y-2 bg-[#FF4B1F]/10 border border-[#FF4B1F]/40 rounded p-2">
+              <div className="space-y-2 bg-[#FF4B1F]/20 border-2 border-[#FF4B1F] rounded p-2 shadow-lg">
                 {selectedPlayers.length === 0 && (
                   <div className="text-xs text-white/40 italic">No players selected.</div>
                 )}
-                {selectedPlayers.map(player => (
-                  <PlayerCard
-                    key={player.id}
-                    player={player}
-                    onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
-                  />
-                ))}
+                <TransitionGroup>
+                  {selectedPlayers.map(player => (
+                    <CSSTransition
+                      key={player.id}
+                      timeout={600}
+                      classNames={justAddedId === player.id ? "player-card-pop" : ""}
+                    >
+                      <PlayerCard
+                        player={player}
+                        onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
+                      />
+                    </CSSTransition>
+                  ))}
+                </TransitionGroup>
               </div>
             </div>
 
             <div>
               <h3 className="text-sm font-bold mb-2 text-white/70">Available Players:</h3>
-              <div className="max-h-60 overflow-y-auto space-y-1 bg-black/20 border border-white/10 rounded p-2">
+              <div className="max-h-60 overflow-y-auto space-y-1 bg-black/30 border-2 border-white/20 rounded p-2">
                 {filteredPlayers.length === 0 && (
                   <div className="text-xs text-white/40 italic">No available players.</div>
                 )}
@@ -128,7 +147,7 @@ function TeamSection({
                     key={player.id}
                     player={player}
                     showRemove={false}
-                    onClick={() => setSelectedPlayers([...selectedPlayers, player])}
+                    onClick={() => handleAddPlayer(player)}
                   />
                 ))}
               </div>
@@ -414,3 +433,22 @@ export default function Trade() {
     </main>
   );
 }
+
+// --- Add this CSS file in your project (src/app/trade/playerCardAnimations.css) ---
+// .player-card-pop-enter {
+//   opacity: 0;
+//   transform: scale(0.95);
+// }
+// .player-card-pop-enter-active {
+//   opacity: 1;
+//   transform: scale(1.05);
+//   transition: opacity 0.3s, transform 0.3s;
+// }
+// .player-card-pop-exit {
+//   opacity: 1;
+// }
+// .player-card-pop-exit-active {
+//   opacity: 0;
+//   transition: opacity 0.3s;
+// }
+// -------------------------------------------------------------------------------
