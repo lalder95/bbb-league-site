@@ -3,8 +3,7 @@ import React, { useState, useEffect } from 'react';
 import TradeSummary from './TradeSummary';
 
 // Add: For animation
-import { CSSTransition, TransitionGroup } from 'react-transition-group';
-import './playerCardAnimations.css'; // You'll need to create this CSS file for the animation
+import { AnimatePresence, motion } from 'framer-motion';
 
 const PlayerCard = ({ player, onRemove, showRemove = true, onClick = null }) => (
   <div
@@ -119,22 +118,22 @@ function TeamSection({
                 {selectedPlayers.length === 0 && (
                   <div className="text-xs text-white/40 italic">No players selected.</div>
                 )}
-                <TransitionGroup>
+                <AnimatePresence>
                   {selectedPlayers.map(player => (
-                    <CSSTransition
+                    <motion.div
                       key={player.id}
-                      timeout={600}
-                      classNames="player-card-pop"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1.05 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.3 }}
                     >
-                      <div>
-                        <PlayerCard
-                          player={player}
-                          onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
-                        />
-                      </div>
-                    </CSSTransition>
+                      <PlayerCard
+                        player={player}
+                        onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
+                      />
+                    </motion.div>
                   ))}
-                </TransitionGroup>
+                </AnimatePresence>
               </div>
             </div>
 
