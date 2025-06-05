@@ -103,7 +103,10 @@ function TeamSection({
 
             <div className="mb-4">
               <h3 className="text-sm font-bold mb-2 text-white/70">Selected Players:</h3>
-              <div className="space-y-2">
+              <div className="space-y-2 bg-[#FF4B1F]/10 border border-[#FF4B1F]/40 rounded p-2">
+                {selectedPlayers.length === 0 && (
+                  <div className="text-xs text-white/40 italic">No players selected.</div>
+                )}
                 {selectedPlayers.map(player => (
                   <PlayerCard
                     key={player.id}
@@ -116,7 +119,10 @@ function TeamSection({
 
             <div>
               <h3 className="text-sm font-bold mb-2 text-white/70">Available Players:</h3>
-              <div className="max-h-60 overflow-y-auto space-y-1">
+              <div className="max-h-60 overflow-y-auto space-y-1 bg-black/20 border border-white/10 rounded p-2">
+                {filteredPlayers.length === 0 && (
+                  <div className="text-xs text-white/40 italic">No available players.</div>
+                )}
                 {filteredPlayers.map(player => (
                   <PlayerCard
                     key={player.id}
@@ -312,6 +318,17 @@ export default function Trade() {
 
   const tradeValidation = teamA && teamB ? validateTrade() : null;
 
+  // Reset handler
+  const handleReset = () => {
+    setTeamA('');
+    setTeamB('');
+    setSelectedPlayersA([]);
+    setSelectedPlayersB([]);
+    setSearchTermA('');
+    setSearchTermB('');
+    setShowSummary(false);
+  };
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       <div className="bg-black/30 p-6 border-b border-white/10">
@@ -324,6 +341,12 @@ export default function Trade() {
             />
             <h1 className="text-3xl font-bold text-[#FF4B1F]">Trade Calculator</h1>
           </div>
+          <button
+            onClick={handleReset}
+            className="px-4 py-2 bg-white/10 border border-white/20 rounded text-white hover:bg-[#FF4B1F]/80 hover:text-white transition-colors"
+          >
+            Reset Trade
+          </button>
         </div>
       </div>
 
