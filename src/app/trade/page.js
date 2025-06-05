@@ -126,10 +126,12 @@ function TeamSection({
                       timeout={600}
                       classNames="player-card-pop"
                     >
-                      <PlayerCard
-                        player={player}
-                        onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
-                      />
+                      <div>
+                        <PlayerCard
+                          player={player}
+                          onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
+                        />
+                      </div>
                     </CSSTransition>
                   ))}
                 </TransitionGroup>
