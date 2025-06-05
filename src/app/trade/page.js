@@ -71,7 +71,7 @@ export default function Trade() {
   const [teamB, setTeamB] = useState('');
   const [showSummary, setShowSummary] = useState(false);
 
-  // Fetch contract and KTC data
+  // Fetch contract data (KTC from contracts CSV)
   useEffect(() => {
     async function fetchData() {
       try {
@@ -90,6 +90,7 @@ export default function Trade() {
               playerName: values[1],
               team: values[33],
               position: values[21],
+              nflTeam: values[22], // Make sure this is the correct index for NFL team
               status: status,
               contractType: values[2],
               contractFinalYear: values[5],
@@ -97,36 +98,13 @@ export default function Trade() {
               year2: isActive ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
               year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
               year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
-              isActive: isActive
+              isActive: isActive,
+              ktcValue: parseFloat(values[34]) || undefined // <-- KTC from contracts CSV
             };
           })
           .filter(player => player.status === 'Active');
 
-        // Fetch KTC values (mock endpoint, replace with real if available)
-        let ktcMap = {};
-        try {
-          const ktcRes = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_KTC.csv');
-          const ktcText = await ktcRes.text();
-          const ktcRows = ktcText.split('\n');
-          // Assume: Player Name, KTC Value
-          ktcRows.slice(1).forEach(row => {
-            const [name, value] = row.split(',');
-            if (name && value) {
-              ktcMap[name.trim().toLowerCase()] = parseFloat(value);
-            }
-          });
-        } catch (e) {
-          // If KTC fetch fails, just skip
-          ktcMap = {};
-        }
-
-        // Merge KTC values into player objects
-        const merged = parsedData.map(player => ({
-          ...player,
-          ktcValue: ktcMap[player.playerName.trim().toLowerCase()]
-        }));
-
-        setPlayers(merged);
+        setPlayers(parsedData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -275,11 +253,7 @@ export default function Trade() {
                 type="text"
                 placeholder="Search players..."
                 value={searchTerm}
-                onChange={(e) => {
-                  e.preventDefault();
-                  const value = e.target.value;
-                  setSearchTerm(value);
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full p-2 mb-4 rounded bg-white/5 border border-white/10 text-white"
               />
 
