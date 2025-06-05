@@ -122,9 +122,9 @@ function TeamSection({
                   {selectedPlayers.map(player => (
                     <motion.div
                       key={player.id}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1.05 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
                       transition={{ duration: 0.3 }}
                     >
                       <PlayerCard
