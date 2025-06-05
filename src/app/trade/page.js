@@ -3,38 +3,56 @@ import React, { useState, useEffect } from 'react';
 import TradeSummary from './TradeSummary';
 
 const PlayerCard = ({ player, onRemove, showRemove = true, onClick = null }) => (
-  <div 
-    className={`flex flex-col md:flex-row md:items-center justify-between bg-white/5 p-2 rounded relative ${onClick ? 'cursor-pointer hover:bg-white/10' : ''}`}
+  <div
+    className={`bg-white/5 rounded p-2 mb-2 ${onClick ? 'cursor-pointer hover:bg-white/10' : ''}`}
     onClick={onClick}
   >
-    <div className="flex flex-col md:flex-row md:items-center gap-2">
+    {/* Top row: Name, Position, NFL Team */}
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+      <div className="font-bold text-base">{player.playerName}</div>
       <div className="flex items-center gap-2">
-        <span className="font-bold">{player.playerName}</span>
-        <span className="text-white/70">({player.position})</span>
-        <span className="text-green-400">${player.curYear.toFixed(1)}</span>
-        {player.year2 > 0 && <span className="text-yellow-400">${player.year2.toFixed(1)}</span>}
-        {player.year3 > 0 && <span className="text-orange-400">${player.year3.toFixed(1)}</span>}
-        {player.year4 > 0 && <span className="text-red-400">${player.year4.toFixed(1)}</span>}
+        <span className="bg-black/20 px-2 py-0.5 rounded text-sm">{player.position}</span>
+        {player.nflTeam && (
+          <span className="bg-black/20 px-2 py-0.5 rounded text-sm">{player.nflTeam}</span>
+        )}
       </div>
-      <div className="flex items-center gap-2 text-xs mt-1 md:mt-0">
-        <span className="bg-[#FF4B1F]/20 px-2 py-1 rounded">
-          Contract: {player.contractType || 'N/A'}
-        </span>
-        <span className="bg-blue-500/20 px-2 py-1 rounded">
-          Final Yr: {player.contractFinalYear || 'N/A'}
-        </span>
-        <span className="bg-green-700/20 px-2 py-1 rounded">
-          KTC: {player.ktcValue !== undefined ? player.ktcValue : '...'}
-        </span>
+    </div>
+    {/* Year headers */}
+    <div className="grid grid-cols-4 gap-2 text-xs text-white/70 mb-1">
+      <div>Year 1</div>
+      <div>Year 2</div>
+      <div>Year 3</div>
+      <div>Year 4</div>
+    </div>
+    {/* Year values */}
+    <div className="grid grid-cols-4 gap-2 text-sm font-mono mb-1">
+      <div className="text-green-400">${player.curYear?.toFixed(1) ?? '-'}</div>
+      <div className="text-yellow-400">${player.year2?.toFixed(1) ?? '-'}</div>
+      <div className="text-orange-400">${player.year3?.toFixed(1) ?? '-'}</div>
+      <div className="text-red-400">${player.year4?.toFixed(1) ?? '-'}</div>
+    </div>
+    {/* Contract details */}
+    <div className="grid grid-cols-2 gap-2 text-xs mt-1">
+      <div>
+        <span className="text-white/50">Type:</span>{' '}
+        <span className="font-semibold">{player.contractType || 'N/A'}</span>
+      </div>
+      <div>
+        <span className="text-white/50">Final Year:</span>{' '}
+        <span className="font-semibold">{player.contractFinalYear || 'N/A'}</span>
+      </div>
+      <div>
+        <span className="text-white/50">KTC Value:</span>{' '}
+        <span className="font-semibold">{player.ktcValue !== undefined ? player.ktcValue : '...'}</span>
       </div>
     </div>
     {showRemove && (
       <button
-        onClick={(e) => {
+        onClick={e => {
           e.stopPropagation();
           onRemove();
         }}
-        className="text-red-400 hover:text-red-300 mt-2 md:mt-0"
+        className="text-red-400 hover:text-red-300 mt-2 text-xs"
       >
         Remove
       </button>
