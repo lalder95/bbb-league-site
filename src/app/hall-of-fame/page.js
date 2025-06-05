@@ -110,9 +110,9 @@ export default function HallOfFame() {
             <img 
               src="/logo.png" 
               alt="BBB League" 
-              className={`${isMobile ? 'h-12 w-12' : 'h-16 w-16'} transition-transform hover:scale-105`
-/>
-<h1 className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>Hall of Fame</h1>
+              className={`${isMobile ? 'h-12 w-12' : 'h-16 w-16'} transition-transform hover:scale-105`}
+            />
+            <h1 className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>Hall of Fame</h1>
           </div>
         </div>
       </div>
