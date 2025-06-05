@@ -60,6 +60,115 @@ const PlayerCard = ({ player, onRemove, showRemove = true, onClick = null }) => 
   </div>
 );
 
+function TeamSection({ 
+  side, 
+  team, 
+  setTeam,
+  searchTerm, 
+  setSearchTerm, 
+  filteredPlayers, 
+  selectedPlayers, 
+  setSelectedPlayers,
+  uniqueTeams,
+  tradeValidation,
+  impact
+}) {
+  return (
+    <div className="flex-1 p-4">
+      <div className="bg-black/30 rounded-lg border border-white/10 p-4">
+        <h2 className="text-xl font-bold mb-4 text-[#FF4B1F]">Team {side}</h2>
+        <select
+          value={team}
+          onChange={(e) => {
+            setTeam(e.target.value);
+            setSelectedPlayers([]);
+          }}
+          className="w-full p-2 mb-4 rounded bg-white/5 border border-white/10 text-white"
+        >
+          <option value="">Select Team</option>
+          {uniqueTeams.map(team => (
+            <option key={team} value={team}>{team}</option>
+          ))}
+        </select>
+
+        {team && (
+          <>
+            <input
+              type="text"
+              placeholder="Search players..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full p-2 mb-4 rounded bg-white/5 border border-white/10 text-white"
+            />
+
+            <div className="mb-4">
+              <h3 className="text-sm font-bold mb-2 text-white/70">Selected Players:</h3>
+              <div className="space-y-2">
+                {selectedPlayers.map(player => (
+                  <PlayerCard
+                    key={player.id}
+                    player={player}
+                    onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold mb-2 text-white/70">Available Players:</h3>
+              <div className="max-h-60 overflow-y-auto space-y-1">
+                {filteredPlayers.map(player => (
+                  <PlayerCard
+                    key={player.id}
+                    player={player}
+                    showRemove={false}
+                    onClick={() => setSelectedPlayers([...selectedPlayers, player])}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {impact && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold mb-2 text-white/70">Before Trade:</h3>
+                  <CapImpactDisplay impact={impact.before} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold mb-2 text-white/70">After Trade:</h3>
+                  <CapImpactDisplay impact={impact.after} />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const CapImpactDisplay = ({ impact, label }) => (
+  <div className="grid grid-cols-4 gap-2 text-sm">
+    {Object.entries(impact).map(([year, value]) => (
+      <div key={year} className="text-center">
+        <div className="text-white/70">{year}</div>
+        <div className={getValidationColor(value)}>
+          {formatSalary(value)}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const formatSalary = (value) => `$${value.toFixed(1)}`;
+
+const getValidationColor = (value) => {
+  if (value < 0) return 'text-red-400';
+  if (value < 50) return 'text-[#FF4B1F]';
+  if (value < 100) return 'text-yellow-400';
+  return 'text-green-400';
+};
+
 export default function Trade() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -193,116 +302,6 @@ export default function Trade() {
     };
   };
 
-  const formatSalary = (value) => `$${value.toFixed(1)}`;
-
-  const getValidationColor = (value) => {
-    if (value < 0) return 'text-red-400';
-    if (value < 50) return 'text-[#FF4B1F]';
-    if (value < 100) return 'text-yellow-400';
-    return 'text-green-400';
-  };
-
-  const CapImpactDisplay = ({ impact, label }) => (
-    <div className="grid grid-cols-4 gap-2 text-sm">
-      {Object.entries(impact).map(([year, value]) => (
-        <div key={year} className="text-center">
-          <div className="text-white/70">{year}</div>
-          <div className={getValidationColor(value)}>
-            {formatSalary(value)}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const TeamSection = ({ 
-    side, 
-    team, 
-    setTeam,
-    searchTerm, 
-    setSearchTerm, 
-    filteredPlayers, 
-    selectedPlayers, 
-    setSelectedPlayers 
-  }) => {
-    const tradeValidation = team ? validateTrade() : null;
-    const impact = team === teamA ? tradeValidation?.impactA : tradeValidation?.impactB;
-
-    return (
-      <div className="flex-1 p-4">
-        <div className="bg-black/30 rounded-lg border border-white/10 p-4">
-          <h2 className="text-xl font-bold mb-4 text-[#FF4B1F]">Team {side}</h2>
-          
-          <select
-            value={team}
-            onChange={(e) => {
-              setTeam(e.target.value);
-              setSelectedPlayers([]);
-            }}
-            className="w-full p-2 mb-4 rounded bg-white/5 border border-white/10 text-white"
-          >
-            <option value="">Select Team</option>
-            {uniqueTeams.map(team => (
-              <option key={team} value={team}>{team}</option>
-            ))}
-          </select>
-
-          {team && (
-            <>
-              <input
-                type="text"
-                placeholder="Search players..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full p-2 mb-4 rounded bg-white/5 border border-white/10 text-white"
-              />
-
-              <div className="mb-4">
-                <h3 className="text-sm font-bold mb-2 text-white/70">Selected Players:</h3>
-                <div className="space-y-2">
-                  {selectedPlayers.map(player => (
-                    <PlayerCard
-                      key={player.id}
-                      player={player}
-                      onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-bold mb-2 text-white/70">Available Players:</h3>
-                <div className="max-h-60 overflow-y-auto space-y-1">
-                  {filteredPlayers.map(player => (
-                    <PlayerCard
-                      key={player.id}
-                      player={player}
-                      showRemove={false}
-                      onClick={() => setSelectedPlayers([...selectedPlayers, player])}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {impact && (
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">Before Trade:</h3>
-                    <CapImpactDisplay impact={impact.before} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold mb-2 text-white/70">After Trade:</h3>
-                    <CapImpactDisplay impact={impact.after} />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-[#001A2B] flex items-center justify-center">
@@ -370,6 +369,9 @@ export default function Trade() {
             filteredPlayers={filteredPlayersA}
             selectedPlayers={selectedPlayersA}
             setSelectedPlayers={setSelectedPlayersA}
+            uniqueTeams={uniqueTeams}
+            tradeValidation={tradeValidation}
+            impact={tradeValidation?.impactA}
           />
           <TeamSection
             side="B"
@@ -380,6 +382,9 @@ export default function Trade() {
             filteredPlayers={filteredPlayersB}
             selectedPlayers={selectedPlayersB}
             setSelectedPlayers={setSelectedPlayersB}
+            uniqueTeams={uniqueTeams}
+            tradeValidation={tradeValidation}
+            impact={tradeValidation?.impactB}
           />
         </div>
       </div>
