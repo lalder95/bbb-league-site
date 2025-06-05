@@ -124,7 +124,7 @@ function TeamSection({
                     <CSSTransition
                       key={player.id}
                       timeout={600}
-                      classNames={justAddedId === player.id ? "player-card-pop" : ""}
+                      classNames="player-card-pop"
                     >
                       <PlayerCard
                         player={player}
