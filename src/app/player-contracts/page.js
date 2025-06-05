@@ -367,38 +367,40 @@ export default function Home() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-black/40 border-b border-white/10">
-                {{
-                  key: 'playerName',
-                  label: 'Player Name'
-                },
-                {
-                  key: 'contractType',
-                  label: 'Contract Type'
-                },
-                {
-                  key: 'curYear',
-                  label: 'Cur Year'
-                },
-                {
-                  key: 'year2',
-                  label: 'Year 2'
-                },
-                {
-                  key: 'year3',
-                  label: 'Year 3'
-                },
-                {
-                  key: 'year4',
-                  label: 'Year 4'
-                },
-                {
-                  key: 'contractFinalYear',
-                  label: 'Final Year'
-                },
-                {
-                  key: 'team',
-                  label: 'Team'
-                }}.map(({ key, label }) => (
+                {[
+                  {
+                    key: 'team',
+                    label: 'Team'
+                  },
+                  {
+                    key: 'playerName',
+                    label: 'Player Name'
+                  },
+                  {
+                    key: 'contractType',
+                    label: 'Contract Type'
+                  },
+                  {
+                    key: 'curYear',
+                    label: 'Cur Year'
+                  },
+                  {
+                    key: 'year2',
+                    label: 'Year 2'
+                  },
+                  {
+                    key: 'year3',
+                    label: 'Year 3'
+                  },
+                  {
+                    key: 'year4',
+                    label: 'Year 4'
+                  },
+                  {
+                    key: 'contractFinalYear',
+                    label: 'Final Year'
+                  }
+                ].map(({ key, label }) => (
                   <th 
                     key={key}
                     onClick={() => handleSort(key)}

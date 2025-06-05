@@ -484,7 +484,7 @@ export default function Home() {
                   { teamName: 'Team C', points: 95.7, projected: 100.1 },
                   { teamName: 'Team D', points: 130.2, projected: 125.6 }
                 ]
-              );
+              ]);
               setStandings({
                 divisions: {
                   1: [
