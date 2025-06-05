@@ -523,7 +523,11 @@ export default function Home() {
       {/* Header Banner - Just the title, no navigation */}
       <div className={`${isMobile ? 'p-3' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <h1 className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>Budget Blitz Bowl</h1>
+          <img
+            src="/logo.png"
+            alt="BBB League"
+            className={`${isMobile ? 'h-12 w-12' : 'h-16 w-16'} transition-transform hover:scale-105`}
+          />
         </div>
       </div>
 
