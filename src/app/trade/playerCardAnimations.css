@@ -1,0 +1,16 @@
+.player-card-pop-enter {
+  opacity: 0;
+  transform: scale(0.95);
+}
+.player-card-pop-enter-active {
+  opacity: 1;
+  transform: scale(1.05);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.player-card-pop-exit {
+  opacity: 1;
+}
+.player-card-pop-exit-active {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
