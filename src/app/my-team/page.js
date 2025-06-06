@@ -25,6 +25,7 @@ export default function MyTeam() {
   useEffect(() => {
     async function fetchActivity() {
       if (!session?.user?.id) return;
+      console.log("Session user object:", session.user); // <-- Add this line
       setLoading(true);
 
       // Get all BBB leagues for this user from 2024 to current
