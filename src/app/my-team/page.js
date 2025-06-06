@@ -33,6 +33,34 @@ export default function MyTeam() {
   const [playersAddedDetails, setPlayersAddedDetails] = useState({});
   const [rookiesDraftedDetails, setRookiesDraftedDetails] = useState({});
 
+  // Player map from BBB_Contracts.csv
+  const [playerMap, setPlayerMap] = useState({});
+
+  useEffect(() => {
+    // Load player map from BBB_Contracts.csv (same logic as player-contracts page)
+    async function fetchPlayerMap() {
+      const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+      const text = await response.text();
+      const rows = text.split('\n');
+      const headers = rows[0].split(',');
+      const idIdx = headers.findIndex(h => h.trim().toLowerCase() === 'playerid' || h.trim().toLowerCase() === 'player_id');
+      const nameIdx = headers.findIndex(h => h.trim().toLowerCase() === 'playername' || h.trim().toLowerCase() === 'player_name');
+      const map = {};
+      rows.slice(1).forEach(row => {
+        const values = row.split(',');
+        if (values[idIdx] && values[nameIdx]) {
+          map[values[idIdx].trim()] = values[nameIdx].trim();
+        }
+      });
+      setPlayerMap(map);
+    }
+    fetchPlayerMap();
+  }, []);
+
+  function getPlayerName(id) {
+    return playerMap[id] || id;
+  }
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
@@ -174,9 +202,9 @@ export default function MyTeam() {
                     <li key={tx.transaction_id}>
                       Trade ID: {tx.transaction_id} (Week {tx.leg})<br />
                       Other Managers: {managers}<br />
-                      Players Added: {addedPlayers.length > 0 ? addedPlayers.join(', ') : 'N/A'}<br />
+                      Players Added: {addedPlayers.length > 0 ? addedPlayers.map(getPlayerName).join(', ') : 'N/A'}<br />
                       Players/Picks Traded Away: 
-                      {tradedAwayPlayers.length > 0 ? ` Players: ${tradedAwayPlayers.join(', ')}` : ''}
+                      {tradedAwayPlayers.length > 0 ? ` Players: ${tradedAwayPlayers.map(getPlayerName).join(', ')}` : ''}
                       {tradedAwayPicks.length > 0
                         ? ` Picks: ${tradedAwayPicks.map(p => `S${p.season} R${p.round}`).join(', ')}`
                         : ''}
@@ -201,7 +229,7 @@ export default function MyTeam() {
                 {txs.map(tx => (
                   <li key={tx.transaction_id}>
                     {tx.adds
-                      ? Object.keys(tx.adds).join(', ')
+                      ? Object.keys(tx.adds).map(getPlayerName).join(', ')
                       : 'Unknown Player'} (Week {tx.leg})
                   </li>
                 ))}
@@ -222,7 +250,7 @@ export default function MyTeam() {
               <ul className="ml-4 list-disc">
                 {picks.map(pick => (
                   <li key={pick.pick_no}>
-                    {pick.metadata?.first_name || ''} {pick.metadata?.last_name || ''} 
+                    {pick.metadata?.first_name || getPlayerName(pick.player_id) || ''} {pick.metadata?.last_name || ''} 
                     {pick.round ? ` - Round ${pick.round}` : ''} 
                     {pick.pick_no ? `, Pick ${pick.pick_no}` : ''}
                   </li>
