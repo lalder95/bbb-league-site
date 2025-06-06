@@ -24,15 +24,16 @@ export default function MyTeam() {
 
   useEffect(() => {
     async function fetchActivity() {
-      if (!session?.user?.id) return;
-      console.log("Session user object:", session.user); // <-- Add this line
+      // Use sleeperId for Sleeper API calls!
+      if (!session?.user?.sleeperId) return;
+      console.log("Session user object:", session.user);
       setLoading(true);
 
       // Get all BBB leagues for this user from 2024 to current
       const allLeagues = [];
       const currentYear = new Date().getFullYear();
       for (let season = 2024; season <= currentYear; season++) {
-        const leagues = await getUserLeagues(session.user.id, season);
+        const leagues = await getUserLeagues(session.user.sleeperId, season);
         console.log(`Leagues for ${season}:`, leagues.map(l => l.name));
         const bbbLeagues = leagues.filter(league => league.name === "Budget Blitz Bowl");
         allLeagues.push(...bbbLeagues);
