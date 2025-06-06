@@ -3,13 +3,12 @@ import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
-import { getBudgetBlitzBowlLeagues, getAllLeagueTransactions } from './myTeamApi';
+import { getAllTimeBudgetBlitzBowlLeagues, getAllLeagueTransactions } from './myTeamApi';
 
 export default function MyTeam() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  // State for activity badge data
   const [activity, setActivity] = useState({
     trades: 0,
     playersAdded: 0,
@@ -17,41 +16,36 @@ export default function MyTeam() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Redirect if not logged in
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
     }
   }, [status, router]);
 
-  // Fetch activity data for the current user
   useEffect(() => {
     async function fetchActivity() {
       if (!session?.user?.id) return;
       setLoading(true);
 
-      // Example: get all BBB leagues for this user for the current season
-      const season = new Date().getFullYear();
-      const leagues = await getBudgetBlitzBowlLeagues(session.user.id, season);
+      // Get all BBB leagues for this user from 2024 to current
+      const leagues = await getAllTimeBudgetBlitzBowlLeagues(session.user.id);
 
-      // For demo, just use the first league (expand as needed)
-      if (leagues.length === 0) {
-        setLoading(false);
-        return;
+      let trades = 0;
+      let playersAdded = 0;
+      // let draftPicks = 0; // To implement if you want to aggregate draft picks
+
+      // Aggregate across all leagues
+      for (const league of leagues) {
+        const transactions = await getAllLeagueTransactions(league.league_id);
+        trades += transactions.filter(tx => tx.type === 'trade').length;
+        playersAdded += transactions.filter(tx => tx.type === 'add').length;
+        // Add draft pick aggregation here if needed
       }
-      const leagueId = leagues[0].league_id;
 
-      // Fetch all transactions for this league
-      const transactions = await getAllLeagueTransactions(leagueId);
-
-      // Calculate activity stats
-      const trades = transactions.filter(tx => tx.type === 'trade').length;
-      const playersAdded = transactions.filter(tx => tx.type === 'add').length;
-      // Draft picks would require draft API, for now set to 0
       setActivity({
         trades,
         playersAdded,
-        draftPicks: 0,
+        draftPicks: 0, // Update if you implement draft pick aggregation
       });
       setLoading(false);
     }
