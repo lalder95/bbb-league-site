@@ -31,15 +31,11 @@ export default function MyTeam() {
   // Player map from BBB_Contracts.csv
   const [playerMap, setPlayerMap] = useState({});
 
-  // Finance badge state (replace with real values as needed)
+  // Finance badge state (now only the three you want)
   const [finance, setFinance] = useState({
-    salaryCap: 0,
     capSpace: 0,
     deadCap: 0,
-    contracts: 0,
-    extensions: 0,
-    franchiseTags: 0,
-    transitionTags: 0,
+    teamFines: 0,
   });
 
   useEffect(() => {
@@ -147,13 +143,9 @@ export default function MyTeam() {
 
       // TODO: Replace these with real finance calculations
       setFinance({
-        salaryCap: 200,         // Example value
-        capSpace: 35,           // Example value
-        deadCap: 10,            // Example value
-        contracts: 18,          // Example value
-        extensions: 2,          // Example value
-        franchiseTags: 1,       // Example value
-        transitionTags: 0,      // Example value
+        capSpace: 35,      // Example value
+        deadCap: 10,       // Example value
+        teamFines: 2,      // Example value
       });
 
       setLoading(false);
@@ -198,13 +190,9 @@ export default function MyTeam() {
             <div className="mt-8">
               <h2 className="text-2xl font-bold mb-4 text-white">Team Finances</h2>
               <FinanceBadges
-                salaryCap={finance.salaryCap}
                 capSpace={finance.capSpace}
                 deadCap={finance.deadCap}
-                contracts={finance.contracts}
-                extensions={finance.extensions}
-                franchiseTags={finance.franchiseTags}
-                transitionTags={finance.transitionTags}
+                teamFines={finance.teamFines}
               />
             </div>
           </>
