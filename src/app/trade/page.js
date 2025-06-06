@@ -125,7 +125,7 @@ function TeamSection({
                       initial={{ opacity: 0, y: 30 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 30 }}
-                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      transition={{ type: "spring", stiffness: 3000, damping: 20 }}
                     >
                       <PlayerCard
                         player={player}
@@ -252,19 +252,23 @@ export default function Trade() {
 
   const uniqueTeams = [...new Set(players.map(player => player.team))].sort();
 
-  const filteredPlayersA = players.filter(player => 
-    player.team === teamA &&
-    player.playerName.toLowerCase().includes(searchTermA.toLowerCase()) &&
-    !selectedPlayersA.some(selected => selected.id === player.id) &&
-    !selectedPlayersB.some(selected => selected.id === player.id)
-  );
+  const filteredPlayersA = players
+    .filter(player => 
+      player.team === teamA &&
+      player.playerName.toLowerCase().includes(searchTermA.toLowerCase()) &&
+      !selectedPlayersA.some(selected => selected.id === player.id) &&
+      !selectedPlayersB.some(selected => selected.id === player.id)
+    )
+    .sort((a, b) => a.playerName.localeCompare(b.playerName)); // Alphabetize by name
 
-  const filteredPlayersB = players.filter(player => 
-    player.team === teamB &&
-    player.playerName.toLowerCase().includes(searchTermB.toLowerCase()) &&
-    !selectedPlayersA.some(selected => selected.id === player.id) &&
-    !selectedPlayersB.some(selected => selected.id === player.id)
-  );
+  const filteredPlayersB = players
+    .filter(player => 
+      player.team === teamB &&
+      player.playerName.toLowerCase().includes(searchTermB.toLowerCase()) &&
+      !selectedPlayersA.some(selected => selected.id === player.id) &&
+      !selectedPlayersB.some(selected => selected.id === player.id)
+    )
+    .sort((a, b) => a.playerName.localeCompare(b.playerName)); // Alphabetize by name
 
   const calculateCapImpact = (playerList) => {
     return {
