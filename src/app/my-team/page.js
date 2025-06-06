@@ -58,7 +58,7 @@ export default function MyTeam() {
   }, []);
 
   function getPlayerName(id) {
-    return playerMap[id] || id;
+    return playerMap[String(id)] || id;
   }
 
   useEffect(() => {
