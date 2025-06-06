@@ -73,7 +73,7 @@ export default function MyTeam() {
               This page will show your team roster, player contracts, salary cap situation, draft capital, and league comparison tools.
             </p>
             <div className="py-4 px-6 bg-black/40 rounded-lg inline-block">
-              <p className="text-[#FF4B1F]">Expected launch: May 2025</p>
+              <p className="text-[#FF4B1F]">Expected launch: idk lol</p>
             </div>
           </div>
         </div>
