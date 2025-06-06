@@ -42,21 +42,31 @@ export default function MyTeam() {
 
       let trades = 0;
       let playersAdded = 0;
-      // let draftPicks = 0; // To implement if you want to aggregate draft picks
+      let draftPicks = 0;
 
       // Aggregate across all leagues
       for (const league of allLeagues) {
         const transactions = await getAllLeagueTransactions(league.league_id);
         console.log(`Transactions for league ${league.league_id}:`, transactions);
         trades += transactions.filter(tx => tx.type === 'trade').length;
-        playersAdded += transactions.filter(tx => tx.type === 'add').length;
-        // Add draft pick aggregation here if needed
+        playersAdded += transactions.filter(
+          tx =>
+            tx.status === "successful" &&
+            (tx.type === "waiver" || tx.type === "free_agent")
+        ).length;
+
+        // Draft picks
+        const drafts = await getLeagueDrafts(league.league_id);
+        for (const draft of drafts) {
+          const picks = await getDraftPicks(draft.draft_id);
+          draftPicks += picks.filter(pick => pick.picked_by === session.user.sleeperId).length;
+        }
       }
 
       setActivity({
         trades,
         playersAdded,
-        draftPicks: 0, // Update if you implement draft pick aggregation
+        draftPicks,
       });
       setLoading(false);
     }
