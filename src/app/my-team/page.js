@@ -27,12 +27,6 @@ export default function MyTeam() {
   const [leagueRosters, setLeagueRosters] = useState({});
   const loaded = useRef(false);
 
-  // For details modal/section
-  const [showDetail, setShowDetail] = useState(null); // 'trades' | 'playersAdded' | 'rookiesDrafted' | null
-  const [tradeDetails, setTradeDetails] = useState({});
-  const [playersAddedDetails, setPlayersAddedDetails] = useState({});
-  const [rookiesDraftedDetails, setRookiesDraftedDetails] = useState({});
-
   // Player map from BBB_Contracts.csv
   const [playerMap, setPlayerMap] = useState({});
 
@@ -139,130 +133,10 @@ export default function MyTeam() {
         rookiesDrafted: rookiesDrafted.length,
       });
 
-      setTradeDetails(groupByYear(trades, tx => new Date(tx.created).getFullYear()));
-      setPlayersAddedDetails(groupByYear(playersAdded, tx => tx.leg ? 2024 + (tx.leg - 1) : 'Unknown'));
-      setRookiesDraftedDetails(groupByYear(rookiesDrafted, pick => pick.season));
-
       setLoading(false);
     }
     fetchActivity();
   }, [session, status]);
-
-  // Helper to get manager names from roster_ids
-  function getManagerNames(league_id, roster_ids) {
-    const rosters = leagueRosters[league_id] || [];
-    return roster_ids
-      .map(rid => {
-        const roster = rosters.find(r => r.roster_id === rid);
-        return roster?.owner_id === session.user.sleeperId
-          ? "(You)"
-          : roster?.owner_id || "Unknown";
-      })
-      .join(', ');
-  }
-
-  // Helper to get traded away players/picks for the current user
-  function getTradedAway(tx, league_id) {
-    const rosters = leagueRosters[league_id] || [];
-    const myRoster = rosters.find(r => r.owner_id === session.user.sleeperId);
-    if (!myRoster) return { players: [], picks: [] };
-    const myRosterId = myRoster.roster_id;
-
-    // Players traded away: drops by my roster
-    const droppedPlayers = tx.drops
-      ? Object.entries(tx.drops)
-          .filter(([_, rid]) => rid === myRosterId)
-          .map(([pid]) => pid)
-      : [];
-
-    // Picks traded away: draft_picks where previous_owner_id is myRosterId
-    const picksAway = (tx.draft_picks || []).filter(
-      pick => pick.previous_owner_id === myRosterId
-    );
-
-    return { players: droppedPlayers, picks: picksAway };
-  }
-
-  // Render details for each badge
-  function renderDetails() {
-    if (showDetail === 'trades') {
-      return (
-        <div className="bg-black/80 p-4 rounded mt-4">
-          <h3 className="font-bold text-lg mb-2">Trades Made (by Year)</h3>
-          {Object.keys(tradeDetails).length === 0 && <div>No trades found.</div>}
-          {Object.entries(tradeDetails).map(([year, txs]) => (
-            <div key={year} className="mb-2">
-              <div className="font-semibold">{year}</div>
-              <ul className="ml-4 list-disc">
-                {txs.map(tx => {
-                  const addedPlayers = tx.adds ? Object.keys(tx.adds) : [];
-                  const managers = getManagerNames(tx.league_id, tx.roster_ids || []);
-                  const { players: tradedAwayPlayers, picks: tradedAwayPicks } = getTradedAway(tx, tx.league_id);
-                  return (
-                    <li key={tx.transaction_id}>
-                      Trade ID: {tx.transaction_id} (Week {tx.leg})<br />
-                      Other Managers: {managers}<br />
-                      Players Added: {addedPlayers.length > 0 ? addedPlayers.map(getPlayerName).join(', ') : 'N/A'}<br />
-                      Players/Picks Traded Away: 
-                      {tradedAwayPlayers.length > 0 ? ` Players: ${tradedAwayPlayers.map(getPlayerName).join(', ')}` : ''}
-                      {tradedAwayPicks.length > 0
-                        ? ` Picks: ${tradedAwayPicks.map(p => `S${p.season} R${p.round}`).join(', ')}`
-                        : ''}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    if (showDetail === 'playersAdded') {
-      return (
-        <div className="bg-black/80 p-4 rounded mt-4">
-          <h3 className="font-bold text-lg mb-2">Players Added (by Year)</h3>
-          {Object.keys(playersAddedDetails).length === 0 && <div>No players added found.</div>}
-          {Object.entries(playersAddedDetails).map(([year, txs]) => (
-            <div key={year} className="mb-2">
-              <div className="font-semibold">{year}</div>
-              <ul className="ml-4 list-disc">
-                {txs.map(tx => (
-                  <li key={tx.transaction_id}>
-                    {tx.adds
-                      ? Object.keys(tx.adds).map(getPlayerName).join(', ')
-                      : 'Unknown Player'} (Week {tx.leg})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    if (showDetail === 'rookiesDrafted') {
-      return (
-        <div className="bg-black/80 p-4 rounded mt-4">
-          <h3 className="font-bold text-lg mb-2">Rookies Drafted (by Year)</h3>
-          {Object.keys(rookiesDraftedDetails).length === 0 && <div>No rookies drafted found.</div>}
-          {Object.entries(rookiesDraftedDetails).map(([year, picks]) => (
-            <div key={year} className="mb-2">
-              <div className="font-semibold">{year}</div>
-              <ul className="ml-4 list-disc">
-                {picks.map(pick => (
-                  <li key={pick.pick_no}>
-                    {pick.metadata?.first_name || getPlayerName(pick.player_id) || ''} {pick.metadata?.last_name || ''} 
-                    {pick.round ? ` - Round ${pick.round}` : ''} 
-                    {pick.pick_no ? `, Pick ${pick.pick_no}` : ''}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  }
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
@@ -291,26 +165,12 @@ export default function MyTeam() {
         {loading ? (
           <div className="text-white/60">Loading activity...</div>
         ) : (
-          <>
-            <ActivityBadges
-              trades={activity.trades}
-              playersAdded={activity.playersAdded}
-              draftPicks={activity.rookiesDrafted}
-              onTradesClick={() => setShowDetail('trades')}
-              onPlayersAddedClick={() => setShowDetail('playersAdded')}
-              onDraftPicksClick={() => setShowDetail('rookiesDrafted')}
-              draftLabel="Rookies Drafted"
-            />
-            {renderDetails()}
-            {showDetail && (
-              <button
-                className="mt-4 px-4 py-2 bg-[#FF4B1F] text-white rounded"
-                onClick={() => setShowDetail(null)}
-              >
-                Close
-              </button>
-            )}
-          </>
+          <ActivityBadges
+            trades={activity.trades}
+            playersAdded={activity.playersAdded}
+            draftPicks={activity.rookiesDrafted}
+            draftLabel="Rookies Drafted"
+          />
         )}
       </div>
     </main>
