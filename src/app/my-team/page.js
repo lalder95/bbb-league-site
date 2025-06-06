@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
-import FinanceBadges from './components/FinanceBadges';
+import TeamPedigreeBadges from './components/TeamPedigreeBadges';
 import { getAllLeagueTransactions, getUserLeagues, getLeagueDrafts, getDraftPicks, getLeagueRosters } from './myTeamApi';
 
 function groupByYear(items, getYear) {
@@ -31,11 +31,15 @@ export default function MyTeam() {
   // Player map from BBB_Contracts.csv
   const [playerMap, setPlayerMap] = useState({});
 
-  // Finance badge state (now only the three you want)
-  const [finance, setFinance] = useState({
-    capSpace: 0,
-    deadCap: 0,
-    teamFines: 0,
+  // Team Pedigree state (replace with real values as needed)
+  const [pedigree, setPedigree] = useState({
+    championships: 0,
+    divisionTitles: 0,
+    allTimeRecord: "0-0",
+    allTimeWinPct: "0.0%",
+    playoffAppearances: 0,
+    playoffRecord: "0-0",
+    playoffWinPct: "0.0%",
   });
 
   useEffect(() => {
@@ -141,11 +145,15 @@ export default function MyTeam() {
         rookiesDrafted: rookiesDrafted.length,
       });
 
-      // TODO: Replace these with real finance calculations
-      setFinance({
-        capSpace: 35,      // Example value
-        deadCap: 10,       // Example value
-        teamFines: 2,      // Example value
+      // TODO: Replace these with real pedigree calculations
+      setPedigree({
+        championships: 2,         // Example value
+        divisionTitles: 4,         // Example value
+        allTimeRecord: "45-20",    // Example value
+        allTimeWinPct: "69.2%",    // Example value
+        playoffAppearances: 5,     // Example value
+        playoffRecord: "8-4",      // Example value
+        playoffWinPct: "66.7%",    // Example value
       });
 
       setLoading(false);
@@ -188,11 +196,15 @@ export default function MyTeam() {
               draftLabel="Rookies Drafted"
             />
             <div className="mt-8">
-              <h2 className="text-2xl font-bold mb-4 text-white">Team Finances</h2>
-              <FinanceBadges
-                capSpace={finance.capSpace}
-                deadCap={finance.deadCap}
-                teamFines={finance.teamFines}
+              <h2 className="text-2xl font-bold mb-4 text-white">Team Pedigree</h2>
+              <TeamPedigreeBadges
+                championships={pedigree.championships}
+                divisionTitles={pedigree.divisionTitles}
+                allTimeRecord={pedigree.allTimeRecord}
+                allTimeWinPct={pedigree.allTimeWinPct}
+                playoffAppearances={pedigree.playoffAppearances}
+                playoffRecord={pedigree.playoffRecord}
+                playoffWinPct={pedigree.playoffWinPct}
               />
             </div>
           </>
