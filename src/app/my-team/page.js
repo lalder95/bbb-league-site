@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
-import { getAllTimeBudgetBlitzBowlLeagues, getAllLeagueTransactions, getUserLeagues } from './myTeamApi';
+import { getAllLeagueTransactions, getUserLeagues, getLeagueDrafts, getDraftPicks } from './myTeamApi';
 
 export default function MyTeam() {
   const { data: session, status } = useSession();
@@ -43,8 +43,6 @@ export default function MyTeam() {
       let trades = 0;
       let playersAdded = 0;
       let draftPicks = 0;
-
-      // Aggregate across all leagues
       for (const league of allLeagues) {
         const transactions = await getAllLeagueTransactions(league.league_id);
         console.log(`Transactions for league ${league.league_id}:`, transactions);
