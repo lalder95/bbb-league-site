@@ -5,6 +5,15 @@ import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
 import { getAllLeagueTransactions, getUserLeagues, getLeagueDrafts, getDraftPicks } from './myTeamApi';
 
+function groupByYear(items, getYear) {
+  return items.reduce((acc, item) => {
+    const year = getYear(item);
+    if (!acc[year]) acc[year] = [];
+    acc[year].push(item);
+    return acc;
+  }, {});
+}
+
 export default function MyTeam() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -12,9 +21,15 @@ export default function MyTeam() {
   const [activity, setActivity] = useState({
     trades: 0,
     playersAdded: 0,
-    draftPicks: 0,
+    rookiesDrafted: 0,
   });
   const [loading, setLoading] = useState(true);
+
+  // For details modal/section
+  const [showDetail, setShowDetail] = useState(null); // 'trades' | 'playersAdded' | 'rookiesDrafted' | null
+  const [tradeDetails, setTradeDetails] = useState({});
+  const [playersAddedDetails, setPlayersAddedDetails] = useState({});
+  const [rookiesDraftedDetails, setRookiesDraftedDetails] = useState({});
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -24,55 +39,142 @@ export default function MyTeam() {
 
   useEffect(() => {
     async function fetchActivity() {
-      // Use sleeperId for Sleeper API calls!
       if (!session?.user?.sleeperId) return;
-      console.log("Session user object:", session.user);
       setLoading(true);
 
-      // Get all BBB leagues for this user from 2024 to current
       const allLeagues = [];
       const currentYear = new Date().getFullYear();
       for (let season = 2024; season <= currentYear; season++) {
         const leagues = await getUserLeagues(session.user.sleeperId, season);
-        console.log(`Leagues for ${season}:`, leagues.map(l => l.name));
         const bbbLeagues = leagues.filter(league => league.name === "Budget Blitz Bowl");
         allLeagues.push(...bbbLeagues);
       }
-      console.log("Filtered BBB leagues:", allLeagues);
 
-      let trades = 0;
-      let playersAdded = 0;
-      let draftPicks = 0;
+      let trades = [];
+      let playersAdded = [];
+      let rookiesDrafted = [];
+
       for (const league of allLeagues) {
         const transactions = await getAllLeagueTransactions(league.league_id);
-        console.log(`Transactions for league ${league.league_id}:`, transactions);
-        trades += transactions.filter(tx => tx.type === 'trade').length;
-        playersAdded += transactions.filter(
-          tx =>
-            tx.status === "complete" &&
-            (tx.type === "waiver" || tx.type === "free_agent")
-        ).length;
+
+        // Trades
+        trades.push(...transactions.filter(tx => tx.type === 'trade'));
+
+        // Players Added
+        playersAdded.push(
+          ...transactions.filter(
+            tx =>
+              tx.status === "complete" &&
+              (tx.type === "waiver" || tx.type === "free_agent")
+          )
+        );
 
         // Draft picks (exclude 2024)
         const drafts = await getLeagueDrafts(league.league_id);
         for (const draft of drafts) {
           if (draft.season === "2024") continue;
           const picks = await getDraftPicks(draft.draft_id);
-          draftPicks += picks.filter(pick => pick.picked_by === session.user.sleeperId).length;
+          rookiesDrafted.push(
+            ...picks
+              .filter(pick => pick.picked_by === session.user.sleeperId)
+              .map(pick => ({
+                ...pick,
+                season: draft.season,
+                round: pick.round,
+                pick_no: pick.pick_no,
+                player_id: pick.player_id,
+                metadata: pick.metadata,
+              }))
+          );
         }
       }
 
       setActivity({
-        trades,
-        playersAdded,
-        draftPicks,
+        trades: trades.length,
+        playersAdded: playersAdded.length,
+        rookiesDrafted: rookiesDrafted.length,
       });
+
+      // Group details by year
+      setTradeDetails(groupByYear(trades, tx => new Date(tx.created).getFullYear()));
+      setPlayersAddedDetails(groupByYear(playersAdded, tx => tx.leg ? 2024 + (tx.leg - 1) : 'Unknown'));
+      setRookiesDraftedDetails(groupByYear(rookiesDrafted, pick => pick.season));
+
       setLoading(false);
     }
     if (status === 'authenticated') {
       fetchActivity();
     }
   }, [session, status]);
+
+  // Render details for each badge
+  function renderDetails() {
+    if (showDetail === 'trades') {
+      return (
+        <div className="bg-black/80 p-4 rounded mt-4">
+          <h3 className="font-bold text-lg mb-2">Trades Made (by Year)</h3>
+          {Object.keys(tradeDetails).length === 0 && <div>No trades found.</div>}
+          {Object.entries(tradeDetails).map(([year, txs]) => (
+            <div key={year} className="mb-2">
+              <div className="font-semibold">{year}</div>
+              <ul className="ml-4 list-disc">
+                {txs.map(tx => (
+                  <li key={tx.transaction_id}>
+                    Trade ID: {tx.transaction_id} (Week {tx.leg})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (showDetail === 'playersAdded') {
+      return (
+        <div className="bg-black/80 p-4 rounded mt-4">
+          <h3 className="font-bold text-lg mb-2">Players Added (by Year)</h3>
+          {Object.keys(playersAddedDetails).length === 0 && <div>No players added found.</div>}
+          {Object.entries(playersAddedDetails).map(([year, txs]) => (
+            <div key={year} className="mb-2">
+              <div className="font-semibold">{year}</div>
+              <ul className="ml-4 list-disc">
+                {txs.map(tx => (
+                  <li key={tx.transaction_id}>
+                    {tx.adds
+                      ? Object.keys(tx.adds).join(', ')
+                      : 'Unknown Player'} (Week {tx.leg})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (showDetail === 'rookiesDrafted') {
+      return (
+        <div className="bg-black/80 p-4 rounded mt-4">
+          <h3 className="font-bold text-lg mb-2">Rookies Drafted (by Year)</h3>
+          {Object.keys(rookiesDraftedDetails).length === 0 && <div>No rookies drafted found.</div>}
+          {Object.entries(rookiesDraftedDetails).map(([year, picks]) => (
+            <div key={year} className="mb-2">
+              <div className="font-semibold">{year}</div>
+              <ul className="ml-4 list-disc">
+                {picks.map(pick => (
+                  <li key={pick.pick_no}>
+                    {pick.metadata?.first_name || ''} {pick.metadata?.last_name || ''} 
+                    {pick.round ? ` - Round ${pick.round}` : ''} 
+                    {pick.pick_no ? `, Pick ${pick.pick_no}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
@@ -101,11 +203,26 @@ export default function MyTeam() {
         {loading ? (
           <div className="text-white/60">Loading activity...</div>
         ) : (
-          <ActivityBadges
-            trades={activity.trades}
-            playersAdded={activity.playersAdded}
-            draftPicks={activity.draftPicks}
-          />
+          <>
+            <ActivityBadges
+              trades={activity.trades}
+              playersAdded={activity.playersAdded}
+              draftPicks={activity.rookiesDrafted}
+              onTradesClick={() => setShowDetail('trades')}
+              onPlayersAddedClick={() => setShowDetail('playersAdded')}
+              onDraftPicksClick={() => setShowDetail('rookiesDrafted')}
+              draftLabel="Rookies Drafted"
+            />
+            {renderDetails()}
+            {showDetail && (
+              <button
+                className="mt-4 px-4 py-2 bg-[#FF4B1F] text-white rounded"
+                onClick={() => setShowDetail(null)}
+              >
+                Close
+              </button>
+            )}
+          </>
         )}
       </div>
     </main>
