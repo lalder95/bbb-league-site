@@ -4,7 +4,15 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
 import TeamPedigreeBadges from './components/TeamPedigreeBadges';
-import { getAllLeagueTransactions, getUserLeagues, getLeagueDrafts, getDraftPicks, getLeagueRosters } from './myTeamApi';
+import {
+  getAllLeagueTransactions,
+  getUserLeagues,
+  getLeagueDrafts,
+  getDraftPicks,
+  getLeagueRosters,
+  getLeagueStandings,
+  getPlayoffResults
+} from './myTeamApi';
 
 function groupByYear(items, getYear) {
   return items.reduce((acc, item) => {
@@ -77,7 +85,7 @@ export default function MyTeam() {
     if (status !== 'authenticated' || loaded.current) return;
     loaded.current = true;
 
-    async function fetchActivity() {
+    async function fetchActivityAndPedigree() {
       if (!session?.user?.sleeperId) return;
       setLoading(true);
 
@@ -100,6 +108,15 @@ export default function MyTeam() {
       let trades = [];
       let playersAdded = [];
       let rookiesDrafted = [];
+
+      // Pedigree stats
+      let championships = 0;
+      let divisionTitles = 0;
+      let allTimeWins = 0;
+      let allTimeLosses = 0;
+      let playoffAppearances = 0;
+      let playoffWins = 0;
+      let playoffLosses = 0;
 
       for (const league of allLeagues) {
         const transactions = await getAllLeagueTransactions(league.league_id);
@@ -137,7 +154,38 @@ export default function MyTeam() {
               }))
           );
         }
+
+        // --- PEDIGREE CALCULATIONS ---
+        // 1. Standings for all-time record and division titles
+        const standings = await getLeagueStandings(league.league_id);
+        const myRoster = (rostersMap[league.league_id] || []).find(r => r.owner_id === session.user.sleeperId);
+        if (myRoster) {
+          const myStanding = standings.find(s => s.roster_id === myRoster.roster_id);
+          if (myStanding) {
+            allTimeWins += myStanding.wins || 0;
+            allTimeLosses += myStanding.losses || 0;
+            if (myStanding.division_champ) divisionTitles += 1;
+          }
+        }
+
+        // 2. Playoff results for championships, playoff appearances, playoff record
+        const playoffResults = await getPlayoffResults(league.league_id);
+        if (playoffResults && myRoster) {
+          const myPlayoff = playoffResults.find(p => p.roster_id === myRoster.roster_id);
+          if (myPlayoff) {
+            playoffAppearances += myPlayoff.appearances || 0;
+            playoffWins += myPlayoff.wins || 0;
+            playoffLosses += myPlayoff.losses || 0;
+            if (myPlayoff.champion) championships += 1;
+          }
+        }
       }
+
+      // Calculate win percentages
+      const allTimeGames = allTimeWins + allTimeLosses;
+      const allTimeWinPct = allTimeGames > 0 ? ((allTimeWins / allTimeGames) * 100).toFixed(1) + "%" : "0.0%";
+      const playoffGames = playoffWins + playoffLosses;
+      const playoffWinPct = playoffGames > 0 ? ((playoffWins / playoffGames) * 100).toFixed(1) + "%" : "0.0%";
 
       setActivity({
         trades: trades.length,
@@ -145,20 +193,19 @@ export default function MyTeam() {
         rookiesDrafted: rookiesDrafted.length,
       });
 
-      // TODO: Replace these with real pedigree calculations
       setPedigree({
-        championships: 2,         // Example value
-        divisionTitles: 4,         // Example value
-        allTimeRecord: "45-20",    // Example value
-        allTimeWinPct: "69.2%",    // Example value
-        playoffAppearances: 5,     // Example value
-        playoffRecord: "8-4",      // Example value
-        playoffWinPct: "66.7%",    // Example value
+        championships,
+        divisionTitles,
+        allTimeRecord: `${allTimeWins}-${allTimeLosses}`,
+        allTimeWinPct,
+        playoffAppearances,
+        playoffRecord: `${playoffWins}-${playoffLosses}`,
+        playoffWinPct,
       });
 
       setLoading(false);
     }
-    fetchActivity();
+    fetchActivityAndPedigree();
   }, [session, status]);
 
   return (
