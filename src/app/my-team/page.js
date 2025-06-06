@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
+import FinanceBadges from './components/FinanceBadges';
 import { getAllLeagueTransactions, getUserLeagues, getLeagueDrafts, getDraftPicks, getLeagueRosters } from './myTeamApi';
 
 function groupByYear(items, getYear) {
@@ -29,6 +30,17 @@ export default function MyTeam() {
 
   // Player map from BBB_Contracts.csv
   const [playerMap, setPlayerMap] = useState({});
+
+  // Finance badge state (replace with real values as needed)
+  const [finance, setFinance] = useState({
+    salaryCap: 0,
+    capSpace: 0,
+    deadCap: 0,
+    contracts: 0,
+    extensions: 0,
+    franchiseTags: 0,
+    transitionTags: 0,
+  });
 
   useEffect(() => {
     // Load player map from BBB_Contracts.csv (same logic as player-contracts page)
@@ -133,6 +145,17 @@ export default function MyTeam() {
         rookiesDrafted: rookiesDrafted.length,
       });
 
+      // TODO: Replace these with real finance calculations
+      setFinance({
+        salaryCap: 200,         // Example value
+        capSpace: 35,           // Example value
+        deadCap: 10,            // Example value
+        contracts: 18,          // Example value
+        extensions: 2,          // Example value
+        franchiseTags: 1,       // Example value
+        transitionTags: 0,      // Example value
+      });
+
       setLoading(false);
     }
     fetchActivity();
@@ -165,12 +188,26 @@ export default function MyTeam() {
         {loading ? (
           <div className="text-white/60">Loading activity...</div>
         ) : (
-          <ActivityBadges
-            trades={activity.trades}
-            playersAdded={activity.playersAdded}
-            draftPicks={activity.rookiesDrafted}
-            draftLabel="Rookies Drafted"
-          />
+          <>
+            <ActivityBadges
+              trades={activity.trades}
+              playersAdded={activity.playersAdded}
+              draftPicks={activity.rookiesDrafted}
+              draftLabel="Rookies Drafted"
+            />
+            <div className="mt-8">
+              <h2 className="text-2xl font-bold mb-4 text-white">Team Finances</h2>
+              <FinanceBadges
+                salaryCap={finance.salaryCap}
+                capSpace={finance.capSpace}
+                deadCap={finance.deadCap}
+                contracts={finance.contracts}
+                extensions={finance.extensions}
+                franchiseTags={finance.franchiseTags}
+                transitionTags={finance.transitionTags}
+              />
+            </div>
+          </>
         )}
       </div>
     </main>
