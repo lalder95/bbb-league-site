@@ -114,30 +114,28 @@ export async function getLeagueStandings(leagueId) {
   // Sleeper's league object contains standings info
   const url = `https://api.sleeper.app/v1/league/${leagueId}`;
   const league = await fetchJson(url);
-  // The rosters endpoint contains wins/losses
   const rosters = await getLeagueRosters(leagueId);
-  // Try to infer division champs if divisions exist
+
+  // Get playoff bracket to determine division champs by seed
   let divisionChamps = {};
-  if (league.settings?.divisions && league.settings.divisions > 1) {
-    // Find division champs by best record in each division
-    const divisions = {};
-    for (const r of rosters) {
-      if (!divisions[r.settings.division]) divisions[r.settings.division] = [];
-      divisions[r.settings.division].push(r);
-    }
-    for (const [div, rostersInDiv] of Object.entries(divisions)) {
-      let champ = rostersInDiv[0];
-      for (const r of rostersInDiv) {
-        if (
-          r.settings.wins > champ.settings.wins ||
-          (r.settings.wins === champ.settings.wins && r.settings.points_for > champ.settings.points_for)
-        ) {
-          champ = r;
-        }
+  try {
+    const bracket = await getLeaguePlayoffs(leagueId);
+    // Find the first round (lowest round number)
+    let minRound = Math.min(...bracket.map(m => m.round));
+    const firstRound = bracket.filter(m => m.round === minRound);
+    // Get all seeds in the first round, sort, and take top 3
+    const seeds = firstRound.map(m => m.seed).filter(Boolean).sort((a, b) => a - b);
+    const topSeeds = seeds.slice(0, 3);
+    // Find roster_ids for those seeds
+    for (const m of firstRound) {
+      if (topSeeds.includes(m.seed)) {
+        divisionChamps[m.roster_id] = true;
       }
-      divisionChamps[champ.roster_id] = true;
     }
+  } catch (e) {
+    // If no bracket, fallback to old logic (no division champs)
   }
+
   return rosters.map(r => ({
     roster_id: r.roster_id,
     wins: r.settings.wins,
