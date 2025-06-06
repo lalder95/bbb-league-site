@@ -91,6 +91,24 @@ export async function getBudgetBlitzBowlLeagues(userId, season) {
   return leagues.filter(league => league.name === "Budget Blitz Bowl");
 }
 
+// Get all "Budget Blitz Bowl" leagues for a user from 2024 to current season (all-time)
+export async function getAllTimeBudgetBlitzBowlLeagues(userId) {
+  const currentYear = new Date().getFullYear();
+  let allLeagues = [];
+  for (let season = 2024; season <= currentYear; season++) {
+    const leagues = await getUserLeagues(userId, season);
+    const bbbLeagues = leagues.filter(league => league.name === "Budget Blitz Bowl");
+    allLeagues.push(...bbbLeagues);
+  }
+  return allLeagues;
+}
+
+// Get all "Budget Blitz Bowl" leagues for a user in the current season only
+export async function getCurrentSeasonBudgetBlitzBowlLeagues(userId) {
+  const currentYear = new Date().getFullYear();
+  return getBudgetBlitzBowlLeagues(userId, currentYear);
+}
+
 // Example usage in your aggregation functions:
 // const bbbLeagues = await getBudgetBlitzBowlLeagues(userId, season);
 // for (const league of bbbLeagues) { ... }
