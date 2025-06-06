@@ -118,11 +118,16 @@ export default function MyTeam() {
             <div key={year} className="mb-2">
               <div className="font-semibold">{year}</div>
               <ul className="ml-4 list-disc">
-                {txs.map(tx => (
-                  <li key={tx.transaction_id}>
-                    Trade ID: {tx.transaction_id} (Week {tx.leg})
-                  </li>
-                ))}
+                {txs.map(tx => {
+                  // Only show player IDs from adds
+                  const addedPlayers = tx.adds ? Object.keys(tx.adds) : [];
+                  return (
+                    <li key={tx.transaction_id}>
+                      Trade ID: {tx.transaction_id} (Week {tx.leg})<br />
+                      Players Added: {addedPlayers.length > 0 ? addedPlayers.join(', ') : 'N/A'}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}
