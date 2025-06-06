@@ -49,13 +49,14 @@ export default function MyTeam() {
         trades += transactions.filter(tx => tx.type === 'trade').length;
         playersAdded += transactions.filter(
           tx =>
-            tx.status === "successful" &&
+            tx.status === "complete" &&
             (tx.type === "waiver" || tx.type === "free_agent")
         ).length;
 
-        // Draft picks
+        // Draft picks (exclude 2024)
         const drafts = await getLeagueDrafts(league.league_id);
         for (const draft of drafts) {
+          if (draft.season === "2024") continue;
           const picks = await getDraftPicks(draft.draft_id);
           draftPicks += picks.filter(pick => pick.picked_by === session.user.sleeperId).length;
         }
