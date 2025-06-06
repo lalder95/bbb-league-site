@@ -29,6 +29,7 @@ export default function MyTeam() {
 
       // Get all BBB leagues for this user from 2024 to current
       const leagues = await getAllTimeBudgetBlitzBowlLeagues(session.user.id);
+      console.log("Found leagues:", leagues);
 
       let trades = 0;
       let playersAdded = 0;
@@ -37,6 +38,7 @@ export default function MyTeam() {
       // Aggregate across all leagues
       for (const league of leagues) {
         const transactions = await getAllLeagueTransactions(league.league_id);
+        console.log(`Transactions for league ${league.league_id}:`, transactions);
         trades += transactions.filter(tx => tx.type === 'trade').length;
         playersAdded += transactions.filter(tx => tx.type === 'add').length;
         // Add draft pick aggregation here if needed
