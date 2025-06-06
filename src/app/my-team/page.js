@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
-import { getAllTimeBudgetBlitzBowlLeagues, getAllLeagueTransactions } from './myTeamApi';
+import { getAllTimeBudgetBlitzBowlLeagues, getAllLeagueTransactions, getUserLeagues } from './myTeamApi';
 
 export default function MyTeam() {
   const { data: session, status } = useSession();
@@ -28,15 +28,22 @@ export default function MyTeam() {
       setLoading(true);
 
       // Get all BBB leagues for this user from 2024 to current
-      const leagues = await getAllTimeBudgetBlitzBowlLeagues(session.user.id);
-      console.log("Found leagues:", leagues);
+      const allLeagues = [];
+      const currentYear = new Date().getFullYear();
+      for (let season = 2024; season <= currentYear; season++) {
+        const leagues = await getUserLeagues(session.user.id, season);
+        console.log(`Leagues for ${season}:`, leagues.map(l => l.name));
+        const bbbLeagues = leagues.filter(league => league.name === "Budget Blitz Bowl");
+        allLeagues.push(...bbbLeagues);
+      }
+      console.log("Filtered BBB leagues:", allLeagues);
 
       let trades = 0;
       let playersAdded = 0;
       // let draftPicks = 0; // To implement if you want to aggregate draft picks
 
       // Aggregate across all leagues
-      for (const league of leagues) {
+      for (const league of allLeagues) {
         const transactions = await getAllLeagueTransactions(league.league_id);
         console.log(`Transactions for league ${league.league_id}:`, transactions);
         trades += transactions.filter(tx => tx.type === 'trade').length;
