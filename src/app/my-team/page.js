@@ -1,9 +1,9 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
-import { getAllLeagueTransactions, getUserLeagues, getLeagueDrafts, getDraftPicks } from './myTeamApi';
+import { getAllLeagueTransactions, getUserLeagues, getLeagueDrafts, getDraftPicks, getLeagueRosters } from './myTeamApi';
 
 function groupByYear(items, getYear) {
   return items.reduce((acc, item) => {
@@ -24,6 +24,8 @@ export default function MyTeam() {
     rookiesDrafted: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [leagueRosters, setLeagueRosters] = useState({});
+  const loaded = useRef(false);
 
   // For details modal/section
   const [showDetail, setShowDetail] = useState(null); // 'trades' | 'playersAdded' | 'rookiesDrafted' | null
@@ -38,6 +40,9 @@ export default function MyTeam() {
   }, [status, router]);
 
   useEffect(() => {
+    if (status !== 'authenticated' || loaded.current) return;
+    loaded.current = true;
+
     async function fetchActivity() {
       if (!session?.user?.sleeperId) return;
       setLoading(true);
@@ -50,6 +55,14 @@ export default function MyTeam() {
         allLeagues.push(...bbbLeagues);
       }
 
+      // Fetch rosters for each league to map user to roster_id and get manager names
+      const rostersMap = {};
+      for (const league of allLeagues) {
+        const rosters = await getLeagueRosters(league.league_id);
+        rostersMap[league.league_id] = rosters;
+      }
+      setLeagueRosters(rostersMap);
+
       let trades = [];
       let playersAdded = [];
       let rookiesDrafted = [];
@@ -58,7 +71,10 @@ export default function MyTeam() {
         const transactions = await getAllLeagueTransactions(league.league_id);
 
         // Trades
-        trades.push(...transactions.filter(tx => tx.type === 'trade'));
+        trades.push(...transactions.filter(tx => tx.type === 'trade').map(tx => ({
+          ...tx,
+          league_id: league.league_id
+        })));
 
         // Players Added
         playersAdded.push(
@@ -95,17 +111,49 @@ export default function MyTeam() {
         rookiesDrafted: rookiesDrafted.length,
       });
 
-      // Group details by year
       setTradeDetails(groupByYear(trades, tx => new Date(tx.created).getFullYear()));
       setPlayersAddedDetails(groupByYear(playersAdded, tx => tx.leg ? 2024 + (tx.leg - 1) : 'Unknown'));
       setRookiesDraftedDetails(groupByYear(rookiesDrafted, pick => pick.season));
 
       setLoading(false);
     }
-    if (status === 'authenticated') {
-      fetchActivity();
-    }
+    fetchActivity();
   }, [session, status]);
+
+  // Helper to get manager names from roster_ids
+  function getManagerNames(league_id, roster_ids) {
+    const rosters = leagueRosters[league_id] || [];
+    return roster_ids
+      .map(rid => {
+        const roster = rosters.find(r => r.roster_id === rid);
+        return roster?.owner_id === session.user.sleeperId
+          ? "(You)"
+          : roster?.owner_id || "Unknown";
+      })
+      .join(', ');
+  }
+
+  // Helper to get traded away players/picks for the current user
+  function getTradedAway(tx, league_id) {
+    const rosters = leagueRosters[league_id] || [];
+    const myRoster = rosters.find(r => r.owner_id === session.user.sleeperId);
+    if (!myRoster) return { players: [], picks: [] };
+    const myRosterId = myRoster.roster_id;
+
+    // Players traded away: drops by my roster
+    const droppedPlayers = tx.drops
+      ? Object.entries(tx.drops)
+          .filter(([_, rid]) => rid === myRosterId)
+          .map(([pid]) => pid)
+      : [];
+
+    // Picks traded away: draft_picks where previous_owner_id is myRosterId
+    const picksAway = (tx.draft_picks || []).filter(
+      pick => pick.previous_owner_id === myRosterId
+    );
+
+    return { players: droppedPlayers, picks: picksAway };
+  }
 
   // Render details for each badge
   function renderDetails() {
@@ -119,12 +167,19 @@ export default function MyTeam() {
               <div className="font-semibold">{year}</div>
               <ul className="ml-4 list-disc">
                 {txs.map(tx => {
-                  // Only show player IDs from adds
                   const addedPlayers = tx.adds ? Object.keys(tx.adds) : [];
+                  const managers = getManagerNames(tx.league_id, tx.roster_ids || []);
+                  const { players: tradedAwayPlayers, picks: tradedAwayPicks } = getTradedAway(tx, tx.league_id);
                   return (
                     <li key={tx.transaction_id}>
                       Trade ID: {tx.transaction_id} (Week {tx.leg})<br />
-                      Players Added: {addedPlayers.length > 0 ? addedPlayers.join(', ') : 'N/A'}
+                      Other Managers: {managers}<br />
+                      Players Added: {addedPlayers.length > 0 ? addedPlayers.join(', ') : 'N/A'}<br />
+                      Players/Picks Traded Away: 
+                      {tradedAwayPlayers.length > 0 ? ` Players: ${tradedAwayPlayers.join(', ')}` : ''}
+                      {tradedAwayPicks.length > 0
+                        ? ` Picks: ${tradedAwayPicks.map(p => `S${p.season} R${p.round}`).join(', ')}`
+                        : ''}
                     </li>
                   );
                 })}
