@@ -52,7 +52,11 @@ export default function Home() {
               year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
               year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
               isDeadCap: !isActive,
-              contractFinalYear: values[5]
+              contractFinalYear: values[5],
+              age: values[30],
+              ktcValue: values[32],
+              rfaEligible: values[37],
+              franchiseTagEligible: values[38],
             };
           });
         
