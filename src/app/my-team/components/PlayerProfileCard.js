@@ -39,7 +39,7 @@ export default function PlayerProfileCard({
   );
 
   return (
-    <div className="relative w-48 h-64 rounded-lg overflow-hidden shadow-lg bg-gray-900">
+    <div className="relative w-96 h-[32rem] rounded-lg overflow-hidden shadow-lg bg-gray-900">
       <img
         src={imgSrc}
         alt={contract.playerName}
