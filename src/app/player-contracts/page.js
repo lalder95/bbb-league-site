@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import PlayerProfileCard from '../my-team/components/PlayerProfileCard'; // Adjust path if needed
+import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 
 export default function Home() {
   const [players, setPlayers] = useState([]);
@@ -14,7 +14,7 @@ export default function Home() {
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showTeamDropdown, setShowTeamDropdown] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState(null);
 
   useEffect(() => {
     function handleResize() {
@@ -30,18 +30,19 @@ export default function Home() {
       try {
         const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
         const text = await response.text();
-        
+
         const rows = text.split('\n');
         const headers = rows[0].split(',');
-        
+
         const parsedData = rows.slice(1)
           .filter(row => row.trim())
           .map(row => {
             const values = row.split(',');
             const status = values[14];
             const isActive = status === 'Active';
-            
+
             return {
+              playerId: values[0],
               playerName: values[1],
               position: values[21],
               contractType: values[2],
@@ -53,13 +54,13 @@ export default function Home() {
               year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
               isDeadCap: !isActive,
               contractFinalYear: values[5],
-              age: values[30],
+              age: values[31],
               ktcValue: values[32],
-              rfaEligible: values[37],
-              franchiseTagEligible: values[38],
+              rfaEligible: values[36],
+              franchiseTagEligible: values[37],
             };
           });
-        
+
         setPlayers(parsedData);
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -148,11 +149,11 @@ export default function Home() {
     .sort((a, b) => {
       const aVal = a[sortConfig.key];
       const bVal = b[sortConfig.key];
-      
+
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
       }
-      
+
       if (sortConfig.direction === 'asc') {
         return aVal > bVal ? 1 : -1;
       }
@@ -194,19 +195,19 @@ export default function Home() {
       </div>
 
       {/* Player Card Modal */}
-      {selectedPlayer && (
+      {selectedPlayerId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-          onClick={() => setSelectedPlayer(null)}
+          onClick={() => setSelectedPlayerId(null)}
         >
           <div
-            className="bg-transparent p-0 rounded-lg shadow-2xl"
+            className="bg-transparent p-0 rounded-lg shadow-2xl relative"
             onClick={e => e.stopPropagation()}
           >
-            <PlayerProfileCard contract={selectedPlayer} />
+            <PlayerProfileCard playerId={selectedPlayerId} contracts={players} />
             <button
               className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
-              onClick={() => setSelectedPlayer(null)}
+              onClick={() => setSelectedPlayerId(null)}
             >
               ×
             </button>
@@ -394,40 +395,39 @@ export default function Home() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-black/40 border-b border-white/10">
-                {[
-                  {
-                    key: 'team',
-                    label: 'Team'
-                  },
-                  {
-                    key: 'playerName',
-                    label: 'Player Name'
-                  },
-                  {
-                    key: 'contractType',
-                    label: 'Contract Type'
-                  },
-                  {
-                    key: 'curYear',
-                    label: 'Cur Year'
-                  },
-                  {
-                    key: 'year2',
-                    label: 'Year 2'
-                  },
-                  {
-                    key: 'year3',
-                    label: 'Year 3'
-                  },
-                  {
-                    key: 'year4',
-                    label: 'Year 4'
-                  },
-                  {
-                    key: 'contractFinalYear',
-                    label: 'Final Year'
-                  }
-                ].map(({ key, label }) => (
+                {{
+                  key: 'team',
+                  label: 'Team'
+                },
+                {
+                  key: 'playerName',
+                  label: 'Player Name'
+                },
+                {
+                  key: 'contractType',
+                  label: 'Contract Type'
+                },
+                {
+                  key: 'curYear',
+                  label: 'Cur Year'
+                },
+                {
+                  key: 'year2',
+                  label: 'Year 2'
+                },
+                {
+                  key: 'year3',
+                  label: 'Year 3'
+                },
+                {
+                  key: 'year4',
+                  label: 'Year 4'
+                },
+                {
+                  key: 'contractFinalYear',
+                  label: 'Final Year'
+                }
+                }.map(({ key, label }) => (
                   <th 
                     key={key}
                     onClick={() => handleSort(key)}
@@ -451,9 +451,10 @@ export default function Home() {
                   key={index}
                   className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                 >
+                  <td className="p-3">{player.team}</td>
                   <td
                     className={`p-3 font-medium ${getStatusColor(player.status)} cursor-pointer underline`}
-                    onClick={() => setSelectedPlayer(player)}
+                    onClick={() => setSelectedPlayerId(player.playerId)}
                   >
                     {player.playerName}
                   </td>
@@ -473,7 +474,6 @@ export default function Home() {
                     {formatSalary(player.year4, player.isDeadCap)}
                   </td>
                   <td className="p-3">{player.contractFinalYear}</td>
-                  <td className="p-3">{player.team}</td>
                 </tr>
               ))}
             </tbody>

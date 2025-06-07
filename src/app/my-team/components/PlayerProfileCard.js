@@ -1,14 +1,76 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 /**
  * @param {Object} props
- * @param {Object} props.contract - Contract info from BBB_Contracts
+ * @param {string} props.playerId - Player ID from BBB_Contracts
+ * @param {Array} [props.contracts] - Optional: Array of all contract objects (if already loaded)
  * @param {string} [props.imageExtension] - e.g. "png" (default: png)
  */
 export default function PlayerProfileCard({
-  contract,
+  playerId,
+  contracts,
   imageExtension = "png",
 }) {
+  const [contract, setContract] = useState(null);
+
+  useEffect(() => {
+    async function fetchContract() {
+      if (contracts && contracts.length) {
+        // Use provided contracts array
+        const found = contracts.find(
+          (c) => String(c.playerId) === String(playerId)
+        );
+        setContract(found || null);
+      } else {
+        // Fetch and parse CSV directly
+        const response = await fetch(
+          "https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv"
+        );
+        const text = await response.text();
+        const rows = text.split("\n");
+        const headers = rows[0].split(",");
+        const idx = headers.findIndex(
+          (h) => h.trim().toLowerCase() === "player id" || h.trim().toLowerCase() === "playerid"
+        );
+        const foundRow = rows
+          .slice(1)
+          .map((row) => row.split(","))
+          .find((cols) => String(cols[idx]) === String(playerId));
+        if (foundRow) {
+          setContract({
+            playerId: foundRow[0],
+            playerName: foundRow[1],
+            contractType: foundRow[2],
+            status: foundRow[14],
+            team: foundRow[33],
+            position: foundRow[21],
+            curYear: foundRow[15] ? parseFloat(foundRow[15]) : 0,
+            year2: foundRow[16] ? parseFloat(foundRow[16]) : 0,
+            year3: foundRow[17] ? parseFloat(foundRow[17]) : 0,
+            year4: foundRow[18] ? parseFloat(foundRow[18]) : 0,
+            contractFinalYear: foundRow[5],
+            age: foundRow[31],
+            ktcValue: foundRow[32],
+            rfaEligible: foundRow[36],
+            franchiseTagEligible: foundRow[37],
+          });
+        } else {
+          setContract(null);
+        }
+      }
+    }
+    fetchContract();
+  }, [playerId, contracts]);
+
+  // Loading or not found
+  if (!contract) {
+    return (
+      <div className="w-96 h-[32rem] flex items-center justify-center bg-gray-900 rounded-lg shadow-lg text-white text-xl">
+        Loading...
+      </div>
+    );
+  }
+
   // Convert player name to snake_case for filename
   const fileName = contract.playerName
     .toLowerCase()
@@ -20,7 +82,11 @@ export default function PlayerProfileCard({
   const defaultSrc = `/players/cardimages/default_${contract.position?.toLowerCase()}.${imageExtension}`;
 
   // Use onError to fallback to default image if custom not found
-  const [imgSrc, setImgSrc] = React.useState(imageSrc);
+  const [imgSrc, setImgSrc] = useState(imageSrc);
+
+  useEffect(() => {
+    setImgSrc(imageSrc);
+  }, [imageSrc]);
 
   const handleImgError = () => {
     if (imgSrc !== defaultSrc) setImgSrc(defaultSrc);
@@ -57,10 +123,10 @@ export default function PlayerProfileCard({
         <Bubble className="bg-purple-700">{contract.team}</Bubble>
         <Bubble className="bg-yellow-700">Age: {contract.age || "-"}</Bubble>
         <Bubble className="bg-cyan-700">
-          RFA: {contract.rfaEligible === "Yes" ? "✅" : "❌"}
+          RFA: {String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}
         </Bubble>
         <Bubble className="bg-pink-700">
-          Tag: {contract.franchiseTagEligible === "Yes" ? "✅" : "❌"}
+          Tag: {String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}
         </Bubble>
         <Bubble className="bg-gray-700">
           KTC: {contract.ktcValue ? contract.ktcValue : "-"}
