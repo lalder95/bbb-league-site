@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import PlayerProfileCard from '../my-team/components/PlayerProfileCard'; // Adjust path if needed
 
 export default function Home() {
   const [players, setPlayers] = useState([]);
@@ -13,6 +14,7 @@ export default function Home() {
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showTeamDropdown, setShowTeamDropdown] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
 
   useEffect(() => {
     function handleResize() {
@@ -186,6 +188,27 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Player Card Modal */}
+      {selectedPlayer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setSelectedPlayer(null)}
+        >
+          <div
+            className="bg-transparent p-0 rounded-lg shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <PlayerProfileCard contract={selectedPlayer} />
+            <button
+              className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
+              onClick={() => setSelectedPlayer(null)}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto p-6">
         <div className="mb-6 flex flex-col md:flex-row gap-4">
@@ -420,11 +443,16 @@ export default function Home() {
             </thead>
             <tbody>
               {filteredAndSortedPlayers.map((player, index) => (
-                <tr 
+                <tr
                   key={index}
                   className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                 >
-                  <td className={`p-3 font-medium ${getStatusColor(player.status)}`}>{player.playerName}</td>
+                  <td
+                    className={`p-3 font-medium ${getStatusColor(player.status)} cursor-pointer underline`}
+                    onClick={() => setSelectedPlayer(player)}
+                  >
+                    {player.playerName}
+                  </td>
                   <td className={`p-3 ${getContractTypeColor(player.contractType)}`}>
                     {player.contractType}
                   </td>
