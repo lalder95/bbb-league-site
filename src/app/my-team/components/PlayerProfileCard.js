@@ -1,28 +1,21 @@
 import React, { useEffect, useState } from "react";
 
-/**
- * @param {Object} props
- * @param {string} props.playerId - Player ID from BBB_Contracts
- * @param {Array} [props.contracts] - Optional: Array of all contract objects (if already loaded)
- * @param {string} [props.imageExtension] - e.g. "png" (default: png)
- */
 export default function PlayerProfileCard({
   playerId,
   contracts,
   imageExtension = "png",
 }) {
   const [contract, setContract] = useState(null);
+  const [imgSrc, setImgSrc] = useState(null);
 
   useEffect(() => {
     async function fetchContract() {
       if (contracts && contracts.length) {
-        // Use provided contracts array
         const found = contracts.find(
           (c) => String(c.playerId) === String(playerId)
         );
         setContract(found || null);
       } else {
-        // Fetch and parse CSV directly
         const response = await fetch(
           "https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv"
         );
@@ -62,7 +55,27 @@ export default function PlayerProfileCard({
     fetchContract();
   }, [playerId, contracts]);
 
-  // Loading or not found
+  // Set image source when contract is loaded
+  useEffect(() => {
+    if (!contract) {
+      setImgSrc(null);
+      return;
+    }
+    const fileName = contract.playerName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "");
+    const imageSrc = `/players/cardimages/${fileName}.${imageExtension}`;
+    setImgSrc(imageSrc);
+  }, [contract, imageExtension]);
+
+  // Handle image error fallback
+  const handleImgError = () => {
+    if (!contract) return;
+    const defaultSrc = `/players/cardimages/default_${contract.position?.toLowerCase()}.${imageExtension}`;
+    if (imgSrc !== defaultSrc) setImgSrc(defaultSrc);
+  };
+
   if (!contract) {
     return (
       <div className="w-96 h-[32rem] flex items-center justify-center bg-gray-900 rounded-lg shadow-lg text-white text-xl">
@@ -70,25 +83,6 @@ export default function PlayerProfileCard({
       </div>
     );
   }
-
-  // Everything below here is safe to use contract.playerName, etc.
-  const fileName = contract.playerName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-
-  const imageSrc = `/players/cardimages/${fileName}.${imageExtension}`;
-  const defaultSrc = `/players/cardimages/default_${contract.position?.toLowerCase()}.${imageExtension}`;
-
-  const [imgSrc, setImgSrc] = useState(imageSrc);
-
-  useEffect(() => {
-    setImgSrc(imageSrc);
-  }, [imageSrc]);
-
-  const handleImgError = () => {
-    if (imgSrc !== defaultSrc) setImgSrc(defaultSrc);
-  };
 
   // Helper for bubble
   const Bubble = ({ children, className = "" }) => (
