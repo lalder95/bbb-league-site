@@ -71,17 +71,15 @@ export default function PlayerProfileCard({
     );
   }
 
-  // Convert player name to snake_case for filename
+  // Everything below here is safe to use contract.playerName, etc.
   const fileName = contract.playerName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 
-  // Try custom image, fallback to default for position
   const imageSrc = `/players/cardimages/${fileName}.${imageExtension}`;
   const defaultSrc = `/players/cardimages/default_${contract.position?.toLowerCase()}.${imageExtension}`;
 
-  // Use onError to fallback to default image if custom not found
   const [imgSrc, setImgSrc] = useState(imageSrc);
 
   useEffect(() => {
