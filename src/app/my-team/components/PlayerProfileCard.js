@@ -35,7 +35,7 @@ export default function PlayerProfileCard({
             playerName: foundRow[1],
             contractType: foundRow[2],
             status: foundRow[14],
-            team: foundRow[33],
+            team: foundRow[32], // TeamDisplayName
             position: foundRow[21],
             curYear: foundRow[15] ? parseFloat(foundRow[15]) : 0,
             year2: foundRow[16] ? parseFloat(foundRow[16]) : 0,
@@ -43,7 +43,7 @@ export default function PlayerProfileCard({
             year4: foundRow[18] ? parseFloat(foundRow[18]) : 0,
             contractFinalYear: foundRow[5],
             age: foundRow[31],
-            ktcValue: foundRow[32],
+            ktcValue: foundRow[33],
             rfaEligible: foundRow[36],
             franchiseTagEligible: foundRow[37],
           });
