@@ -204,7 +204,7 @@ export default function Home() {
             className="bg-transparent p-0 rounded-lg shadow-2xl relative"
             onClick={e => e.stopPropagation()}
           >
-            <PlayerProfileCard playerId={selectedPlayerId} contracts={players} />
+            <PlayerProfileCard playerId={selectedPlayerId} />
             <button
               className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
               onClick={() => setSelectedPlayerId(null)}
