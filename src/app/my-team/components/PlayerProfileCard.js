@@ -134,24 +134,43 @@ export default function PlayerProfileCard({
         </Bubble>
         <Bubble className="bg-indigo-700 bg-opacity-50">{contract.contractType}</Bubble>
         <Bubble className="bg-purple-700 bg-opacity-50">{contract.team}</Bubble>
-        <Bubble className="bg-yellow-700 bg-opacity-50">Age: {contract.age || "-"}</Bubble>
-        <Bubble className="bg-cyan-700 bg-opacity-50">
+        <Bubble
+          className={
+            "bg-yellow-700 bg-opacity-50 " +
+            (Number(contract.age) >= 30 ? "animate-pulse" : "")
+          }
+        >
+          Age: {contract.age || "-"}
+        </Bubble>
+        <Bubble
+          className={
+            "bg-cyan-700 bg-opacity-50 " +
+            (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")
+          }
+        >
           RFA: {String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}
         </Bubble>
         <Bubble
           className={
             "bg-pink-700 bg-opacity-50 " +
-            (String(contract.franchiseTagEligible).toLowerCase() === "true"
-              ? "animate-pulse"
-              : "")
+            (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")
           }
         >
           Tag: {String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}
         </Bubble>
-        <Bubble className="bg-teal-700 bg-opacity-50">
+        <Bubble
+          className={
+            "bg-teal-700 bg-opacity-50"
+          }
+        >
           KTC: {contract.ktcValue ? contract.ktcValue : "-"}
         </Bubble>
-        <Bubble className="bg-orange-700 bg-opacity-50">
+        <Bubble
+          className={
+            "bg-orange-700 bg-opacity-50 " +
+            (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")
+          }
+        >
           Final Year: {contract.contractFinalYear || "-"}
         </Bubble>
       </div>
