@@ -73,8 +73,19 @@ function TeamSection({
                       transition={{ type: "spring", stiffness: 3000, damping: 20 }}
                       className="relative flex flex-col items-center"
                     >
-                      <div className="w-20 h-20 flex items-center justify-center">
+                      <div className="w-20 h-20 flex items-center justify-center relative">
                         <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setPopupPlayer(player);
+                          }}
+                          className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+                          style={{ fontSize: 16, lineHeight: 1 }}
+                          aria-label="Show details"
+                        >
+                          i
+                        </button>
                       </div>
                       <div className="mt-2 text-xs text-white font-semibold text-center">
                         {player.playerName}
