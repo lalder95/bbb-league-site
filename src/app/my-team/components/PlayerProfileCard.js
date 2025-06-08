@@ -142,7 +142,7 @@ export default function PlayerProfileCard({
           className={
             "bg-pink-700 bg-opacity-50 " +
             (String(contract.franchiseTagEligible).toLowerCase() === "true"
-              ? "animate-bounce"
+              ? "animate-pulse"
               : "")
           }
         >
