@@ -6,6 +6,7 @@ export default function PlayerProfileCard({
   imageExtension = "png",
   expanded = false,
   onExpandClick,
+  className = "", // <-- add this line
 }) {
   const [contract, setContract] = useState(null);
   const [imgSrc, setImgSrc] = useState(null);
@@ -120,7 +121,7 @@ export default function PlayerProfileCard({
   );
 
   return (
-    <div className="relative w-full h-full rounded-lg overflow-hidden shadow-lg bg-gray-900">
+    <div className={`relative w-full h-full rounded-lg overflow-hidden shadow-lg bg-gray-900 ${className}`}> {/* <-- update this line */}
       <img
         src={imgSrc}
         alt={contract.playerName}

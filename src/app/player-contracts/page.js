@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 
+const USER_ID = '456973480269705216'; // Your Sleeper user ID
+
 export default function Home() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,7 +17,10 @@ export default function Home() {
   const [showTeamDropdown, setShowTeamDropdown] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
+  const [teamAvatars, setTeamAvatars] = useState({});
+  const [leagueId, setLeagueId] = useState(null);
 
+  // Responsive
   useEffect(() => {
     function handleResize() {
       setIsMobile(window.innerWidth < 768);
@@ -25,22 +30,78 @@ export default function Home() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Auto-detect league ID (copied from home page)
+  useEffect(() => {
+    async function findBBBLeague() {
+      try {
+        // Get current NFL season
+        const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        const seasonState = await seasonResponse.json();
+        const currentSeason = seasonState.season;
+
+        // Get user's leagues for the current season
+        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
+        const userLeagues = await userLeaguesResponse.json();
+
+        // Try flexible matching for "Budget Blitz Bowl"
+        let bbbLeagues = userLeagues.filter(league =>
+          league.name && (
+            league.name.includes('Budget Blitz Bowl') ||
+            league.name.includes('budget blitz bowl') ||
+            league.name.includes('BBB') ||
+            (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+          )
+        );
+
+        // If not found, try previous season
+        if (bbbLeagues.length === 0) {
+          const prevSeason = (parseInt(currentSeason) - 1).toString();
+          const prevSeasonResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prevSeason}`);
+          if (prevSeasonResponse.ok) {
+            const prevSeasonLeagues = await prevSeasonResponse.json();
+            const prevBBBLeagues = prevSeasonLeagues.filter(league =>
+              league.name && (
+                league.name.includes('Budget Blitz Bowl') ||
+                league.name.includes('budget blitz bowl') ||
+                league.name.includes('BBB') ||
+                (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+              )
+            );
+            if (prevBBBLeagues.length > 0) {
+              bbbLeagues = prevBBBLeagues;
+            } else if (userLeagues.length > 0) {
+              bbbLeagues = [userLeagues[0]];
+            } else if (prevSeasonLeagues.length > 0) {
+              bbbLeagues = [prevSeasonLeagues[0]];
+            }
+          } else if (userLeagues.length > 0) {
+            bbbLeagues = [userLeagues[0]];
+          }
+        }
+
+        // Sort by season and take the most recent
+        const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
+        setLeagueId(mostRecentLeague.league_id);
+      } catch (err) {
+        setLeagueId(null);
+      }
+    }
+    findBBBLeague();
+  }, []);
+
+  // Fetch contract data
   useEffect(() => {
     async function fetchData() {
       try {
         const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
         const text = await response.text();
-
         const rows = text.split('\n');
-        const headers = rows[0].split(',');
-
         const parsedData = rows.slice(1)
           .filter(row => row.trim())
           .map(row => {
             const values = row.split(',');
             const status = values[14];
             const isActive = status === 'Active';
-
             return {
               playerId: values[0],
               playerName: values[1],
@@ -56,21 +117,38 @@ export default function Home() {
               contractFinalYear: values[5],
               age: values[31],
               ktcValue: values[32],
-              rfaEligible: values[36],
-              franchiseTagEligible: values[37],
+              rfaEligible: values[37], // <-- was 36, should be 37
+              franchiseTagEligible: values[38], // <-- was 37, should be 38
             };
           });
-
         setPlayers(parsedData);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        // Optionally handle error
       } finally {
         setLoading(false);
       }
     }
-
     fetchData();
   }, []);
+
+  // Fetch avatars using detected leagueId
+  useEffect(() => {
+    if (!leagueId) return;
+    async function fetchAvatars() {
+      try {
+        const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
+        const users = await res.json();
+        const avatarMap = {};
+        users.forEach(user => {
+          avatarMap[user.display_name] = user.avatar;
+        });
+        setTeamAvatars(avatarMap);
+      } catch (e) {
+        // Optionally handle error
+      }
+    }
+    fetchAvatars();
+  }, [leagueId]);
 
   const handleSort = (key) => {
     setSortConfig({
@@ -168,7 +246,6 @@ export default function Home() {
         setShowTeamDropdown(false);
       }
     }
-
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
@@ -204,7 +281,11 @@ export default function Home() {
             className="bg-transparent p-0 rounded-lg shadow-2xl relative"
             onClick={e => e.stopPropagation()}
           >
-            <PlayerProfileCard playerId={selectedPlayerId} />
+            <PlayerProfileCard
+              playerId={selectedPlayerId}
+              expanded={true}
+              className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
+            />
             <button
               className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
               onClick={() => setSelectedPlayerId(null)}
@@ -394,46 +475,69 @@ export default function Home() {
         <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
           <table className="w-full border-collapse">
             <thead>
-  <tr className="bg-black/40 border-b border-white/10">
-    {[
-      { key: 'team', label: 'Team' },
-      { key: 'playerName', label: 'Player Name' },
-      { key: 'contractType', label: 'Contract Type' },
-      { key: 'curYear', label: 'Cur Year' },
-      { key: 'year2', label: 'Year 2' },
-      { key: 'year3', label: 'Year 3' },
-      { key: 'year4', label: 'Year 4' },
-      { key: 'contractFinalYear', label: 'Final Year' }
-    ].map(({ key, label }) => (
-      <th 
-        key={key}
-        onClick={() => handleSort(key)}
-        className="p-3 text-left cursor-pointer hover:bg-white/5 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          {label}
-          {sortConfig.key === key && (
-            <span className="text-[#FF4B1F]">
-              {sortConfig.direction === 'asc' ? '↑' : '↓'}
-            </span>
-          )}
-        </div>
-      </th>
-    ))}
-  </tr>
-</thead>
+              <tr className="bg-black/40 border-b border-white/10">
+                {[
+                  { key: 'profile', label: '' }, // PlayerProfileCard column
+                  { key: 'playerName', label: 'Player Name' },
+                  { key: 'team', label: 'Team' },
+                  { key: 'contractType', label: 'Contract Type' },
+                  { key: 'curYear', label: 'Salary' }, // Renamed from "Cur Year"
+                  { key: 'rfaEligible', label: <span title="Restricted Free Agent Eligible">RFA?</span> },
+                  { key: 'franchiseTagEligible', label: <span title="Franchise Tag Eligible">FT?</span> },
+                  { key: 'contractFinalYear', label: 'Final Year' }
+                ].map(({ key, label }) => (
+                  <th
+                    key={key}
+                    onClick={key !== 'profile' ? () => handleSort(key) : undefined}
+                    className="p-3 text-left cursor-pointer hover:bg-white/5 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      {label}
+                      {sortConfig.key === key && key !== 'profile' && (
+                        <span className="text-[#FF4B1F]">
+                          {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
               {filteredAndSortedPlayers.map((player, index) => (
                 <tr
                   key={index}
                   className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                 >
-                  <td className="p-3">{player.team}</td>
+                  {/* PlayerProfileCard column */}
+                  <td className="p-3">
+                    <div className="w-8 h-8 flex-shrink-0">
+                      <PlayerProfileCard
+                        playerId={player.playerId}
+                        expanded={false}
+                        className="w-8 h-8 rounded-full overflow-hidden shadow"
+                      />
+                    </div>
+                  </td>
+                  {/* Player Name column */}
                   <td
                     className={`p-3 font-medium ${getStatusColor(player.status)} cursor-pointer underline`}
                     onClick={() => setSelectedPlayerId(player.playerId)}
                   >
                     {player.playerName}
+                  </td>
+                  {/* Team column */}
+                  <td className="p-3 flex items-center gap-2">
+                    {teamAvatars[player.team] ? (
+                      <img
+                        src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                        alt={player.team}
+                        className="w-5 h-5 rounded-full mr-2"
+                      />
+                    ) : (
+                      <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
+                    )}
+                    {player.team}
                   </td>
                   <td className={`p-3 ${getContractTypeColor(player.contractType)}`}>
                     {player.contractType}
@@ -441,14 +545,45 @@ export default function Home() {
                   <td className={`p-3 ${getSalaryColor(player.curYear, player.isDeadCap)}`}>
                     {formatSalary(player.curYear, player.isDeadCap)}
                   </td>
-                  <td className={`p-3 ${getSalaryColor(player.year2, player.isDeadCap)}`}>
-                    {formatSalary(player.year2, player.isDeadCap)}
+                  {/* RFA? icon */}
+                  <td className="p-3 text-center">
+                    {String(player.rfaEligible).toLowerCase() === 'true' ? (
+                      <span
+                        title="This Player will enter RFA when this contract expires."
+                        className="text-green-400"
+                        aria-label="RFA Eligible"
+                      >
+                        ✔️
+                      </span>
+                    ) : (
+                      <span
+                        title="This player will NOT enter RFA."
+                        className="text-red-400"
+                        aria-label="Not RFA Eligible"
+                      >
+                        ❌
+                      </span>
+                    )}
                   </td>
-                  <td className={`p-3 ${getSalaryColor(player.year3, player.isDeadCap)}`}>
-                    {formatSalary(player.year3, player.isDeadCap)}
-                  </td>
-                  <td className={`p-3 ${getSalaryColor(player.year4, player.isDeadCap)}`}>
-                    {formatSalary(player.year4, player.isDeadCap)}
+                  {/* Franchise Tag Eligible? icon */}
+                  <td className="p-3 text-center">
+                    {String(player.franchiseTagEligible).toLowerCase() === 'true' ? (
+                      <span
+                        title="This player is Franchise Tag eligible."
+                        className="text-green-400"
+                        aria-label="Franchise Tag Eligible"
+                      >
+                        ✔️
+                      </span>
+                    ) : (
+                      <span
+                        title="This player is NOT Franchise Tag eligible."
+                        className="text-red-400"
+                        aria-label="Not Franchise Tag Eligible"
+                      >
+                        ❌
+                      </span>
+                    )}
                   </td>
                   <td className="p-3">{player.contractFinalYear}</td>
                 </tr>

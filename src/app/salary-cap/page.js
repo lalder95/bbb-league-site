@@ -1,11 +1,15 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 
+const USER_ID = '456973480269705216'; // Your Sleeper user ID
+
 export default function SalaryCap() {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: 'team', direction: 'asc' });
   const [isMobile, setIsMobile] = useState(false);
+  const [leagueId, setLeagueId] = useState(null);
+  const [teamAvatars, setTeamAvatars] = useState({});
 
   useEffect(() => {
     function handleResize() {
@@ -15,6 +19,59 @@ export default function SalaryCap() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Auto-detect league ID (copied from home page)
+  useEffect(() => {
+    async function findBBBLeague() {
+      try {
+        const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        const seasonState = await seasonResponse.json();
+        const currentSeason = seasonState.season;
+
+        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
+        const userLeagues = await userLeaguesResponse.json();
+
+        let bbbLeagues = userLeagues.filter(league =>
+          league.name && (
+            league.name.includes('Budget Blitz Bowl') ||
+            league.name.includes('budget blitz bowl') ||
+            league.name.includes('BBB') ||
+            (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+          )
+        );
+
+        if (bbbLeagues.length === 0 && userLeagues.length > 0) {
+          bbbLeagues = [userLeagues[0]];
+        }
+
+        const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
+        setLeagueId(mostRecentLeague.league_id);
+      } catch (err) {
+        setLeagueId(null);
+      }
+    }
+    findBBBLeague();
+  }, []);
+
+  // Fetch team avatars using detected leagueId
+  useEffect(() => {
+    if (!leagueId) return;
+    async function fetchAvatars() {
+      try {
+        const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
+        const users = await res.json();
+        if (!users || !Array.isArray(users)) return;
+        const avatarMap = {};
+        users.forEach(user => {
+          avatarMap[user.display_name] = user.avatar;
+        });
+        setTeamAvatars(avatarMap);
+      } catch (e) {
+        // Optionally handle error
+      }
+    }
+    fetchAvatars();
+  }, [leagueId]);
 
   useEffect(() => {
     async function fetchData() {
@@ -148,7 +205,7 @@ export default function SalaryCap() {
   const getCapSpaceColor = (value) => {
     if (value >= 100) return 'text-green-400';
     if (value >= 75) return 'text-yellow-400';
-    if (value >= 50) return 'text-[#FF4B1F]';  // Using your brand orange color
+    if (value >= 50) return 'text-[#FF4B1F]';
     return 'text-red-500';
   };
 
@@ -238,7 +295,18 @@ export default function SalaryCap() {
                   key={index}
                   className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
                 >
-                  <td className="p-3 font-medium">{team.team}</td>
+                  <td className="p-3 font-medium flex items-center gap-2">
+                    {teamAvatars[team.team] ? (
+                      <img
+                        src={`https://sleepercdn.com/avatars/${teamAvatars[team.team]}`}
+                        alt={team.team}
+                        className="w-5 h-5 rounded-full mr-2"
+                      />
+                    ) : (
+                      <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
+                    )}
+                    {team.team}
+                  </td>
                   <CapSpaceCell data={team.curYear} isFirstRow={index === 0} />
                   <CapSpaceCell data={team.year2} isFirstRow={index === 0} />
                   <CapSpaceCell data={team.year3} isFirstRow={index === 0} />

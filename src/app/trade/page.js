@@ -4,6 +4,8 @@ import TradeSummary from './TradeSummary';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { AnimatePresence, motion } from 'framer-motion';
 
+const USER_ID = '456973480269705216'; // Your Sleeper user ID
+
 function TeamSection({ 
   side, 
   team, 
@@ -15,18 +17,17 @@ function TeamSection({
   setSelectedPlayers,
   uniqueTeams,
   tradeValidation,
-  impact
+  impact,
+  teamAvatars
 }) {
-  // Animation: Track which player was just added
   const [justAddedId, setJustAddedId] = useState(null);
   const [expandedCardId, setExpandedCardId] = useState(null);
   const [popupPlayer, setPopupPlayer] = useState(null);
 
-  // When a player is added, set justAddedId for animation
   const handleAddPlayer = (player) => {
     setSelectedPlayers([...selectedPlayers, player]);
     setJustAddedId(player.id);
-    setTimeout(() => setJustAddedId(null), 600); // Match animation duration
+    setTimeout(() => setJustAddedId(null), 600);
   };
 
   return (
@@ -39,11 +40,18 @@ function TeamSection({
             setTeam(e.target.value);
             setSelectedPlayers([]);
           }}
-          className="w-full p-2 mb-4 rounded bg-white/5 border border-white/10 text-white"
+          className="w-full p-2 mb-4 rounded bg-[#0a1929] border border-white/10 text-white"
+          style={{ color: 'white', backgroundColor: '#0a1929' }}
         >
-          <option value="">Select Team</option>
+          <option value="" style={{ color: '#FF4B1F', backgroundColor: '#0a1929' }}>Select Team</option>
           {uniqueTeams.map(team => (
-            <option key={team} value={team}>{team}</option>
+            <option
+              key={team}
+              value={team}
+              style={{ color: 'white', backgroundColor: '#0a1929' }}
+            >
+              {team}
+            </option>
           ))}
         </select>
 
@@ -64,59 +72,74 @@ function TeamSection({
                   <div className="text-xs text-white/40 italic">No players selected.</div>
                 )}
                 <AnimatePresence>
-                  {selectedPlayers.map(player => (
-                    <motion.div
-                      key={player.id}
-                      initial={{ opacity: 0, y: 30 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 30 }}
-                      transition={{ type: "spring", stiffness: 3000, damping: 20 }}
-                      className="relative flex items-center gap-4" // horizontal layout
-                    >
-                      {/* Card and info */}
-                      <div className="flex flex-col items-center">
-                        <div className="w-20 h-20 flex items-center justify-center relative">
-                          <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              setPopupPlayer(player);
-                            }}
-                            className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
-                            style={{ fontSize: 16, lineHeight: 1 }}
-                            aria-label="Show details"
-                          >
-                            i
-                          </button>
-                        </div>
-                        <div className="mt-2 text-xs text-white font-semibold text-center">
-                          {player.playerName}
-                        </div>
-                      </div>
-                      {/* Bubbles */}
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-[#FF4B1F]/50 text-white">{player.playerName}</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-700/50 text-white">{player.position}</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-700/50 text-white">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-700/50 text-white">{player.contractType}</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-purple-700/50 text-white">{player.team}</span>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-700/50 text-white ${Number(player.age) >= 30 ? "animate-pulse" : ""}`}>Age: {player.age || "-"}</span>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
-                      </div>
-                      {/* Remove button */}
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id));
-                        }}
-                        className="ml-auto text-red-400 hover:text-red-300 text-xs bg-black/60 rounded px-2 py-1"
+                  {selectedPlayers.map((player, idx) => (
+                    <React.Fragment key={player.id}>
+                      {idx > 0 && (
+                        <div className="w-full border-t border-[#FF4B1F]/40 my-2"></div>
+                      )}
+                      <motion.div
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 30 }}
+                        transition={{ type: "spring", stiffness: 3000, damping: 20 }}
+                        className="relative flex items-center gap-4"
                       >
-                        Remove
-                      </button>
-                    </motion.div>
+                        {/* Card and info */}
+                        <div className="flex flex-col items-center">
+                          <div className="w-20 h-20 flex items-center justify-center relative">
+                            <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                setPopupPlayer(player);
+                              }}
+                              className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+                              style={{ fontSize: 16, lineHeight: 1 }}
+                              aria-label="Show details"
+                            >
+                              i
+                            </button>
+                          </div>
+                          <div className="mt-2 text-xs text-white font-semibold text-center">
+                            {player.playerName}
+                          </div>
+                        </div>
+                        {/* Bubbles */}
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-[#FF4B1F]/50 text-white">{player.playerName}</span>
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-700/50 text-white">{player.position}</span>
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-700/50 text-white">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-700/50 text-white">{player.contractType}</span>
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-purple-700/50 text-white">
+                            {teamAvatars[player.team] ? (
+                              <img
+                                src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                                alt={player.team}
+                                className="w-4 h-4 rounded-full mr-1 inline-block"
+                              />
+                            ) : (
+                              <span className="w-4 h-4 rounded-full bg-white/10 mr-1 inline-block"></span>
+                            )}
+                            {player.team}
+                          </span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-700/50 text-white ${Number(player.age) >= 30 ? "animate-pulse" : ""}`}>Age: {player.age || "-"}</span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
+                        </div>
+                        {/* Remove button */}
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id));
+                          }}
+                          className="ml-auto text-red-400 hover:text-red-300 text-xs bg-black/60 rounded px-2 py-1"
+                        >
+                          Remove
+                        </button>
+                      </motion.div>
+                    </React.Fragment>
                   ))}
                 </AnimatePresence>
               </div>
@@ -235,12 +258,46 @@ export default function Trade() {
   const [teamA, setTeamA] = useState('');
   const [teamB, setTeamB] = useState('');
   const [showSummary, setShowSummary] = useState(false);
+  const [teamAvatars, setTeamAvatars] = useState({});
+  const [leagueId, setLeagueId] = useState(null);
+
+  // Auto-detect league ID (copied from home page)
+  useEffect(() => {
+    async function findBBBLeague() {
+      try {
+        const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        const seasonState = await seasonResponse.json();
+        const currentSeason = seasonState.season;
+
+        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
+        const userLeagues = await userLeaguesResponse.json();
+
+        let bbbLeagues = userLeagues.filter(league =>
+          league.name && (
+            league.name.includes('Budget Blitz Bowl') ||
+            league.name.includes('budget blitz bowl') ||
+            league.name.includes('BBB') ||
+            (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+          )
+        );
+
+        if (bbbLeagues.length === 0 && userLeagues.length > 0) {
+          bbbLeagues = [userLeagues[0]];
+        }
+
+        const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
+        setLeagueId(mostRecentLeague.league_id);
+      } catch (err) {
+        setLeagueId(null);
+      }
+    }
+    findBBBLeague();
+  }, []);
 
   // Fetch contract data (KTC from contracts CSV)
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch contract data
         const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
         const text = await response.text();
         const rows = text.split('\n');
@@ -255,7 +312,7 @@ export default function Trade() {
               playerName: values[1],
               team: values[33],
               position: values[21],
-              nflTeam: values[22], // Make sure this is the correct index for NFL team
+              nflTeam: values[22],
               status: status,
               contractType: values[2],
               contractFinalYear: values[5],
@@ -283,6 +340,26 @@ export default function Trade() {
     fetchData();
   }, []);
 
+  // Fetch avatars using detected leagueId
+  useEffect(() => {
+    if (!leagueId) return;
+    async function fetchAvatars() {
+      try {
+        const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
+        const users = await res.json();
+        if (!users || !Array.isArray(users)) return;
+        const avatarMap = {};
+        users.forEach(user => {
+          avatarMap[user.display_name] = user.avatar;
+        });
+        setTeamAvatars(avatarMap);
+      } catch (e) {
+        // Optionally handle error
+      }
+    }
+    fetchAvatars();
+  }, [leagueId]);
+
   const uniqueTeams = [...new Set(players.map(player => player.team))].sort();
 
   const filteredPlayersA = players
@@ -292,7 +369,7 @@ export default function Trade() {
       !selectedPlayersA.some(selected => selected.id === player.id) &&
       !selectedPlayersB.some(selected => selected.id === player.id)
     )
-    .sort((a, b) => a.playerName.localeCompare(b.playerName)); // Alphabetize by name
+    .sort((a, b) => a.playerName.localeCompare(b.playerName));
 
   const filteredPlayersB = players
     .filter(player => 
@@ -301,7 +378,7 @@ export default function Trade() {
       !selectedPlayersA.some(selected => selected.id === player.id) &&
       !selectedPlayersB.some(selected => selected.id === player.id)
     )
-    .sort((a, b) => a.playerName.localeCompare(b.playerName)); // Alphabetize by name
+    .sort((a, b) => a.playerName.localeCompare(b.playerName));
 
   const calculateCapImpact = (playerList) => {
     return {
@@ -452,6 +529,7 @@ export default function Trade() {
             uniqueTeams={uniqueTeams}
             tradeValidation={tradeValidation}
             impact={tradeValidation?.impactA}
+            teamAvatars={teamAvatars}
           />
           <TeamSection
             side="B"
@@ -465,6 +543,7 @@ export default function Trade() {
             uniqueTeams={uniqueTeams}
             tradeValidation={tradeValidation}
             impact={tradeValidation?.impactB}
+            teamAvatars={teamAvatars}
           />
         </div>
       </div>
