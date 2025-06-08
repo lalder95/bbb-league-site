@@ -105,7 +105,7 @@ function TeamSection({
                       className="cursor-pointer flex flex-col items-center"
                       onClick={() => handleAddPlayer(player)}
                     >
-                      <div className="w-20 h-20 flex items-center justify-center">
+                      <div className="w-24 h-24">
                         <PlayerProfileCard playerId={player.id} imageExtension="png" />
                       </div>
                       <div className="mt-2 text-xs text-white font-semibold text-center">
