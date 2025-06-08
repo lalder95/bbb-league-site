@@ -20,6 +20,7 @@ function TeamSection({
   // Animation: Track which player was just added
   const [justAddedId, setJustAddedId] = useState(null);
   const [expandedCardId, setExpandedCardId] = useState(null);
+  const [popupPlayer, setPopupPlayer] = useState(null);
 
   // When a player is added, set justAddedId for animation
   const handleAddPlayer = (player) => {
@@ -104,18 +105,25 @@ function TeamSection({
                     <div
                       key={player.id}
                       className="cursor-pointer flex flex-col items-center"
-                      // onClick={() => handleAddPlayer(player)} // Keep this only for selection, not for expand
+                      onClick={() => handleAddPlayer(player)}
                     >
-                      <div className="w-24 h-24 flex items-center justify-center">
+                      <div className="w-24 h-24 flex items-center justify-center relative">
                         <PlayerProfileCard
                           playerId={player.id}
                           imageExtension="png"
-                          expanded={expandedCardId === player.id}
-                          onExpandClick={e => {
-                            e.stopPropagation();
-                            setExpandedCardId(expandedCardId === player.id ? null : player.id);
-                          }}
+                          expanded={false}
                         />
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setPopupPlayer(player);
+                          }}
+                          className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+                          style={{ fontSize: 16, lineHeight: 1 }}
+                          aria-label="Show details"
+                        >
+                          i
+                        </button>
                       </div>
                       <div className="mt-2 text-xs text-white font-semibold text-center">
                         {player.playerName}
@@ -141,6 +149,28 @@ function TeamSection({
           </>
         )}
       </div>
+
+      {popupPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="relative bg-gray-900 rounded-lg shadow-lg p-4 max-w-xs w-full">
+            <button
+              onClick={() => setPopupPlayer(null)}
+              className="absolute top-2 right-2 text-white bg-black/60 rounded-full p-2 hover:bg-black/80 z-10"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <PlayerProfileCard
+              playerId={popupPlayer.id}
+              imageExtension="png"
+              expanded={true}
+            />
+            <div className="mt-4 text-center text-lg font-bold text-white">
+              {popupPlayer.playerName}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
