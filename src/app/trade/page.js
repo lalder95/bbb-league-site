@@ -71,31 +71,48 @@ function TeamSection({
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 30 }}
                       transition={{ type: "spring", stiffness: 3000, damping: 20 }}
-                      className="relative flex flex-col items-center"
+                      className="relative flex items-center gap-4" // horizontal layout
                     >
-                      <div className="w-20 h-20 flex items-center justify-center relative">
-                        <PlayerProfileCard playerId={player.id} imageExtension="png" />
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            setPopupPlayer(player);
-                          }}
-                          className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
-                          style={{ fontSize: 16, lineHeight: 1 }}
-                          aria-label="Show details"
-                        >
-                          i
-                        </button>
+                      {/* Card and info */}
+                      <div className="flex flex-col items-center">
+                        <div className="w-20 h-20 flex items-center justify-center relative">
+                          <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              setPopupPlayer(player);
+                            }}
+                            className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+                            style={{ fontSize: 16, lineHeight: 1 }}
+                            aria-label="Show details"
+                          >
+                            i
+                          </button>
+                        </div>
+                        <div className="mt-2 text-xs text-white font-semibold text-center">
+                          {player.playerName}
+                        </div>
                       </div>
-                      <div className="mt-2 text-xs text-white font-semibold text-center">
-                        {player.playerName}
+                      {/* Bubbles */}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-[#FF4B1F]/50 text-white">{player.playerName}</span>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-700/50 text-white">{player.position}</span>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-700/50 text-white">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-700/50 text-white">{player.contractType}</span>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-purple-700/50 text-white">{player.team}</span>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-700/50 text-white ${Number(player.age) >= 30 ? "animate-pulse" : ""}`}>Age: {player.age || "-"}</span>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
                       </div>
+                      {/* Remove button */}
                       <button
                         onClick={e => {
                           e.stopPropagation();
                           setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id));
                         }}
-                        className="absolute top-2 right-2 text-red-400 hover:text-red-300 text-xs bg-black/60 rounded px-2 py-1"
+                        className="ml-auto text-red-400 hover:text-red-300 text-xs bg-black/60 rounded px-2 py-1"
                       >
                         Remove
                       </button>
