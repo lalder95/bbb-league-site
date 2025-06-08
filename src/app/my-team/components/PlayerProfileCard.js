@@ -127,7 +127,7 @@ export default function PlayerProfileCard({
       />
       {/* Bubble overlay */}
       <div className="absolute bottom-0 left-0 w-full flex flex-wrap px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-        <Bubble className="bg-[#FF4B1F]">{contract.playerName}</Bubble>
+        <Bubble className="bg-[#FF4B1F] bg-opacity-20">{contract.playerName}</Bubble>
         <Bubble className="bg-blue-700">{contract.position}</Bubble>
         <Bubble className="bg-green-700">
           ${contract.curYear ? contract.curYear.toFixed(1) : "-"}
