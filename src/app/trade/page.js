@@ -1,65 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import TradeSummary from './TradeSummary';
-
-// Add: For animation
+import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { AnimatePresence, motion } from 'framer-motion';
-
-const PlayerCard = ({ player, onRemove, showRemove = true, onClick = null }) => (
-  <div
-    className={`bg-white/5 rounded p-2 mb-2 ${onClick ? 'cursor-pointer hover:bg-white/10' : ''}`}
-    onClick={onClick}
-  >
-    {/* Top row: Name, Position */}
-    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-      <div className="font-bold text-base">{player.playerName}</div>
-      <div className="flex items-center gap-2">
-        <span className="bg-black/20 px-2 py-0.5 rounded text-sm">{player.position}</span>
-        {/* NFL team badge removed */}
-      </div>
-    </div>
-    {/* Year headers */}
-    <div className="grid grid-cols-4 gap-2 text-xs text-white/70 mb-1">
-      <div>Year 1</div>
-      <div>Year 2</div>
-      <div>Year 3</div>
-      <div>Year 4</div>
-    </div>
-    {/* Year values */}
-    <div className="grid grid-cols-4 gap-2 text-sm font-mono mb-1">
-      <div className="text-green-400">${player.curYear?.toFixed(1) ?? '-'}</div>
-      <div className="text-yellow-400">${player.year2?.toFixed(1) ?? '-'}</div>
-      <div className="text-orange-400">${player.year3?.toFixed(1) ?? '-'}</div>
-      <div className="text-red-400">${player.year4?.toFixed(1) ?? '-'}</div>
-    </div>
-    {/* Contract details */}
-    <div className="grid grid-cols-2 gap-2 text-xs mt-1">
-      <div>
-        <span className="text-white/50">Type:</span>{' '}
-        <span className="font-semibold">{player.contractType || 'N/A'}</span>
-      </div>
-      <div>
-        <span className="text-white/50">Final Year:</span>{' '}
-        <span className="font-semibold">{player.contractFinalYear || 'N/A'}</span>
-      </div>
-      <div>
-        <span className="text-white/50">KTC Value:</span>{' '}
-        <span className="font-semibold">{player.ktcValue !== undefined ? player.ktcValue : '...'}</span>
-      </div>
-    </div>
-    {showRemove && (
-      <button
-        onClick={e => {
-          e.stopPropagation();
-          onRemove();
-        }}
-        className="text-red-400 hover:text-red-300 mt-2 text-xs"
-      >
-        Remove
-      </button>
-    )}
-  </div>
-);
 
 function TeamSection({ 
   side, 
@@ -126,11 +69,18 @@ function TeamSection({
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 30 }}
                       transition={{ type: "spring", stiffness: 3000, damping: 20 }}
+                      className="relative"
                     >
-                      <PlayerCard
-                        player={player}
-                        onRemove={() => setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id))}
-                      />
+                      <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id));
+                        }}
+                        className="absolute top-2 right-2 text-red-400 hover:text-red-300 text-xs bg-black/60 rounded px-2 py-1"
+                      >
+                        Remove
+                      </button>
                     </motion.div>
                   ))}
                 </AnimatePresence>
@@ -144,12 +94,13 @@ function TeamSection({
                   <div className="text-xs text-white/40 italic">No available players.</div>
                 )}
                 {filteredPlayers.map(player => (
-                  <PlayerCard
+                  <div
                     key={player.id}
-                    player={player}
-                    showRemove={false}
+                    className="cursor-pointer"
                     onClick={() => handleAddPlayer(player)}
-                  />
+                  >
+                    <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                  </div>
                 ))}
               </div>
             </div>
@@ -234,7 +185,10 @@ export default function Trade() {
               year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
               year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
               isActive: isActive,
-              ktcValue: parseFloat(values[34]) || undefined // <-- KTC from contracts CSV
+              age: values[32],
+              ktcValue: values[34],
+              rfaEligible: values[37],
+              franchiseTagEligible: values[38],
             };
           })
           .filter(player => player.status === 'Active');
@@ -272,20 +226,20 @@ export default function Trade() {
 
   const calculateCapImpact = (playerList) => {
     return {
-      curYear: playerList.reduce((sum, player) => sum + player.curYear, 0),
-      year2: playerList.reduce((sum, player) => sum + player.year2, 0),
-      year3: playerList.reduce((sum, player) => sum + player.year3, 0),
-      year4: playerList.reduce((sum, player) => sum + player.year4, 0),
+      curYear: playerList.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
+      year2: playerList.reduce((sum, player) => sum + (parseFloat(player.year2) || 0), 0),
+      year3: playerList.reduce((sum, player) => sum + (parseFloat(player.year3) || 0), 0),
+      year4: playerList.reduce((sum, player) => sum + (parseFloat(player.year4) || 0), 0),
     };
   };
 
   const calculateTeamCapSpace = (teamName) => {
     const teamPlayers = players.filter(player => player.team === teamName);
     const capUsage = {
-      curYear: teamPlayers.reduce((sum, player) => sum + player.curYear, 0),
-      year2: teamPlayers.reduce((sum, player) => sum + player.year2, 0),
-      year3: teamPlayers.reduce((sum, player) => sum + player.year3, 0),
-      year4: teamPlayers.reduce((sum, player) => sum + player.year4, 0),
+      curYear: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
+      year2: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.year2) || 0), 0),
+      year3: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.year3) || 0), 0),
+      year4: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.year4) || 0), 0),
     };
     
     return {
