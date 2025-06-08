@@ -109,7 +109,7 @@ export default function PlayerProfileCard({
   const Bubble = ({ children, className = "" }) => (
     <span
       className={
-        "inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-black/70 text-white mr-1 mb-1 " +
+        "inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-black/20 text-white mr-1 mb-1 " +
         className
       }
     >
@@ -143,6 +143,9 @@ export default function PlayerProfileCard({
         </Bubble>
         <Bubble className="bg-gray-700">
           KTC: {contract.ktcValue ? contract.ktcValue : "-"}
+        </Bubble>
+        <Bubble className="bg-orange-700">
+          Final Year: {contract.contractFinalYear || "-"}
         </Bubble>
       </div>
     </div>
