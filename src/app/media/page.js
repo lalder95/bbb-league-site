@@ -34,11 +34,13 @@ export default function SalaryCap() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
         {images.map((img, idx) => (
           <div key={idx} className="flex flex-col items-center">
-            <img
-              src={img.src}
-              alt={img.player}
-              className="w-48 h-auto rounded shadow mb-2 bg-black/20 object-contain"
-            />
+            <a href={img.src} target="_blank" rel="noopener noreferrer">
+              <img
+                src={img.src}
+                alt={img.player}
+                className="w-48 h-auto rounded shadow mb-2 bg-black/20 object-contain cursor-pointer transition-transform hover:scale-105"
+              />
+            </a>
             <div className="text-center">
               <div className="font-semibold">
                 {img.player}
