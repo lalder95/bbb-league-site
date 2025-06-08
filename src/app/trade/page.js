@@ -94,24 +94,26 @@ function TeamSection({
 
             <div>
               <h3 className="text-sm font-bold mb-2 text-white/70">Available Players:</h3>
-              <div className="max-h-60 overflow-y-auto space-y-1 bg-black/30 border-2 border-white/20 rounded p-2">
+              <div className="max-h-60 overflow-y-auto bg-black/30 border-2 border-white/20 rounded p-2">
                 {filteredPlayers.length === 0 && (
                   <div className="text-xs text-white/40 italic">No available players.</div>
                 )}
-                {filteredPlayers.map(player => (
-                  <div
-                    key={player.id}
-                    className="cursor-pointer flex flex-col items-center"
-                    onClick={() => handleAddPlayer(player)}
-                  >
-                    <div className="w-20 h-20 flex items-center justify-center">
-                      <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                <div className="grid grid-cols-3 gap-2">
+                  {filteredPlayers.map(player => (
+                    <div
+                      key={player.id}
+                      className="cursor-pointer flex flex-col items-center"
+                      onClick={() => handleAddPlayer(player)}
+                    >
+                      <div className="w-20 h-20 flex items-center justify-center">
+                        <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                      </div>
+                      <div className="mt-2 text-xs text-white font-semibold text-center">
+                        {player.playerName}
+                      </div>
                     </div>
-                    <div className="mt-2 text-xs text-white font-semibold text-center">
-                      {player.playerName}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
 
