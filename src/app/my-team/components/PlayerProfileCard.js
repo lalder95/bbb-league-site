@@ -118,11 +118,11 @@ export default function PlayerProfileCard({
   );
 
   return (
-    <div className="relative w-96 h-[32rem] rounded-lg overflow-hidden shadow-lg bg-gray-900">
+    <div className="relative w-full h-full rounded-lg overflow-hidden shadow-lg bg-gray-900">
       <img
         src={imgSrc}
         alt={contract.playerName}
-        className="object-cover w-full h-full"
+        className="object-contain w-full h-full"
         onError={handleImgError}
       />
       {/* Bubble overlay */}
