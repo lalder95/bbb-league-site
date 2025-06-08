@@ -71,7 +71,7 @@ function TeamSection({
                       transition={{ type: "spring", stiffness: 3000, damping: 20 }}
                       className="relative flex flex-col items-center"
                     >
-                      <div style={{ transform: "scale(0.1)", transformOrigin: "top center" }}>
+                      <div className="w-20 h-20 flex items-center justify-center">
                         <PlayerProfileCard playerId={player.id} imageExtension="png" />
                       </div>
                       <div className="mt-2 text-xs text-white font-semibold text-center">
@@ -101,10 +101,15 @@ function TeamSection({
                 {filteredPlayers.map(player => (
                   <div
                     key={player.id}
-                    className="cursor-pointer"
+                    className="cursor-pointer flex flex-col items-center"
                     onClick={() => handleAddPlayer(player)}
                   >
-                    <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                    <div className="w-20 h-20 flex items-center justify-center">
+                      <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                    </div>
+                    <div className="mt-2 text-xs text-white font-semibold text-center">
+                      {player.playerName}
+                    </div>
                   </div>
                 ))}
               </div>
