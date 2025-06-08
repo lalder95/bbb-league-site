@@ -4,6 +4,8 @@ export default function PlayerProfileCard({
   playerId,
   contracts,
   imageExtension = "png",
+  expanded = false,
+  onExpandClick,
 }) {
   const [contract, setContract] = useState(null);
   const [imgSrc, setImgSrc] = useState(null);
@@ -125,55 +127,64 @@ export default function PlayerProfileCard({
         className="object-contain w-full h-full"
         onError={handleImgError}
       />
+      {/* Expand button */}
+      {onExpandClick && (
+        <button
+          onClick={onExpandClick}
+          className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+          style={{ fontSize: 16, lineHeight: 1 }}
+          aria-label={expanded ? "Hide details" : "Show details"}
+        >
+          {expanded ? "✕" : "i"}
+        </button>
+      )}
       {/* Bubble overlay */}
-      <div className="absolute bottom-0 left-0 w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-        <Bubble className="bg-[#FF4B1F] bg-opacity-50">{contract.playerName}</Bubble>
-        <Bubble className="bg-blue-700 bg-opacity-50">{contract.position}</Bubble>
-        <Bubble className="bg-green-700 bg-opacity-50">
-          ${contract.curYear ? contract.curYear.toFixed(1) : "-"}
-        </Bubble>
-        <Bubble className="bg-indigo-700 bg-opacity-50">{contract.contractType}</Bubble>
-        <Bubble className="bg-purple-700 bg-opacity-50">{contract.team}</Bubble>
-        <Bubble
-          className={
-            "bg-yellow-700 bg-opacity-50 " +
-            (Number(contract.age) >= 30 ? "animate-pulse" : "")
-          }
-        >
-          Age: {contract.age || "-"}
-        </Bubble>
-        <Bubble
-          className={
-            "bg-cyan-700 bg-opacity-50 " +
-            (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")
-          }
-        >
-          RFA: {String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}
-        </Bubble>
-        <Bubble
-          className={
-            "bg-pink-700 bg-opacity-50 " +
-            (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")
-          }
-        >
-          Tag: {String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}
-        </Bubble>
-        <Bubble
-          className={
-            "bg-teal-700 bg-opacity-50"
-          }
-        >
-          KTC: {contract.ktcValue ? contract.ktcValue : "-"}
-        </Bubble>
-        <Bubble
-          className={
-            "bg-orange-700 bg-opacity-50 " +
-            (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")
-          }
-        >
-          Final Year: {contract.contractFinalYear || "-"}
-        </Bubble>
-      </div>
+      {expanded && (
+        <div className="absolute bottom-0 left-0 w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+          <Bubble className="bg-[#FF4B1F] bg-opacity-50">{contract.playerName}</Bubble>
+          <Bubble className="bg-blue-700 bg-opacity-50">{contract.position}</Bubble>
+          <Bubble className="bg-green-700 bg-opacity-50">
+            ${contract.curYear ? contract.curYear.toFixed(1) : "-"}
+          </Bubble>
+          <Bubble className="bg-indigo-700 bg-opacity-50">{contract.contractType}</Bubble>
+          <Bubble className="bg-purple-700 bg-opacity-50">{contract.team}</Bubble>
+          <Bubble
+            className={
+              "bg-yellow-700 bg-opacity-50 " +
+              (Number(contract.age) >= 30 ? "animate-pulse" : "")
+            }
+          >
+            Age: {contract.age || "-"}
+          </Bubble>
+          <Bubble
+            className={
+              "bg-cyan-700 bg-opacity-50 " +
+              (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")
+            }
+          >
+            RFA: {String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}
+          </Bubble>
+          <Bubble
+            className={
+              "bg-pink-700 bg-opacity-50 " +
+              (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")
+            }
+          >
+            Tag: {String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}
+          </Bubble>
+          <Bubble className="bg-teal-700 bg-opacity-50">
+            KTC: {contract.ktcValue ? contract.ktcValue : "-"}
+          </Bubble>
+          <Bubble
+            className={
+              "bg-orange-700 bg-opacity-50 " +
+              (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")
+            }
+          >
+            Final Year: {contract.contractFinalYear || "-"}
+          </Bubble>
+        </div>
+      )}
     </div>
   );
 }

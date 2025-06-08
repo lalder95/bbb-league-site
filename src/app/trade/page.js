@@ -19,6 +19,7 @@ function TeamSection({
 }) {
   // Animation: Track which player was just added
   const [justAddedId, setJustAddedId] = useState(null);
+  const [expandedCardId, setExpandedCardId] = useState(null);
 
   // When a player is added, set justAddedId for animation
   const handleAddPlayer = (player) => {
@@ -103,10 +104,18 @@ function TeamSection({
                     <div
                       key={player.id}
                       className="cursor-pointer flex flex-col items-center"
-                      onClick={() => handleAddPlayer(player)}
+                      // onClick={() => handleAddPlayer(player)} // Keep this only for selection, not for expand
                     >
-                      <div className="w-24 h-24">
-                        <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                      <div className="w-24 h-24 flex items-center justify-center">
+                        <PlayerProfileCard
+                          playerId={player.id}
+                          imageExtension="png"
+                          expanded={expandedCardId === player.id}
+                          onExpandClick={e => {
+                            e.stopPropagation();
+                            setExpandedCardId(expandedCardId === player.id ? null : player.id);
+                          }}
+                        />
                       </div>
                       <div className="mt-2 text-xs text-white font-semibold text-center">
                         {player.playerName}
