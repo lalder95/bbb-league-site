@@ -29,7 +29,28 @@ export default function PlayerProfileCard({
           .slice(1)
           .map((row) => row.split(","))
           .find((cols) => String(cols[idx]) === String(playerId));
+
         if (foundRow) {
+          // Debug: log the entire row and the values you are about to use
+          console.log("Found row for playerId", playerId, foundRow);
+          console.log({
+            playerId: foundRow[0],
+            playerName: foundRow[1],
+            contractType: foundRow[2],
+            status: foundRow[14],
+            team: foundRow[32],
+            position: foundRow[21],
+            curYear: foundRow[15],
+            year2: foundRow[16],
+            year3: foundRow[17],
+            year4: foundRow[18],
+            contractFinalYear: foundRow[5],
+            age: foundRow[31],
+            ktcValue: foundRow[33],
+            rfaEligible: foundRow[36],
+            franchiseTagEligible: foundRow[37],
+          });
+
           setContract({
             playerId: foundRow[0],
             playerName: foundRow[1],
