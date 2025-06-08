@@ -126,25 +126,32 @@ export default function PlayerProfileCard({
         onError={handleImgError}
       />
       {/* Bubble overlay */}
-      <div className="absolute bottom-0 left-0 w-full flex flex-wrap px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-        <Bubble className="bg-[#FF4B1F] bg-opacity-20">{contract.playerName}</Bubble>
-        <Bubble className="bg-blue-700">{contract.position}</Bubble>
-        <Bubble className="bg-green-700">
+      <div className="absolute bottom-0 left-0 w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+        <Bubble className="bg-[#FF4B1F] bg-opacity-50">{contract.playerName}</Bubble>
+        <Bubble className="bg-blue-700 bg-opacity-50">{contract.position}</Bubble>
+        <Bubble className="bg-green-700 bg-opacity-50">
           ${contract.curYear ? contract.curYear.toFixed(1) : "-"}
         </Bubble>
-        <Bubble className="bg-white/20">{contract.contractType}</Bubble>
-        <Bubble className="bg-purple-700">{contract.team}</Bubble>
-        <Bubble className="bg-yellow-700">Age: {contract.age || "-"}</Bubble>
-        <Bubble className="bg-cyan-700">
+        <Bubble className="bg-indigo-700 bg-opacity-50">{contract.contractType}</Bubble>
+        <Bubble className="bg-purple-700 bg-opacity-50">{contract.team}</Bubble>
+        <Bubble className="bg-yellow-700 bg-opacity-50">Age: {contract.age || "-"}</Bubble>
+        <Bubble className="bg-cyan-700 bg-opacity-50">
           RFA: {String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}
         </Bubble>
-        <Bubble className="bg-pink-700">
+        <Bubble
+          className={
+            "bg-pink-700 bg-opacity-50 " +
+            (String(contract.franchiseTagEligible).toLowerCase() === "true"
+              ? "animate-bounce"
+              : "")
+          }
+        >
           Tag: {String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}
         </Bubble>
-        <Bubble className="bg-gray-700">
+        <Bubble className="bg-teal-700 bg-opacity-50">
           KTC: {contract.ktcValue ? contract.ktcValue : "-"}
         </Bubble>
-        <Bubble className="bg-orange-700">
+        <Bubble className="bg-orange-700 bg-opacity-50">
           Final Year: {contract.contractFinalYear || "-"}
         </Bubble>
       </div>
