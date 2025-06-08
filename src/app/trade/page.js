@@ -513,6 +513,7 @@ export default function Trade() {
             selectedPlayersB={selectedPlayersB}
             tradeValidation={tradeValidation}
             onClose={() => setShowSummary(false)}
+            teamAvatars={teamAvatars}
           />
         )}
 

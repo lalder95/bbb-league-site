@@ -1,6 +1,15 @@
 import React from 'react';
+import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 
-const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeValidation, onClose }) => {
+const TradeSummary = ({
+  teamA,
+  teamB,
+  selectedPlayersA,
+  selectedPlayersB,
+  tradeValidation,
+  onClose,
+  teamAvatars // <-- add this line
+}) => {
   // Helper function to format salary value
   const formatSalary = (value) => {
     return `$${value.toFixed(1)}`;
@@ -73,6 +82,20 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
       year1B < 50
     );
 
+  // Helper for bar color
+  const getBarColor = (delta) => {
+    if (delta > 0) return "bg-green-500";
+    if (delta < 0) return "bg-red-500";
+    return "bg-gray-400";
+  };
+
+  // Helper for bar label
+  const formatDelta = (delta) => {
+    if (delta > 0) return `+$${Math.abs(delta).toFixed(1)}`;
+    if (delta < 0) return `-$${Math.abs(delta).toFixed(1)}`;
+    return "$0.0";
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-2 md:px-4">
       <div className="relative bg-[#001A2B] border border-white/10 rounded-lg max-w-4xl w-full shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -96,7 +119,7 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                Invalid Trade: Either team would exceed the cap in Year 1
+                Invalid Trade: One or Both teams would exceed the cap!
               </>
             ) : isWarning ? (
               <>
@@ -133,63 +156,90 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
                 </div>
               </div>
 
-              {/* Players received */}
-              <div className="space-y-2 mb-4 md:mb-6">
+              {/* Cap Space Impact - moved above players */}
+              <div>
+                <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {["curYear", "year2", "year3", "year4"].map((yearKey, idx) => {
+                    const after = tradeValidation.impactA.after[yearKey];
+                    const before = tradeValidation.impactA.before[yearKey];
+                    const delta = after - before;
+                    const barHeight = Math.min(Math.abs(delta) * 2, 48);
+                    return (
+                      <div key={yearKey} className="flex flex-col items-center justify-end">
+                        {/* Cap value */}
+                        <div className={getCapSpaceColor(after)}>
+                          {formatSalary(after)}
+                        </div>
+                        {/* Bar */}
+                        <div className="flex flex-col items-center justify-end h-16 w-full">
+                          <div
+                            className={`w-6 ${getBarColor(delta)} rounded transition-all`}
+                            style={{
+                              height: `${barHeight}px`,
+                              marginTop: `${48 - barHeight}px`,
+                              transition: "height 0.3s"
+                            }}
+                            title={formatDelta(delta)}
+                          ></div>
+                          <div className="text-xs mt-1 text-white/70">{formatDelta(delta)}</div>
+                        </div>
+                        {/* Year label */}
+                        <div className="w-full text-xs text-center text-white/50 mt-1">
+                          {["Year 1", "Year 2", "Year 3", "Year 4"][idx]}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Players received - moved below cap space */}
+              <div className="space-y-2 mb-4 md:mb-6 mt-6">
                 {selectedPlayersB.length > 0 ? (
                   selectedPlayersB.map((player, index) => (
                     <div key={index} className="bg-black/20 rounded p-2 md:p-3 flex flex-col md:flex-row md:items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-8 md:h-10 rounded-l ${getPositionColor(player.position)}`}></div>
+                      <div className="flex items-center gap-4">
+                        {/* Player image */}
+                        <div className="w-16 h-16 flex items-center justify-center relative">
+                          <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
+                        </div>
+                        {/* Player info and bubbles */}
                         <div>
                           <div className="font-semibold">{player.playerName}</div>
-                          <div className="text-xs text-white/70 flex gap-2 flex-wrap">
-                            <span className="bg-black/30 px-1.5 py-0.5 rounded">{player.position}</span>
-                            {player.team && <span>{player.team}</span>}
-                            <span className="bg-green-700/20 px-1.5 py-0.5 rounded">KTC: {player.ktcValue !== undefined ? player.ktcValue : '...'}</span>
-                          </div>
-                          <div className="text-xs text-white/50 flex gap-2 flex-wrap mt-1">
-                            <span className="bg-[#FF4B1F]/20 px-1 py-0.5 rounded">Contract: {player.contractType || 'N/A'}</span>
-                            <span className="bg-blue-500/20 px-1 py-0.5 rounded">Final Yr: {player.contractFinalYear || 'N/A'}</span>
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-700/50 text-white">{player.position}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-700/50 text-white">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-700/50 text-white">{player.contractType}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-purple-700/50 text-white">
+                              {teamAvatars && teamAvatars[player.team] ? (
+                                <img
+                                  src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                                  alt={player.team}
+                                  className="w-4 h-4 rounded-full mr-1 inline-block"
+                                />
+                              ) : (
+                                <span className="w-4 h-4 rounded-full bg-white/10 mr-1 inline-block"></span>
+                              )}
+                              {player.team}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-700/50 text-white ${Number(player.age) >= 30 ? "animate-pulse" : ""}`}>Age: {player.age || "-"}</span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
                           </div>
                         </div>
+                        {/* Divider */}
+                        <div className="hidden md:block h-12 border-l border-white/10 mx-4"></div>
                       </div>
+                      {/* Salary */}
                       <div className="text-green-400 font-bold mt-2 md:mt-0">${parseFloat(player.curYear).toFixed(1)}</div>
                     </div>
                   ))
                 ) : (
                   <div className="text-center py-2 text-white/50 italic">No players in this trade</div>
                 )}
-              </div>
-
-              {/* Cap Space Impact */}
-              <div>
-                <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
-                <div className="grid grid-cols-4 gap-2 text-center">
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 1</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactA.after.curYear)}>
-                      {formatSalary(tradeValidation.impactA.after.curYear)}
-                    </div>
-                  </div>
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 2</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactA.after.year2)}>
-                      {formatSalary(tradeValidation.impactA.after.year2)}
-                    </div>
-                  </div>
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 3</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactA.after.year3)}>
-                      {formatSalary(tradeValidation.impactA.after.year3)}
-                    </div>
-                  </div>
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 4</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactA.after.year4)}>
-                      {formatSalary(tradeValidation.impactA.after.year4)}
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -207,63 +257,90 @@ const TradeSummary = ({ teamA, teamB, selectedPlayersA, selectedPlayersB, tradeV
                 </div>
               </div>
 
-              {/* Players received */}
-              <div className="space-y-2 mb-4 md:mb-6">
+              {/* Cap Space Impact - moved above players */}
+              <div>
+                <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {["curYear", "year2", "year3", "year4"].map((yearKey, idx) => {
+                    const after = tradeValidation.impactB.after[yearKey];
+                    const before = tradeValidation.impactB.before[yearKey];
+                    const delta = after - before;
+                    const barHeight = Math.min(Math.abs(delta) * 2, 48);
+                    return (
+                      <div key={yearKey} className="flex flex-col items-center justify-end">
+                        {/* Cap value */}
+                        <div className={getCapSpaceColor(after)}>
+                          {formatSalary(after)}
+                        </div>
+                        {/* Bar */}
+                        <div className="flex flex-col items-center justify-end h-16 w-full">
+                          <div
+                            className={`w-6 ${getBarColor(delta)} rounded transition-all`}
+                            style={{
+                              height: `${barHeight}px`,
+                              marginTop: `${48 - barHeight}px`,
+                              transition: "height 0.3s"
+                            }}
+                            title={formatDelta(delta)}
+                          ></div>
+                          <div className="text-xs mt-1 text-white/70">{formatDelta(delta)}</div>
+                        </div>
+                        {/* Year label */}
+                        <div className="w-full text-xs text-center text-white/50 mt-1">
+                          {["Year 1", "Year 2", "Year 3", "Year 4"][idx]}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Players received - moved below cap space */}
+              <div className="space-y-2 mb-4 md:mb-6 mt-6">
                 {selectedPlayersA.length > 0 ? (
                   selectedPlayersA.map((player, index) => (
                     <div key={index} className="bg-black/20 rounded p-2 md:p-3 flex flex-col md:flex-row md:items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-8 md:h-10 rounded-l ${getPositionColor(player.position)}`}></div>
+                      <div className="flex items-center gap-4">
+                        {/* Player image */}
+                        <div className="w-16 h-16 flex items-center justify-center relative">
+                          <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
+                        </div>
+                        {/* Player info and bubbles */}
                         <div>
                           <div className="font-semibold">{player.playerName}</div>
-                          <div className="text-xs text-white/70 flex gap-2 flex-wrap">
-                            <span className="bg-black/30 px-1.5 py-0.5 rounded">{player.position}</span>
-                            {player.team && <span>{player.team}</span>}
-                            <span className="bg-green-700/20 px-1.5 py-0.5 rounded">KTC: {player.ktcValue !== undefined ? player.ktcValue : '...'}</span>
-                          </div>
-                          <div className="text-xs text-white/50 flex gap-2 flex-wrap mt-1">
-                            <span className="bg-[#FF4B1F]/20 px-1 py-0.5 rounded">Contract: {player.contractType || 'N/A'}</span>
-                            <span className="bg-blue-500/20 px-1 py-0.5 rounded">Final Yr: {player.contractFinalYear || 'N/A'}</span>
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-700/50 text-white">{player.position}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-700/50 text-white">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-700/50 text-white">{player.contractType}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-purple-700/50 text-white">
+                              {teamAvatars && teamAvatars[player.team] ? (
+                                <img
+                                  src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                                  alt={player.team}
+                                  className="w-4 h-4 rounded-full mr-1 inline-block"
+                                />
+                              ) : (
+                                <span className="w-4 h-4 rounded-full bg-white/10 mr-1 inline-block"></span>
+                              )}
+                              {player.team}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-700/50 text-white ${Number(player.age) >= 30 ? "animate-pulse" : ""}`}>Age: {player.age || "-"}</span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
                           </div>
                         </div>
+                        {/* Divider */}
+                        <div className="hidden md:block h-12 border-l border-white/10 mx-4"></div>
                       </div>
+                      {/* Salary */}
                       <div className="text-green-400 font-bold mt-2 md:mt-0">${parseFloat(player.curYear).toFixed(1)}</div>
                     </div>
                   ))
                 ) : (
                   <div className="text-center py-2 text-white/50 italic">No players in this trade</div>
                 )}
-              </div>
-
-              {/* Cap Space Impact */}
-              <div>
-                <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
-                <div className="grid grid-cols-4 gap-2 text-center">
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 1</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactB.after.curYear)}>
-                      {formatSalary(tradeValidation.impactB.after.curYear)}
-                    </div>
-                  </div>
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 2</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactB.after.year2)}>
-                      {formatSalary(tradeValidation.impactB.after.year2)}
-                    </div>
-                  </div>
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 3</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactB.after.year3)}>
-                      {formatSalary(tradeValidation.impactB.after.year3)}
-                    </div>
-                  </div>
-                  <div className="bg-black/20 p-1 md:p-2 rounded">
-                    <div className="text-xs text-white/70">Year 4</div>
-                    <div className={getCapSpaceColor(tradeValidation.impactB.after.year4)}>
-                      {formatSalary(tradeValidation.impactB.after.year4)}
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
