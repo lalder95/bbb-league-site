@@ -69,9 +69,14 @@ function TeamSection({
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 30 }}
                       transition={{ type: "spring", stiffness: 3000, damping: 20 }}
-                      className="relative"
+                      className="relative flex flex-col items-center"
                     >
-                      <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                      <div style={{ transform: "scale(0.1)", transformOrigin: "top center" }}>
+                        <PlayerProfileCard playerId={player.id} imageExtension="png" />
+                      </div>
+                      <div className="mt-2 text-xs text-white font-semibold text-center">
+                        {player.playerName}
+                      </div>
                       <button
                         onClick={e => {
                           e.stopPropagation();
