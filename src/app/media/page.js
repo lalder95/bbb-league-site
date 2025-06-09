@@ -13,7 +13,7 @@ export default function SalaryCap() {
   try {
     images = fs
       .readdirSync(imagesDir)
-      .filter((file) => !file.startsWith("default"))
+      .filter((file) => !file.startsWith("default") && file.endsWith(".png")) // Only .png files
       .map((file) => {
         // Remove extension, replace underscores with spaces, and split for player/team
         const base = file.replace(/\.[^/.]+$/, "");
