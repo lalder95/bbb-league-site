@@ -54,6 +54,7 @@ export default function AdminPage() {
           team: values[33],
           position: values[21],
           salary: values[15] && !isNaN(values[15]) ? parseFloat(values[15]) : "",
+          ktc: values[34] && !isNaN(values[34]) ? parseFloat(values[34]) : "", // <-- Add this line
         }));
 
       setMissingImages(missing);
@@ -67,7 +68,7 @@ export default function AdminPage() {
     const { key, direction } = sortConfig;
     let aValue = a[key] ?? "";
     let bValue = b[key] ?? "";
-    if (key === "salary") {
+    if (key === "salary" || key === "ktc") { // <-- Add "ktc" here
       aValue = Number(aValue) || 0;
       bValue = Number(bValue) || 0;
     } else {
@@ -165,6 +166,9 @@ export default function AdminPage() {
                     <th className="text-left py-2 px-3 cursor-pointer" onClick={() => handleSort("salary")}>
                       Salary {sortConfig.key === "salary" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
                     </th>
+                    <th className="text-left py-2 px-3 cursor-pointer" onClick={() => handleSort("ktc")}>
+                      KTC Score {sortConfig.key === "ktc" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -176,6 +180,11 @@ export default function AdminPage() {
                       <td className="py-2 px-3">
                         {p.salary !== "" && !isNaN(p.salary)
                           ? `$${Number(p.salary).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`
+                          : "-"}
+                      </td>
+                      <td className="py-2 px-3">
+                        {p.ktc !== "" && !isNaN(p.ktc)
+                          ? Number(p.ktc).toLocaleString(undefined, { maximumFractionDigits: 0 })
                           : "-"}
                       </td>
                     </tr>
