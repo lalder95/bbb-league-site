@@ -6,7 +6,7 @@ export default function PlayerProfileCard({
   imageExtension = "png",
   expanded = false,
   onExpandClick,
-  className = "", // <-- add this line
+  className = "",
 }) {
   const [contract, setContract] = useState(null);
   const [imgSrc, setImgSrc] = useState(null);
@@ -34,26 +34,6 @@ export default function PlayerProfileCard({
           .find((cols) => String(cols[idx]) === String(playerId));
 
         if (foundRow) {
-          // Debug: log the entire row and the values you are about to use
-          console.log("Found row for playerId", playerId, foundRow);
-          console.log({
-            playerId: foundRow[0],
-            playerName: foundRow[1],
-            contractType: foundRow[2],
-            status: foundRow[14],
-            team: foundRow[32],
-            position: foundRow[21],
-            curYear: foundRow[15],
-            year2: foundRow[16],
-            year3: foundRow[17],
-            year4: foundRow[18],
-            contractFinalYear: foundRow[5],
-            age: foundRow[31],
-            ktcValue: foundRow[33],
-            rfaEligible: foundRow[36],
-            franchiseTagEligible: foundRow[37],
-          });
-
           setContract({
             playerId: foundRow[0],
             playerName: foundRow[1],
@@ -79,24 +59,63 @@ export default function PlayerProfileCard({
     fetchContract();
   }, [playerId, contracts]);
 
-  // Set image source when contract is loaded
   useEffect(() => {
     if (!contract) {
       setImgSrc(null);
       return;
     }
-    const fileName = contract.playerName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_|_$/g, "");
-    const imageSrc = `/players/cardimages/${fileName}.${imageExtension}`;
-    setImgSrc(imageSrc);
+
+    // Map positions to local default image paths
+    const defaultImages = {
+      qb: "/players/cardimages/default_qb.png",
+      rb: "/players/cardimages/default_rb.png",
+      te: "/players/cardimages/default_te.png",
+      wr: "/players/cardimages/default_wr.png",
+    };
+
+    async function fetchImage() {
+      let images = [];
+      try {
+        const res = await fetch("/players/cardimages/index.json");
+        images = await res.json();
+      } catch (e) {
+        images = [];
+      }
+
+      const expectedBase = contract.playerName
+        .toLowerCase()
+        .replace(/ /g, "_")
+        .replace(/[^a-z0-9._']/g, "");
+
+      let found = null;
+      if (Array.isArray(images)) {
+        found = images.find(img =>
+          img.filename.startsWith(expectedBase)
+        );
+      }
+
+      if (found) {
+        setImgSrc(found.src);
+      } else {
+        const pos = (contract.position || "").toLowerCase();
+        setImgSrc(defaultImages[pos] || "");
+      }
+    }
+
+    fetchImage();
   }, [contract, imageExtension]);
 
   // Handle image error fallback
   const handleImgError = () => {
     if (!contract) return;
-    const defaultSrc = `/players/cardimages/default_${contract.position?.toLowerCase()}.${imageExtension}`;
+    const defaultImages = {
+      qb: "/players/cardimages/default_qb.png",
+      rb: "/players/cardimages/default_rb.png",
+      te: "/players/cardimages/default_te.png",
+      wr: "/players/cardimages/default_wr.png",
+    };
+    const pos = (contract.position || "").toLowerCase();
+    const defaultSrc = defaultImages[pos] || "";
     if (imgSrc !== defaultSrc) setImgSrc(defaultSrc);
   };
 
@@ -121,7 +140,7 @@ export default function PlayerProfileCard({
   );
 
   return (
-    <div className={`relative w-full h-full rounded-lg overflow-hidden shadow-lg bg-gray-900 ${className}`}> {/* <-- update this line */}
+    <div className={`relative w-full h-full rounded-lg overflow-hidden shadow-lg bg-gray-900 ${className}`}>
       <img
         src={imgSrc}
         alt={contract.playerName}
