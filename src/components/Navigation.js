@@ -129,7 +129,8 @@ export default function Navigation() {
       title: 'Team Building', 
       links: [
         { href: '/analytics', label: 'Analytics' },
-        { href: '/draft', label: 'Draft' }
+        { href: '/draft', label: 'Draft' },
+        { href: '/free-agency', label: 'Free Agency' } // <-- Added Free Agency
       ]
     },
     { 
