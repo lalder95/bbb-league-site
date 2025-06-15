@@ -1,6 +1,20 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ScatterChart, Scatter, ReferenceLine } from 'recharts';
+
+// Utility functions
+const getAverage = arr => {
+  const nums = arr.filter(x => typeof x === 'number' && !isNaN(x));
+  if (!nums.length) return 0;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+};
+
+const getMedian = arr => {
+  const nums = arr.filter(x => typeof x === 'number' && !isNaN(x)).sort((a, b) => a - b);
+  if (!nums.length) return 0;
+  const mid = Math.floor(nums.length / 2);
+  return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+};
 
 export default function Analytics() {
   const [players, setPlayers] = useState([]);
@@ -29,13 +43,16 @@ export default function Analytics() {
             const values = row.split(',');
             const status = values[14];
             const isActive = status === 'Active';
-            
             return {
-              team: values[33],
+              playerId: values[0],
+              playerName: values[1],
+              contractType: values[2],
               position: values[21],
               status: status,
               isActive: isActive,
+              team: values[33],
               curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
+              ktcValue: values[34] ? parseInt(values[34], 10) : null,
             };
           });
         
@@ -117,6 +134,49 @@ export default function Analytics() {
     return null;
   };
 
+  // Get unique teams and positions for filters
+  const uniqueTeams = Array.from(new Set(players.map(p => p.team))).filter(Boolean).sort();
+  const uniquePositions = Array.from(new Set(players.map(p => p.position))).filter(Boolean).sort();
+
+  // Filter state
+  const [selectedTeam, setSelectedTeam] = useState('');
+  const [selectedPosition, setSelectedPosition] = useState('QB'); // Default to QB
+
+  // Data filtered by position only (and active, non-rookie)
+  const positionFilteredData = players
+    .filter(p =>
+      p.isActive &&
+      p.contractType !== 'Rookie' &&
+      p.position === selectedPosition && // No "All" option, always filter by position
+      !isNaN(parseFloat(p.curYear)) &&
+      !isNaN(parseFloat(p.ktcValue))
+    );
+
+  // Reference lines use positionFilteredData (not affected by team filter)
+  const avgKTC = getAverage(positionFilteredData.map(p => p.ktcValue));
+  const avgSalary = getAverage(positionFilteredData.map(p => p.curYear));
+
+  // Chart points use both filters (team and position)
+  const scatterData = players
+    .filter(p =>
+      p.isActive &&
+      p.contractType !== 'Rookie' &&
+      (!selectedTeam || p.team === selectedTeam) &&
+      p.position === selectedPosition && // No "All" option
+      !isNaN(parseFloat(p.curYear)) &&
+      !isNaN(parseFloat(p.ktcValue))
+    )
+    .map(p => ({
+      ...p,
+      curYear: parseFloat(p.curYear),
+      ktcValue: parseFloat(p.ktcValue),
+      playerName: p.playerName || '',
+    }));
+
+  const medianKTC = getMedian(scatterData.map(p => p.ktcValue));
+  const medianSalary = getMedian(scatterData.map(p => p.curYear));
+
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#001A2B] flex items-center justify-center">
@@ -151,7 +211,7 @@ export default function Analytics() {
               <BarChart
                 layout="vertical"
                 data={data}
-                margin={{ top: 20, right: 10, left: isMobile ? 60 : 120, bottom: 5 }}
+                margin={{ top: isMobile ? 50 : 60, right: 10, left: isMobile ? 60 : 120, bottom: isMobile ? 40 : 50 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" horizontal={false} />
                 <XAxis 
@@ -174,7 +234,11 @@ export default function Analytics() {
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: isMobile ? 10 : 14 }} />
+                <Legend 
+                  wrapperStyle={{ fontSize: isMobile ? 10 : 14 }} 
+                  verticalAlign="top" 
+                  align="center" 
+                />
                 <Bar dataKey="QB" stackId="a" fill="#ef4444" />
                 <Bar dataKey="RB" stackId="a" fill="#3b82f6" />
                 <Bar dataKey="WR" stackId="a" fill="#22c55e" />
@@ -182,6 +246,181 @@ export default function Analytics() {
                 <Bar dataKey="DeadCap" stackId="a" fill="#6b7280" />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+
+          {/* Explanation text under the chart */}
+          <div style={{ textAlign: 'center', marginTop: 8 }}>
+            <span style={{ fontSize: '0.85em', color: '#bbb' }}>
+              This chart shows how each team allocates their salary cap across positions and dead cap. Use it to compare roster-building strategies and positional spending.
+            </span>
+          </div>
+        </div>
+
+        <div className={`bg-black/30 rounded-lg border border-white/10 mt-8 ${isMobile ? 'p-3' : 'p-6'}`}>
+          <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
+            Player Salary vs. KTC Value
+          </h2>
+          <div className="flex flex-wrap gap-4 mb-4">
+            <div>
+              <label className="mr-2">Team:</label>
+              <select
+                value={selectedTeam}
+                onChange={e => setSelectedTeam(e.target.value)}
+                className="text-black rounded px-2 py-1"
+              >
+                <option value="">All</option>
+                {uniqueTeams.map(team => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mr-2">Position:</label>
+              <select
+                value={selectedPosition}
+                onChange={e => setSelectedPosition(e.target.value)}
+                className="text-black rounded px-2 py-1"
+              >
+                {uniquePositions.map(pos => (
+                  <option key={pos} value={pos}>{pos}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={{ width: '100%', height: isMobile ? 400 : 600, position: 'relative' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart
+                margin={{ top: 20, right: 20, bottom: isMobile ? 80 : 100, left: 20 }} // <-- much larger bottom margin
+              >
+                <CartesianGrid stroke="#ffffff20" />
+                <XAxis
+                  type="number"
+                  dataKey="ktcValue"
+                  name="KTC"
+                  stroke="#fff"
+                  label={{ value: 'KTC Score', position: 'insideBottom', offset: -5, fill: '#fff' }}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="curYear"
+                  name="Salary"
+                  stroke="#fff"
+                  label={{ value: 'Current Salary ($)', angle: -90, position: 'insideLeft', fill: '#fff' }}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                />
+                <Tooltip
+                  cursor={{ strokeDasharray: '3 3' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const p = payload[0].payload;
+                      return (
+                        <div className="bg-[#001A2B] border border-white/10 rounded p-3">
+                          <div className="font-bold mb-1">{p.playerName}</div>
+                          <div>Team: {p.team}</div>
+                          <div>Position: {p.position}</div>
+                          <div>KTC: {p.ktcValue}</div>
+                          <div>Salary: ${p.curYear}</div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <ReferenceLine x={avgKTC} stroke="#fff" strokeDasharray="3 3" />
+                <ReferenceLine y={avgSalary} stroke="#fff" strokeDasharray="3 3" />
+                {/* Color map for positions */}
+                {[
+                  {
+                    pos: 'QB',
+                    color: '#ef4444'
+                  },
+                  {
+                    pos: 'RB',
+                    color: '#3b82f6'
+                  },
+                  {
+                    pos: 'WR',
+                    color: '#22c55e'
+                  },
+                  {
+                    pos: 'TE',
+                    color: '#a855f7'
+                  },
+                ].map(({ pos, color }) => (
+                  <Scatter
+                    key={pos}
+                    name={pos}
+                    data={scatterData.filter(p => p.position === pos)}
+                    fill={color}
+                  />
+                ))}
+                {/* Quadrant labels */}
+                <text
+                  x="10%"
+                  y="10%"
+                  textAnchor="start"
+                  fill="#fff"
+                  fontSize={isMobile ? 12 : 18}
+                  opacity="0.7"
+                >
+                  Overpaid
+                </text>
+                <text
+                  x="80%"
+                  y="10%"
+                  textAnchor="end"
+                  fill="#fff"
+                  fontSize={isMobile ? 12 : 18}
+                  opacity="0.7"
+                >
+                  Fair Upper Market
+                </text>
+                <text
+                  x="10%"
+                  y="90%"
+                  textAnchor="start"
+                  fill="#fff"
+                  fontSize={isMobile ? 12 : 18}
+                  opacity="0.7"
+                >
+                  Fair Lower Market
+                </text>
+                <text
+                  x="80%"
+                  y="90%"
+                  textAnchor="end"
+                  fill="#fff"
+                  fontSize={isMobile ? 12 : 18}
+                  opacity="0.7"
+                >
+                  Underpaid
+                </text>
+              </ScatterChart>
+            </ResponsiveContainer>
+            {/* Overlayed explanation and averages */}
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: isMobile ? 8 : 16, // <-- closer to the bottom
+                textAlign: 'center',
+                pointerEvents: 'none',
+                zIndex: 2,
+                padding: isMobile ? 2 : 8,
+                background: 'rgba(0,26,43,0.85)', // subtle background for readability
+              }}
+            >
+              <div style={{ fontSize: '0.8em', color: '#bbb', marginBottom: 2 }}>
+                KTC Position Average: {avgKTC ? avgKTC.toFixed(0) : 'N/A'}
+                <span style={{ margin: '0 16px' }} />
+                Salary Position Average: ${avgSalary ? avgSalary.toFixed(2) : 'N/A'}
+              </div>
+              <div style={{ fontSize: '0.85em', color: '#bbb' }}>
+                This scatter chart compares each player's current salary to their KTC value for the selected position. Quadrants help identify overpaid, underpaid, and fair market contracts.
+              </div>
+            </div>
           </div>
         </div>
       </div>
