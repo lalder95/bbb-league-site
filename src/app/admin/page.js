@@ -4,8 +4,13 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-function formatImageName(playerName) {
-  return playerName.replace(/\s+/g, "_").toLowerCase() + ".png";
+// Use the same name matching logic as PlayerProfileCard (Player Contracts page)
+function getImageFilename(playerName) {
+  // Remove punctuation, replace spaces with underscores, lowercase, remove apostrophes, periods, etc.
+  return playerName
+    .replace(/[.'’]/g, "") // Remove periods and apostrophes
+    .replace(/\s+/g, "_")
+    .toLowerCase();
 }
 
 export default function AdminPage() {
@@ -32,13 +37,22 @@ export default function AdminPage() {
       const csvRes = await fetch(csvUrl);
       const csvText = await csvRes.text();
 
-      // 2. Fetch image index
+      // 2. Fetch image index (array of objects with filename)
       const imgRes = await fetch("/players/cardimages/index.json");
       const imageFiles = await imgRes.json();
 
-      // 3. Find active contracts missing an image (parse as array, match Player Contracts logic)
+      // Build a Set of normalized player names from image filenames (before the last underscore)
+      const imageNameSet = new Set(
+        imageFiles.map(img => {
+          // Remove the trailing unique hash after the last underscore
+          // e.g. "josh_allen_qqfqyc" -> "josh_allen"
+          const base = img.filename.replace(/_[^_]+$/, "");
+          return base;
+        })
+      );
+
+      // 3. Find active contracts missing an image
       const rows = csvText.split('\n');
-      // Defensive: Remove empty trailing row if present
       if (rows.length && !rows[rows.length - 1].trim()) rows.pop();
 
       const missing = rows.slice(1)
@@ -46,15 +60,16 @@ export default function AdminPage() {
         .map(row => row.split(','))
         .filter(values => values[1] && values[14] === "Active")
         .filter(values => {
-          const imgName = formatImageName(values[1]);
-          return !imageFiles.includes(imgName);
+          const imgBase = getImageFilename(values[1]);
+          // Only compare the normalized name (no hash)
+          return !imageNameSet.has(imgBase);
         })
         .map(values => ({
           playerName: values[1],
           team: values[33],
           position: values[21],
           salary: values[15] && !isNaN(values[15]) ? parseFloat(values[15]) : "",
-          ktc: values[34] && !isNaN(values[34]) ? parseFloat(values[34]) : "", // <-- Add this line
+          ktc: values[34] && !isNaN(values[34]) ? parseFloat(values[34]) : "",
         }));
 
       setMissingImages(missing);

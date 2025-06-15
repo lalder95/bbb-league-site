@@ -154,19 +154,25 @@ export default function Home() {
       try {
         console.log('Fetching data for league ID:', leagueId);
         
+        // Get current NFL week
+        const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        if (!seasonResponse.ok) throw new Error('Failed to fetch NFL state');
+        const seasonState = await seasonResponse.json();
+        let week = seasonState.week;
+
         // Fetch league info
         const leagueResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`);
         if (!leagueResponse.ok) throw new Error('Failed to fetch league data');
         const leagueInfo = await leagueResponse.json();
         console.log('League info fetched successfully');
         setLeagueData(leagueInfo);
-        
-        // Get current NFL week
-        const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
-        if (!seasonResponse.ok) throw new Error('Failed to fetch NFL state');
-        const seasonState = await seasonResponse.json();
-        console.log('Current NFL week:', seasonState.week);
-        setCurrentWeek(seasonState.week);
+
+        // Force week to 1 if week is 0 and league is in season
+        if (week === 0 && leagueInfo.status === "in_season") {
+          week = 1;
+        }
+        console.log('Current NFL week:', week);
+        setCurrentWeek(week);
         
         // Fetch users in the league
         console.log('Fetching league users...');
@@ -183,11 +189,11 @@ export default function Home() {
         console.log('Rosters fetched:', rosters.length);
         
         // Fetch matchups for current week
-        console.log('Fetching matchups for week:', seasonState.week);
-        const matchupsResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${seasonState.week}`);
+        console.log('Fetching matchups for week:', week);
+        const matchupsResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
         if (!matchupsResponse.ok) throw new Error('Failed to fetch matchups');
         const matchupsData = await matchupsResponse.json();
-        console.log('Matchups fetched:', matchupsData.length);
+        console.log('Matchups API data:', matchupsData); // <--- Add this line
         
         // Process matchups data to include team names
         const processedMatchups = processMatchups(matchupsData, users, rosters);
@@ -251,21 +257,35 @@ export default function Home() {
   
   // Helper function to process standings data with division support
   function processStandings(rosters, users, league) {
+    // Custom division names and avatars
+    const customDivisions = {
+      1: { name: "Wall Street", avatar: "/leagueimages/division1.jpg" },
+      2: { name: "Middle Class", avatar: "/leagueimages/division2.jpg" },
+      3: { name: "Poor House", avatar: "/leagueimages/division3.jpg" }
+    };
+
     // Extract division information from league settings
     const divisionNames = {};
     if (league?.settings?.divisions) {
-      // Sleeper supports up to 10 divisions (based on their API patterns)
       for (let i = 1; i <= 10; i++) {
-        const divName = league.settings[`division_${i}`];
-        if (divName) {
-          divisionNames[i] = divName;
+        // Use custom names if available, else fallback
+        if (customDivisions[i]) {
+          divisionNames[i] = customDivisions[i].name;
+        } else if (league.settings[`division_${i}`]) {
+          divisionNames[i] = league.settings[`division_${i}`];
         }
+      }
+    } else {
+      // If no divisions in settings, fallback to custom or default
+      for (let i = 1; i <= 3; i++) {
+        divisionNames[i] = customDivisions[i]?.name || `Division ${i}`;
       }
     }
 
     // Process each roster with division information
     const teamsData = rosters.map(roster => {
       const user = users.find(u => u.user_id === roster.owner_id);
+      const divisionId = roster.settings?.division || 0;
       return {
         rosterId: roster.roster_id,
         teamName: user?.display_name || user?.team_name || `Team ${roster.roster_id}`,
@@ -275,8 +295,9 @@ export default function Home() {
         ties: roster.settings?.ties || 0,
         pointsFor: roster.settings?.fpts || 0,
         pointsAgainst: roster.settings?.fpts_against || 0,
-        division: roster.settings?.division || 0, // Division ID
-        divisionName: divisionNames[roster.settings?.division] || `Division ${roster.settings?.division || 1}`
+        division: divisionId, // Division ID
+        divisionName: divisionNames[divisionId] || `Division ${divisionId || 1}`,
+        divisionAvatar: customDivisions[divisionId]?.avatar || null
       };
     });
 
@@ -300,7 +321,8 @@ export default function Home() {
 
     return { 
       divisions,
-      divisionNames
+      divisionNames,
+      customDivisions
     };
   }
 
@@ -359,50 +381,101 @@ export default function Home() {
       );
     }
 
+    // Flatten all teams for league-wide leader checks
+    const allTeams = Object.values(standingsData.divisions).flat();
+
+    // Helper to get unique leader (no tie) for a stat
+    function getUniqueLeader(stat, isMax = true) {
+      if (!allTeams.length) return null;
+      const values = allTeams.map(t => t[stat]);
+      const best = isMax ? Math.max(...values) : Math.min(...values);
+      const leaders = allTeams.filter(t => t[stat] === best);
+      return leaders.length === 1 ? leaders[0].rosterId : null;
+    }
+
+    // Find unique league leaders
+    const leaderWins = getUniqueLeader('wins', true);
+    const leaderLosses = getUniqueLeader('losses', false);
+    const leaderTies = getUniqueLeader('ties', true);
+    const leaderPF = getUniqueLeader('pointsFor', true);
+    const leaderPA = getUniqueLeader('pointsAgainst', false);
+
+    // Orange highlight class
+    const orange = "text-[#FF4B1F] font-extrabold";
+
     return (
       <div>
         {Object.keys(standingsData.divisions).map(divId => (
-          <div key={divId} className="mb-6 last:mb-0">
-            <h3 className="text-lg font-semibold mb-3 border-b border-white/20 pb-2">
-              {standingsData.divisionNames[divId] || `Division ${divId}`}
-            </h3>
+          <div key={divId} className="mb-8 last:mb-0">
+            <div className="flex items-center mb-4">
+              {/* Division avatar if available */}
+              {standingsData.customDivisions?.[divId]?.avatar && (
+                <img
+                  src={standingsData.customDivisions[divId].avatar}
+                  alt={standingsData.divisionNames[divId]}
+                  className="w-10 h-10 rounded-full mr-3 border border-[#FF4B1F] bg-white/10 object-cover"
+                />
+              )}
+              <h3 className="text-xl font-bold border-b border-[#FF4B1F] pb-2 text-[#FF4B1F]">
+                {standingsData.divisionNames[divId] || `Division ${divId}`}
+              </h3>
+            </div>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full border-separate border-spacing-y-2">
                 <thead>
-                  <tr className="border-b border-white/10 text-white/70">
-                    <th className="py-2 text-left pl-2">Team</th>
-                    <th className="py-2 text-center">Record</th>
-                    <th className="py-2 text-center">PF</th>
-                    <th className="py-2 text-center">PA</th>
+                  <tr className="bg-[#FF4B1F]/20 text-white/90">
+                    <th className="py-2 px-3 text-left rounded-l-lg">#</th>
+                    <th className="py-2 px-3 text-left">Team</th>
+                    <th className="py-2 px-3 text-center">W</th>
+                    <th className="py-2 px-3 text-center">L</th>
+                    <th className="py-2 px-3 text-center">T</th>
+                    <th className="py-2 px-3 text-center">PF</th>
+                    <th className="py-2 px-3 text-center rounded-r-lg">PA</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {standingsData.divisions[divId].map((team) => (
-                    <tr 
+                  {standingsData.divisions[divId].map((team, idx) => (
+                    <tr
                       key={team.rosterId}
-                      className="border-b last:border-0 border-white/5 hover:bg-white/5 transition-colors"
+                      className={`bg-black/20 hover:bg-[#FF4B1F]/10 transition-colors ${
+                        idx === 0 ? "border-2 border-[#FF4B1F]/60" : "border border-white/10"
+                      } rounded-lg`}
                     >
-                      <td className="py-3 pl-2">
+                      <td className="py-2 px-3 text-center font-bold text-white/80 rounded-l-lg">{idx + 1}</td>
+                      <td className="py-2 px-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
+                          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F]">
                             {team.avatar ? (
-                              <img 
-                                src={`https://sleepercdn.com/avatars/${team.avatar}`} 
+                              <img
+                                src={`https://sleepercdn.com/avatars/${team.avatar}`}
                                 alt={team.teamName}
-                                className="w-full h-full object-cover" 
+                                className="w-full h-full object-cover"
                               />
                             ) : (
-                              <span className="text-sm font-bold text-[#FF4B1F]">
+                              <span className="text-base font-bold text-[#FF4B1F]">
                                 {team.teamName?.charAt(0) || 'T'}
                               </span>
                             )}
                           </div>
-                          <span className="font-medium truncate">{team.teamName}</span>
+                          <span
+                            className="font-bold min-w-0 max-w-[9rem] md:max-w-xs overflow-hidden whitespace-nowrap"
+                            style={{
+                              display: 'block',
+                              fontSize: `clamp(0.85rem, ${Math.max(
+                                2.2 - (team.teamName?.length || 0) * 0.09,
+                                1
+                              )}rem, 1.25rem)`
+                            }}
+                          >
+                            {team.teamName}
+                          </span>
                         </div>
                       </td>
-                      <td className="py-3 text-center">{team.wins}-{team.losses}{team.ties > 0 ? `-${team.ties}` : ''}</td>
-                      <td className="py-3 text-center">{(team.pointsFor / 100).toFixed(1)}</td>
-                      <td className="py-3 text-center">{(team.pointsAgainst / 100).toFixed(1)}</td>
+                      <td className={`py-2 px-3 text-center font-semibold ${team.rosterId === leaderWins ? orange : ""}`}>{team.wins}</td>
+                      <td className={`py-2 px-3 text-center font-semibold ${team.rosterId === leaderLosses ? orange : ""}`}>{team.losses}</td>
+                      <td className={`py-2 px-3 text-center font-semibold ${team.rosterId === leaderTies ? orange : ""}`}>{team.ties}</td>
+                      <td className={`py-2 px-3 text-center ${team.rosterId === leaderPF ? orange : ""}`}>{(team.pointsFor / 100).toFixed(1)}</td>
+                      <td className={`py-2 px-3 text-center rounded-r-lg ${team.rosterId === leaderPA ? orange : ""}`}>{(team.pointsAgainst / 100).toFixed(1)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -414,6 +487,133 @@ export default function Home() {
     );
   };
   
+  // Helper to render content based on league status
+  function renderMainContent() {
+    if (!leagueData?.status) return <OffseasonContent />;
+
+    switch (leagueData.status) {
+      case "in_season":
+        // Always show matchups section, even if empty
+        return (
+          <div className="space-y-3 md:space-y-4">
+            {matchups.length > 0 ? (
+              matchups.map((matchup, index) => {
+                let winnerIdx = null;
+                if (
+                  matchup.length === 2 &&
+                  typeof matchup[0].points === "number" &&
+                  typeof matchup[1].points === "number" &&
+                  matchup[0].points !== matchup[1].points
+                ) {
+                  winnerIdx = matchup[0].points > matchup[1].points ? 0 : 1;
+                }
+                return (
+                  <div
+                    key={index}
+                    className="bg-black/30 rounded-lg border border-white/10 p-4 flex flex-col"
+                  >
+                    <div className="flex items-center justify-between gap-2 md:gap-6">
+                      {/* Team 1 */}
+                      <div className="flex items-center flex-1 min-w-0 gap-3">
+                        <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F]">
+                          {matchup[0].avatar ? (
+                            <img
+                              src={`https://sleepercdn.com/avatars/${matchup[0].avatar}`}
+                              alt={matchup[0].teamName}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-xl font-bold text-[#FF4B1F]">
+                              {matchup[0].teamName?.charAt(0) || 'T'}
+                            </span>
+                          )}
+                        </div>
+                        {/* Responsive font size for long names */}
+                        <span
+                          className="font-bold truncate min-w-0 max-w-[9rem] md:max-w-xs"
+                          style={{
+                            fontSize: `clamp(1rem, ${Math.max(
+                              2.2 - (matchup[0].teamName?.length || 0) * 0.07,
+                              1
+                            )}rem, 1.25rem)`
+                          }}
+                        >
+                          {matchup[0].teamName}
+                        </span>
+                      </div>
+                      {/* Score 1 */}
+                      <div className={`font-extrabold text-2xl text-white text-center w-20 ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
+                        {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
+                      </div>
+                      {/* VS */}
+                      <div className="flex items-center justify-center">
+                        <div className="rounded-full bg-[#FF4B1F] text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md">
+                          VS
+                        </div>
+                      </div>
+                      {/* Score 2 */}
+                      <div className={`font-extrabold text-2xl text-white text-center w-20 ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
+                        {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
+                      </div>
+                      {/* Team 2 */}
+                      <div className="flex items-center flex-1 min-w-0 gap-3 justify-end">
+                        {/* Responsive font size for long names */}
+                        <span
+                          className="font-bold truncate text-right min-w-0 max-w-[9rem] md:max-w-xs"
+                          style={{
+                            fontSize: `clamp(1rem, ${Math.max(
+                              2.2 - (matchup[1].teamName?.length || 0) * 0.07,
+                              1
+                            )}rem, 1.25rem)`
+                          }}
+                        >
+                          {matchup[1].teamName}
+                        </span>
+                        <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F]">
+                          {matchup[1].avatar ? (
+                            <img
+                              src={`https://sleepercdn.com/avatars/${matchup[1].avatar}`}
+                              alt={matchup[1].teamName}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-xl font-bold text-[#FF4B1F]">
+                              {matchup[1].teamName?.charAt(0) || 'T'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center text-white/70 py-8">
+                No matchups available for this week.
+              </div>
+            )}
+          </div>
+        );
+      case "pre_draft":
+        return (
+          <div className="text-center py-8">
+            <h3 className="text-xl font-bold mb-2">Draft Coming Soon!</h3>
+            <p>Get ready for the league draft. Prepare your rankings and strategies.</p>
+          </div>
+        );
+      case "complete":
+        return (
+          <div className="text-center py-8">
+            <h3 className="text-xl font-bold mb-2">Season Complete</h3>
+            <p>Congratulations to the champion! See the Hall of Fame for past winners.</p>
+          </div>
+        );
+      case "offseason":
+      default:
+        return <OffseasonContent />;
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#001A2B] flex items-center justify-center flex-col">
@@ -567,55 +767,7 @@ export default function Home() {
               <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
                 {currentWeek ? `Week ${currentWeek} Matchups` : 'Current Matchups'}
               </h2>
-              
-              {matchups.length > 0 ? (
-                <div className="space-y-3 md:space-y-4">
-                  {matchups.map((matchup, index) => (
-                    <div 
-                      key={index}
-                      className="bg-black/20 rounded-lg border border-white/10 p-3 md:p-4 hover:border-[#FF4B1F]/50 transition-colors"
-                    >
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                        {matchup.map((team, teamIndex) => (
-                          <div 
-                            key={teamIndex} 
-                            className={`flex items-center gap-3 md:gap-4 ${teamIndex === 0 ? 'md:border-r md:border-white/10' : ''}`}
-                          >
-                            <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
-                              {team.avatar ? (
-                                <img 
-                                  src={`https://sleepercdn.com/avatars/${team.avatar}`} 
-                                  alt={team.teamName}
-                                  className="w-full h-full object-cover" 
-                                />
-                              ) : (
-                                <span className="text-lg md:text-xl font-bold text-[#FF4B1F]">
-                                  {team.teamName?.charAt(0) || 'T'}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-bold truncate">{team.teamName}</div>
-                              <div className="flex gap-3 md:gap-4">
-                                <div>
-                                  <span className="text-xs text-white/50">Score</span>
-                                  <div className="font-bold text-base md:text-lg">{team.points?.toFixed(1) || '0.0'}</div>
-                                </div>
-                                <div>
-                                  <span className="text-xs text-white/50">Projected</span>
-                                  <div className="text-white/70">{team.projected?.toFixed(1) || '0.0'}</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <OffseasonContent />
-              )}
+              {renderMainContent()}
             </div>
             
             {/* Standings Section */}

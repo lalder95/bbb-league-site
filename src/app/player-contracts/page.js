@@ -4,6 +4,13 @@ import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
+function normalizeName(name) {
+  return name
+    .toLowerCase()
+    .replace(/[\s.'-]/g, "_") // replace spaces, dots, apostrophes, hyphens with underscore
+    .replace(/[^a-z0-9_]/g, ""); // remove any other non-alphanumeric/underscore
+}
+
 export default function Home() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,10 +122,10 @@ export default function Home() {
               year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
               isDeadCap: !isActive,
               contractFinalYear: values[5],
-              age: values[31],
-              ktcValue: values[32],
-              rfaEligible: values[37], // <-- was 36, should be 37
-              franchiseTagEligible: values[38], // <-- was 37, should be 38
+              age: values[32],
+              ktcValue: values[34] ? parseInt(values[34], 10) : null, // <-- Parse as integer
+              rfaEligible: values[37],
+              franchiseTagEligible: values[38],
             };
           });
         setPlayers(parsedData);
@@ -482,6 +489,7 @@ export default function Home() {
                   { key: 'team', label: 'Team' },
                   { key: 'contractType', label: 'Contract Type' },
                   { key: 'curYear', label: 'Salary' }, // Renamed from "Cur Year"
+                  { key: 'ktcValue', label: <span title="KeepTradeCut Value">KTC</span> }, // <-- Add this line
                   { key: 'rfaEligible', label: <span title="Restricted Free Agent Eligible">RFA?</span> },
                   { key: 'franchiseTagEligible', label: <span title="Franchise Tag Eligible">FT?</span> },
                   { key: 'contractFinalYear', label: 'Final Year' }
@@ -544,6 +552,10 @@ export default function Home() {
                   </td>
                   <td className={`p-3 ${getSalaryColor(player.curYear, player.isDeadCap)}`}>
                     {formatSalary(player.curYear, player.isDeadCap)}
+                  </td>
+                  {/* KTC Value column */}
+                  <td className="p-3 text-center">
+                    {player.ktcValue ? player.ktcValue : '-'}
                   </td>
                   {/* RFA? icon */}
                   <td className="p-3 text-center">

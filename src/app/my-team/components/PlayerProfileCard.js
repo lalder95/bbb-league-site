@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
 
+function normalizeName(name) {
+  return name
+    .toLowerCase()
+    .replace(/[\s'-]/g, "_") // replace spaces, apostrophes, hyphens with underscore
+    // .replace(/\./g, "_")   // <-- REMOVE this line to keep periods
+    .replace(/[^a-z0-9_.]/g, ""); // allow a-z, 0-9, underscore, and period
+}
+
 export default function PlayerProfileCard({
   playerId,
   contracts,
@@ -74,6 +82,15 @@ export default function PlayerProfileCard({
     };
 
     async function fetchImage() {
+      const normalized = normalizeName(contract.playerName);
+
+      // Also try a version that keeps hyphens
+      const altNormalized = contract.playerName
+        .toLowerCase()
+        .replace(/[\s']/g, "_") // spaces and apostrophes to underscores
+        // keep hyphens as hyphens
+        .replace(/[^a-z0-9_.-]/g, ""); // allow a-z, 0-9, underscore, period, hyphen
+
       let images = [];
       try {
         const res = await fetch("/players/cardimages/index.json");
@@ -82,24 +99,37 @@ export default function PlayerProfileCard({
         images = [];
       }
 
-      const expectedBase = contract.playerName
-        .toLowerCase()
-        .replace(/ /g, "_")
-        .replace(/[^a-z0-9._']/g, "");
-
       let found = null;
       if (Array.isArray(images)) {
         found = images.find(img =>
-          img.filename.startsWith(expectedBase)
+          img.filename.toLowerCase().includes(normalized) ||
+          img.filename.toLowerCase().includes(altNormalized)
         );
       }
 
       if (found) {
         setImgSrc(found.src);
-      } else {
-        const pos = (contract.position || "").toLowerCase();
-        setImgSrc(defaultImages[pos] || "");
+        console.log("Found image in index.json:", found.src);
+        return;
       }
+
+      // Fallback: Try Cloudinary with normalized name (may not work for all)
+      const cloudinaryUrl = `https://res.cloudinary.com/drn1zhflh/image/upload/v1749697886/${normalized}.png`;
+      try {
+        const res = await fetch(cloudinaryUrl, { method: "HEAD" });
+        if (res.ok) {
+          setImgSrc(cloudinaryUrl);
+          console.log("Fallback Cloudinary URL used:", cloudinaryUrl);
+          return;
+        }
+      } catch (e) {
+        console.log("Cloudinary fetch error:", e);
+      }
+
+      // Fallback to default image
+      const pos = (contract.position || "").toLowerCase();
+      setImgSrc(defaultImages[pos] || "");
+      console.log("Using default image for position:", pos);
     }
 
     fetchImage();
