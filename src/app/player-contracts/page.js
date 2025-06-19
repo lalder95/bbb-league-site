@@ -512,9 +512,9 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {filteredAndSortedPlayers.map((player, index) => (
+              {filteredAndSortedPlayers.map((player) => (
                 <tr
-                  key={index}
+                  key={player.playerId} // <-- Use playerId, not index
                   className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                 >
                   {/* PlayerProfileCard column */}
