@@ -303,7 +303,7 @@ export default function Analytics() {
           <div style={{ width: '100%', height: isMobile ? 400 : 600, position: 'relative' }}>
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart
-                margin={{ top: 20, right: 20, bottom: isMobile ? 80 : 100, left: 20 }} // <-- much larger bottom margin
+                margin={{ top: 20, right: 20, bottom: isMobile ? 80 : 100, left: 20 }}
               >
                 <CartesianGrid stroke="#ffffff20" />
                 <XAxis
@@ -311,6 +311,7 @@ export default function Analytics() {
                   dataKey="ktcValue"
                   name="KTC"
                   stroke="#fff"
+                  domain={[0, 10000]} // <-- static X axis
                   label={{ value: 'KTC Score', position: 'insideBottom', offset: -5, fill: '#fff' }}
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                 />
@@ -319,6 +320,7 @@ export default function Analytics() {
                   dataKey="curYear"
                   name="Salary"
                   stroke="#fff"
+                  domain={[0, 100]} // <-- static Y axis
                   label={{ value: 'Current Salary ($)', angle: -90, position: 'insideLeft', fill: '#fff' }}
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                 />
