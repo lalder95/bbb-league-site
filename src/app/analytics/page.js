@@ -187,6 +187,20 @@ export default function Analytics() {
 
   const data = calculateTeamInvestments();
 
+  // Place quadrant labels using chart area percentages (relative to axis domain)
+  const minKTC = 0, maxKTC = 10000;
+  const minSalary = 0, maxSalary = 80;
+  const labelFontSize = isMobile ? 12 : 18;
+  // Use percentages for placement within chart area
+  const overpaidX = minKTC + (maxKTC - minKTC) * 0.04;
+  const overpaidY = minSalary + (maxSalary - minSalary) * 0.13;
+  const fairUpperX = maxKTC - (maxKTC - minKTC) * 0.04;
+  const fairUpperY = minSalary + (maxSalary - minSalary) * 0.13;
+  const fairLowerX = minKTC + (maxKTC - minKTC) * 0.04;
+  const fairLowerY = maxSalary - (maxSalary - minSalary) * 0.08;
+  const underpaidX = maxKTC - (maxKTC - minKTC) * 0.04;
+  const underpaidY = maxSalary - (maxSalary - minSalary) * 0.08;
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       <div className={`${isMobile ? 'p-4' : 'p-6'} bg-black/30 border-b border-white/10`}>
@@ -204,7 +218,10 @@ export default function Analytics() {
 
       <div className={`max-w-7xl mx-auto ${isMobile ? 'p-2' : 'p-6'}`}>
         <div className={`bg-black/30 rounded-lg border border-white/10 ${isMobile ? 'p-3' : 'p-6'}`}>
-          <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>Team Investment by Position</h2>
+          <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-2 text-[#FF4B1F]`}>Team Investment by Position</h2>
+          <div style={{ fontSize: isMobile ? '0.75em' : '0.8em', color: '#FF4B1F', marginBottom: isMobile ? 12 : 18, fontWeight: 500 }}>
+            This chart shows how each team allocates their salary cap across positions and dead cap. Use it to compare roster-building strategies and positional spending.
+          </div>
           
           <div className="w-full" style={{ minWidth: 0 }}>
             <ResponsiveContainer width="100%" height={isMobile ? 400 : 600}>
@@ -247,19 +264,15 @@ export default function Analytics() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-
-          {/* Explanation text under the chart */}
-          <div style={{ textAlign: 'center', marginTop: 8 }}>
-            <span style={{ fontSize: '0.85em', color: '#bbb' }}>
-              This chart shows how each team allocates their salary cap across positions and dead cap. Use it to compare roster-building strategies and positional spending.
-            </span>
-          </div>
         </div>
 
         <div className={`bg-black/30 rounded-lg border border-white/10 mt-8 ${isMobile ? 'p-3' : 'p-6'}`}>
-          <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
+          <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-2 text-[#FF4B1F]`}>
             Player Salary vs. KTC Value
           </h2>
+          <div style={{ fontSize: isMobile ? '0.75em' : '0.8em', color: '#FF4B1F', marginBottom: isMobile ? 12 : 18, fontWeight: 500 }}>
+            This scatter chart compares each player's current salary to their KTC value for the selected position. Quadrants help identify overpaid, underpaid, and fair market contracts.
+          </div>
           <div className="flex flex-wrap gap-4 mb-4">
             <div>
               <label className="mr-2">Team:</label>
@@ -330,23 +343,11 @@ export default function Analytics() {
                 <ReferenceLine x={avgKTC} stroke="#fff" strokeDasharray="3 3" />
                 <ReferenceLine y={avgSalary} stroke="#fff" strokeDasharray="3 3" />
                 {/* Color map for positions */}
-                {[
-                  {
-                    pos: 'QB',
-                    color: '#ef4444'
-                  },
-                  {
-                    pos: 'RB',
-                    color: '#3b82f6'
-                  },
-                  {
-                    pos: 'WR',
-                    color: '#22c55e'
-                  },
-                  {
-                    pos: 'TE',
-                    color: '#a855f7'
-                  },
+                { [
+                  { pos: 'QB', color: '#ef4444' },
+                  { pos: 'RB', color: '#3b82f6' },
+                  { pos: 'WR', color: '#22c55e' },
+                  { pos: 'TE', color: '#a855f7' },
                 ].map(({ pos, color }) => (
                   <Scatter
                     key={pos}
@@ -355,70 +356,92 @@ export default function Analytics() {
                     fill={color}
                   />
                 ))}
-                {/* Quadrant labels */}
-                <text
-                  x="10%"
-                  y="10%"
-                  textAnchor="start"
-                  fill="#fff"
-                  fontSize={isMobile ? 12 : 18}
-                  opacity="0.7"
-                >
-                  Overpaid
-                </text>
-                <text
-                  x="80%"
-                  y="10%"
-                  textAnchor="end"
-                  fill="#fff"
-                  fontSize={isMobile ? 12 : 18}
-                  opacity="0.7"
-                >
-                  Fair Upper Market
-                </text>
-                <text
-                  x="10%"
-                  y="90%"
-                  textAnchor="start"
-                  fill="#fff"
-                  fontSize={isMobile ? 12 : 18}
-                  opacity="0.7"
-                >
-                  Fair Lower Market
-                </text>
-                <text
-                  x="80%"
-                  y="90%"
-                  textAnchor="end"
-                  fill="#fff"
-                  fontSize={isMobile ? 12 : 18}
-                  opacity="0.7"
-                >
-                  Underpaid
-                </text>
               </ScatterChart>
             </ResponsiveContainer>
+            {/* Overlayed quadrant label: Overpaid (top-left) */}
+            <div
+              style={{
+                position: 'absolute',
+                left: isMobile ? 90 : 150,
+                top: isMobile ? 20 : 40,
+                color: 'rgba(251, 191, 36, 0.8)', // yellow at 80% opacity
+                fontWeight: 700,
+                fontSize: isMobile ? 11 : 15,
+                zIndex: 3,
+                pointerEvents: 'none',
+                textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+              }}
+            >
+              Overpaid
+            </div>
+            {/* Overlayed quadrant label: Fair Upper Market (top-right) */}
+            <div
+              style={{
+                position: 'absolute',
+                right: isMobile ? 24 : 60,
+                top: isMobile ? 20 : 40,
+                color: 'rgba(251, 191, 36, 0.8)', // yellow at 80% opacity
+                fontWeight: 700,
+                fontSize: isMobile ? 11 : 15,
+                zIndex: 3,
+                pointerEvents: 'none',
+                textAlign: 'right',
+                textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+              }}
+            >
+              Fair Upper Market
+            </div>
+            {/* Overlayed quadrant label: Fair Lower Market (bottom-left) */}
+            <div
+              style={{
+                position: 'absolute',
+                left: isMobile ? 90 : 150,
+                bottom: isMobile ? 110 : 160,
+                color: 'rgba(251, 191, 36, 0.8)', // yellow at 80% opacity
+                fontWeight: 700,
+                fontSize: isMobile ? 11 : 15,
+                zIndex: 3,
+                pointerEvents: 'none',
+                textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+              }}
+            >
+              Fair Lower Market
+            </div>
+            {/* Overlayed quadrant label: Underpaid (bottom-right) */}
+            <div
+              style={{
+                position: 'absolute',
+                right: isMobile ? 24 : 60,
+                bottom: isMobile ? 110 : 160,
+                color: 'rgba(251, 191, 36, 0.8)', // yellow at 80% opacity
+                fontWeight: 700,
+                fontSize: isMobile ? 11 : 15,
+                zIndex: 3,
+                pointerEvents: 'none',
+                textAlign: 'right',
+                textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+              }}
+            >
+              Underpaid
+            </div>
             {/* Overlayed explanation and averages */}
             <div
               style={{
                 position: 'absolute',
                 left: 0,
                 right: 0,
-                bottom: isMobile ? 8 : 16, // <-- closer to the bottom
+                bottom: isMobile ? 8 : 16,
                 textAlign: 'center',
                 pointerEvents: 'none',
                 zIndex: 2,
                 padding: isMobile ? 2 : 8,
-                background: 'rgba(0,26,43,0.85)', // subtle background for readability
+                background: 'rgba(0,26,43,0.85)',
               }}
             >
-              <div style={{ fontSize: '0.8em', color: '#bbb', marginBottom: 2 }}>
+              <div style={{ fontSize: '0.8em', color: '#bbb' }}>
                 KTC Position Average: {avgKTC ? avgKTC.toFixed(0) : 'N/A'}
                 <span style={{ margin: '0 16px' }} />
                 Salary Position Average: ${avgSalary ? avgSalary.toFixed(2) : 'N/A'}
-              </div>
-              <div style={{ fontSize: '0.85em', color: '#bbb' }}>
-                This scatter chart compares each player's current salary to their KTC value for the selected position. Quadrants help identify overpaid, underpaid, and fair market contracts.
               </div>
             </div>
           </div>
