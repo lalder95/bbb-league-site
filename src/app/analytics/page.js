@@ -442,7 +442,7 @@ export default function Analytics() {
             >
               <div style={{ fontSize: '0.8em', color: '#bbb' }}>
                 KTC Position Average: {avgKTC ? avgKTC.toFixed(0) : 'N/A'}
-                <span style={{ margin: '0 16px' }} />
+                <br /> {/* Added line break */}
                 Salary Position Average: ${avgSalary ? avgSalary.toFixed(2) : 'N/A'}
               </div>
             </div>
