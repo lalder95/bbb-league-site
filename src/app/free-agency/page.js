@@ -123,17 +123,20 @@ export default function FreeAgency() {
   );
 
   // Sorting helper
-  function sortPlayers(players, key) {
+  function sortPlayers(players, key, direction = sortConfig.direction) {
     return [...players].sort((a, b) => {
       let aValue = a[key];
       let bValue = b[key];
       // Numeric sort for KTC and age
       if (key === 'ktcValue' || key === 'age') {
-        aValue = aValue === null ? -1 : Number(aValue);
-        bValue = bValue === null ? -1 : Number(bValue);
+        // Always put nulls at the end regardless of direction
+        if (aValue === null || aValue === undefined) return 1;
+        if (bValue === null || bValue === undefined) return -1;
+        aValue = Number(aValue);
+        bValue = Number(bValue);
       }
-      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
       return 0;
     });
   }
@@ -179,7 +182,11 @@ export default function FreeAgency() {
   const teams = Array.from(new Set(freeAgents.map(p => p.team))).sort();
   const faByTeam = teams.map(team => ({
     team,
-    players: sortPlayers(freeAgents.filter(p => p.team === team), 'playerName')
+    players: sortPlayers(
+      freeAgents.filter(p => p.team === team),
+      sortConfig.key,
+      sortConfig.direction
+    )
   }));
 
   if (loading) return (

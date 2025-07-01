@@ -219,7 +219,6 @@ export default function Navigation() {
             {session ? (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="text-white/70">Hi, {session.user.name}</span>
                   <button
                     onClick={() => signOut({ callbackUrl: '/' })}
                     className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-colors transform hover:scale-105 shadow-md hover:shadow-lg"
@@ -304,7 +303,6 @@ export default function Navigation() {
               <div className="border-t border-white/10 pt-2 mt-2">
                 {session ? (
                   <>
-                    <div className="px-3 py-2 text-white/70">Hi, {session.user.name}</div>
                     <button
                       onClick={() => signOut({ callbackUrl: '/' })}
                       className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20"
