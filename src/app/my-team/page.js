@@ -25,7 +25,7 @@ import {
   PointElement,
   LineElement,
   LineController,
-  ScatterController // <-- Add this
+  ScatterController
 } from 'chart.js';
 
 Chart.register(
@@ -36,7 +36,8 @@ Chart.register(
   Legend,
   PointElement,
   LineElement,
-  LineController
+  LineController,
+  ScatterController
 );
 
 Chart.register({

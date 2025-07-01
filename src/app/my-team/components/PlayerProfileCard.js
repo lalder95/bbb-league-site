@@ -3,9 +3,8 @@ import React, { useEffect, useState } from "react";
 function normalizeName(name) {
   return name
     .toLowerCase()
-    .replace(/[\s'-]/g, "_") // replace spaces, apostrophes, hyphens with underscore
-    // .replace(/\./g, "_")   // <-- REMOVE this line to keep periods
-    .replace(/[^a-z0-9_.]/g, ""); // allow a-z, 0-9, underscore, and period
+    .replace(/[\s'-]/g, "_")
+    .replace(/[^a-z0-9_.]/g, "");
 }
 
 export default function PlayerProfileCard({
@@ -47,7 +46,7 @@ export default function PlayerProfileCard({
             playerName: foundRow[1],
             contractType: foundRow[2],
             status: foundRow[14],
-            team: foundRow[33], // TeamDisplayName
+            team: foundRow[33],
             position: foundRow[21],
             curYear: foundRow[15] ? parseFloat(foundRow[15]) : 0,
             year2: foundRow[16] ? parseFloat(foundRow[16]) : 0,
@@ -73,7 +72,6 @@ export default function PlayerProfileCard({
       return;
     }
 
-    // Map positions to local default image paths
     const defaultImages = {
       qb: "/players/cardimages/default_qb.png",
       rb: "/players/cardimages/default_rb.png",
@@ -84,12 +82,10 @@ export default function PlayerProfileCard({
     async function fetchImage() {
       const normalized = normalizeName(contract.playerName);
 
-      // Also try a version that keeps hyphens
       const altNormalized = contract.playerName
         .toLowerCase()
-        .replace(/[\s']/g, "_") // spaces and apostrophes to underscores
-        // keep hyphens as hyphens
-        .replace(/[^a-z0-9_.-]/g, ""); // allow a-z, 0-9, underscore, period, hyphen
+        .replace(/[\s']/g, "_")
+        .replace(/[^a-z0-9_.-]/g, "");
 
       let images = [];
       try {
@@ -109,33 +105,25 @@ export default function PlayerProfileCard({
 
       if (found) {
         setImgSrc(found.src);
-        console.log("Found image in index.json:", found.src);
         return;
       }
 
-      // Fallback: Try Cloudinary with normalized name (may not work for all)
       const cloudinaryUrl = `https://res.cloudinary.com/drn1zhflh/image/upload/v1749697886/${normalized}.png`;
       try {
         const res = await fetch(cloudinaryUrl, { method: "HEAD" });
         if (res.ok) {
           setImgSrc(cloudinaryUrl);
-          console.log("Fallback Cloudinary URL used:", cloudinaryUrl);
           return;
         }
-      } catch (e) {
-        console.log("Cloudinary fetch error:", e);
-      }
+      } catch (e) {}
 
-      // Fallback to default image
       const pos = (contract.position || "").toLowerCase();
       setImgSrc(defaultImages[pos] || "");
-      console.log("Using default image for position:", pos);
     }
 
     fetchImage();
   }, [contract, imageExtension]);
 
-  // Handle image error fallback
   const handleImgError = () => {
     if (!contract) return;
     const defaultImages = {
@@ -157,7 +145,6 @@ export default function PlayerProfileCard({
     );
   }
 
-  // Helper for bubble
   const Bubble = ({ children, className = "" }) => (
     <span
       className={
@@ -177,7 +164,6 @@ export default function PlayerProfileCard({
         className="object-contain w-full h-full"
         onError={handleImgError}
       />
-      {/* Expand button */}
       {onExpandClick && (
         <button
           onClick={onExpandClick}
@@ -188,7 +174,6 @@ export default function PlayerProfileCard({
           {expanded ? "✕" : "i"}
         </button>
       )}
-      {/* Bubble overlay */}
       {expanded && (
         <div className="absolute bottom-0 left-0 w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
           <Bubble className="bg-[#FF4B1F] bg-opacity-50">{contract.playerName}</Bubble>
