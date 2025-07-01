@@ -69,6 +69,13 @@ export default function MyTeam() {
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [activeTab, setActiveTab] = useState('Roster');
+  const [teamState, setTeamState] = useState("Compete");
+  const [assetPriority, setAssetPriority] = useState(["QB", "RB", "WR", "TE", "Picks"]);
+  const [draggingIdx, setDraggingIdx] = useState(null);
+  const [strategyNotes, setStrategyNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [saveError, setSaveError] = useState("");
   const tabs = [
     'Roster',
     'Finance',
@@ -273,6 +280,68 @@ export default function MyTeam() {
     }
     fetchActivityAndPedigree();
   }, [session, status]);
+
+  // Drag handlers
+  function handleDragStart(idx) {
+    setDraggingIdx(idx);
+  }
+  function handleDrop(idx) {
+    if (draggingIdx === null || draggingIdx === idx) return;
+    const newOrder = [...assetPriority];
+    const [removed] = newOrder.splice(draggingIdx, 1);
+    newOrder.splice(idx, 0, removed);
+    setAssetPriority(newOrder);
+    setDraggingIdx(null);
+  }
+
+  async function handleSaveAssistantGM() {
+    setSaving(true);
+    setSaveMsg("");
+    setSaveError("");
+    try {
+      const res = await fetch("/api/user/update-assistant-gm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamState,
+          assetPriority,
+          strategyNotes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save");
+      setSaveMsg("Settings saved!");
+    } catch (err) {
+      setSaveError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "Assistant GM" || status !== "authenticated") return;
+    // Only fetch once per session
+    let cancelled = false;
+    setSaving(true);
+    fetch("/api/user/get-assistant-gm")
+      .then(res => res.json())
+      .then(data => {
+        if (cancelled) return;
+        if (data.error) throw new Error(data.error);
+        setTeamState(data.teamState ?? "Compete");
+        setAssetPriority(Array.isArray(data.assetPriority) && data.assetPriority.length === 5
+          ? data.assetPriority
+          : ["QB", "RB", "WR", "TE", "Picks"]);
+        setStrategyNotes(data.strategyNotes ?? "");
+      })
+      .catch(err => {
+        setSaveError("Failed to load Assistant GM settings: " + err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setSaving(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, status]);
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
@@ -934,7 +1003,84 @@ export default function MyTeam() {
           <div className="text-white/80 text-lg p-8 text-center">Free Agency content coming soon.</div>
         )}
         {activeTab === 'Assistant GM' && (
-          <div className="text-white/80 text-lg p-8 text-center">Assistant GM content coming soon.</div>
+          <div className="max-w-xl mx-auto bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg">
+            <h2 className="text-2xl font-bold mb-6 text-white text-center">Assistant GM Settings</h2>
+            {/* Team State Dropdown */}
+            <div className="mb-6">
+              <label className="block text-white/80 mb-2 font-semibold">Team State</label>
+              <select
+                className="w-full p-3 rounded bg-white/5 border border-white/10 text-white"
+                value={teamState}
+                onChange={e => setTeamState(e.target.value)}
+              >
+                <option value="Compete">Compete</option>
+                <option value="Rebuild">Rebuild</option>
+              </select>
+            </div>
+            {/* Asset Priority Draggable */}
+            <div className="mb-6">
+              <label className="block text-white/80 mb-2 font-semibold">Asset Priority (drag to reorder)</label>
+              <div className="text-white/60 text-sm mb-2">
+                <span>
+                  <strong>Left</strong> = Most Important, <strong>Right</strong> = Least Important
+                </span>
+              </div>
+              <div className="flex gap-2">
+                {assetPriority.map((asset, idx) => {
+                  // Color map for positions
+                  const colorMap = {
+                    QB: '#ef4444',
+                    RB: '#3b82f6',
+                    WR: '#22c55e',
+                    TE: '#a855f7',
+                    Picks: '#fbbf24',
+                  };
+                  return (
+                    <div
+                      key={asset}
+                      draggable
+                      onDragStart={e => handleDragStart(idx)}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => handleDrop(idx)}
+                      className="font-bold px-4 py-2 rounded shadow cursor-move select-none border border-white/20"
+                      style={{
+                        opacity: draggingIdx === idx ? 0.5 : 1,
+                        background: colorMap[asset] || '#1FDDFF',
+                        color: asset === 'Picks' ? '#222' : '#fff', // dark text for yellow
+                      }}
+                    >
+                      {asset}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Strategy Notes */}
+            <div className="mb-6">
+              <label className="block text-white/80 mb-2 font-semibold">Strategy Notes</label>
+              <textarea
+                className="w-full p-3 rounded bg-white/5 border border-white/10 text-white"
+                rows={4}
+                value={strategyNotes}
+                onChange={e => setStrategyNotes(e.target.value)}
+                placeholder="Describe your team's strategy for your assistant GM..."
+                maxLength={300}
+              />
+              <div className="text-right text-white/60 text-sm mt-1">
+                {strategyNotes.length} / 300 characters
+              </div>
+            </div>
+            {/* Save Button */}
+            <button
+              className="w-full p-3 bg-[#FF4B1F] rounded hover:bg-[#FF4B1F]/80 transition-colors font-bold text-white"
+              onClick={handleSaveAssistantGM}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save Assistant GM Settings"}
+            </button>
+            {saveMsg && <div className="mt-4 text-center text-green-400">{saveMsg}</div>}
+            {saveError && <div className="mt-4 text-center text-red-400">{saveError}</div>}
+          </div>
         )}
         {activeTab === 'Media' && (
           <div className="text-white/80 text-lg p-8 text-center">Media content coming soon.</div>

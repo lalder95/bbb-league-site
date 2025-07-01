@@ -149,3 +149,8 @@ body {
 .draft-content .storylines li {
   margin-bottom: 0.75rem;
 }
+
+select, option {
+  color: #111 !important;         /* dark text */
+  background: #fff !important;    /* white background */
+}
