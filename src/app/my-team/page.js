@@ -65,6 +65,15 @@ export default function MyTeam() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  // Debug: print current username on every render
+  useEffect(() => {
+    if (session?.user?.name) {
+      console.log('[MY TEAM PAGE] Logged-in username:', session.user.name);
+    } else {
+      console.log('[MY TEAM PAGE] No user logged in');
+    }
+  }, [session?.user?.name]);
+  
   const [activity, setActivity] = useState({
     trades: 0,
     playersAdded: 0,
@@ -366,6 +375,103 @@ export default function MyTeam() {
     return () => { cancelled = true; };
   }, [activeTab, status]);
 
+  useEffect(() => {
+    if (activeTab !== 'Roster' || !session?.user?.name || !playerContracts.length) return;
+    const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
+    const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
+    const nameLower = session.user.name.trim().toLowerCase();
+    console.log('[ROSTER TAB] Logged-in username:', session.user.name, '| Lowercase:', nameLower);
+    console.log('[ROSTER TAB] All team names:', allTeamNames);
+    let myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
+    if (!myTeamName) {
+      myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
+    }
+    console.log('[ROSTER TAB] Matched team name:', myTeamName);
+  }, [activeTab, session, playerContracts]);
+
+  // --- Team Avatars and League ID ---
+  const [teamAvatars, setTeamAvatars] = useState({});
+  const [leagueId, setLeagueId] = useState(null);
+
+  // Find the user's BBB leagueId using Sleeper API (same logic as Player Contracts page)
+  useEffect(() => {
+    async function findBBBLeague() {
+      if (!session?.user?.sleeperId) return;
+      try {
+        // Get current NFL season
+        const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        const seasonState = await seasonResponse.json();
+        const currentSeason = seasonState.season;
+
+        // Get user's leagues for the current season
+        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${session.user.sleeperId}/leagues/nfl/${currentSeason}`);
+        const userLeagues = await userLeaguesResponse.json();
+
+        // Try flexible matching for "Budget Blitz Bowl"
+        let bbbLeagues = userLeagues.filter(league =>
+          league.name && (
+            league.name.includes('Budget Blitz Bowl') ||
+            league.name.includes('budget blitz bowl') ||
+            league.name.includes('BBB') ||
+            (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+          )
+        );
+
+        // If not found, try previous season
+        if (bbbLeagues.length === 0) {
+          const prevSeason = (parseInt(currentSeason) - 1).toString();
+          const prevSeasonResponse = await fetch(`https://api.sleeper.app/v1/user/${session.user.sleeperId}/leagues/nfl/${prevSeason}`);
+          if (prevSeasonResponse.ok) {
+            const prevSeasonLeagues = await prevSeasonResponse.json();
+            const prevBBBLeagues = prevSeasonLeagues.filter(league =>
+              league.name && (
+                league.name.includes('Budget Blitz Bowl') ||
+                league.name.includes('budget blitz bowl') ||
+                league.name.includes('BBB') ||
+                (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+              )
+            );
+            if (prevBBBLeagues.length > 0) {
+              bbbLeagues = prevBBBLeagues;
+            } else if (userLeagues.length > 0) {
+              bbbLeagues = [userLeagues[0]];
+            } else if (prevSeasonLeagues.length > 0) {
+              bbbLeagues = [prevSeasonLeagues[0]];
+            }
+          } else if (userLeagues.length > 0) {
+            bbbLeagues = [userLeagues[0]];
+          }
+        }
+
+        // Sort by season and take the most recent
+        const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
+        setLeagueId(mostRecentLeague.league_id);
+      } catch (err) {
+        setLeagueId(null);
+      }
+    }
+    findBBBLeague();
+  }, [session?.user?.sleeperId]);
+
+  // Fetch team avatars using detected leagueId
+  useEffect(() => {
+    if (!leagueId) return;
+    async function fetchAvatars() {
+      try {
+        const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
+        const users = await res.json();
+        const avatarMap = {};
+        users.forEach(user => {
+          avatarMap[user.display_name] = user.avatar;
+        });
+        setTeamAvatars(avatarMap);
+      } catch (e) {
+        // Optionally handle error
+      }
+    }
+    fetchAvatars();
+  }, [leagueId]);
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       {/* Header Banner */}
@@ -453,8 +559,15 @@ export default function MyTeam() {
             let myTeamName = '';
             if (session?.user?.name) {
               const nameLower = session.user.name.trim().toLowerCase();
-              // Try to find a team whose name matches the session user name
+              console.log('Logged-in username:', session.user.name, '| Lowercase:', nameLower);
+              console.log('All team names:', allTeamNames);
+              // Try exact match first
               myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
+              // If not found, try partial match (user name included in team name)
+              if (!myTeamName) {
+                myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
+              }
+              console.log('Matched team name:', myTeamName);
             }
             // If not found, default to team with most contracts
             if (!myTeamName) {
@@ -466,7 +579,7 @@ export default function MyTeam() {
               myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
             }
             // For roster table, use only contracts for user's team
-            let myContracts = activeContracts.filter(p => p.team === myTeamName);
+            let myContracts = activeContracts.filter(p => p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase());
             // Deduplicate by playerId, keeping the contract with the highest salary (curYear)
             const seen = new Set();
             myContracts = myContracts
@@ -577,7 +690,19 @@ export default function MyTeam() {
                                 >
                                   {player.playerName}
                                 </td>
-                                <td className="p-3">{player.team}</td>
+                                {/* Team column with avatar */}
+                                <td className="p-3 flex items-center gap-2">
+                                  {teamAvatars[player.team] ? (
+                                    <img
+                                      src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                                      alt={player.team}
+                                      className="w-5 h-5 rounded-full mr-2"
+                                    />
+                                  ) : (
+                                    <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
+                                  )}
+                                  {player.team}
+                                </td>
                                 <td className="p-3">{player.contractType}</td>
                                 <td className="p-3">${player.curYear?.toFixed(1) ?? '-'}</td>
                                 <td className="p-3 text-center">{player.ktcValue ?? '-'}</td>

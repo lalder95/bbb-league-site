@@ -126,7 +126,7 @@ export default function FreeAgency() {
   function sortPlayers(players, key, direction = sortConfig.direction) {
     return [...players].sort((a, b) => {
       let aValue = a[key];
-      let bValue = b[key];
+      let bValue = b[key];``
       // Numeric sort for KTC and age
       if (key === 'ktcValue' || key === 'age') {
         // Always put nulls at the end regardless of direction
