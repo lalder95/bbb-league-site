@@ -62,6 +62,12 @@ function groupByYear(items, getYear) {
 }
 
 export default function MyTeam() {
+  // --- Player map and contracts (must be declared before any useEffect that uses them) ---
+  const [playerMap, setPlayerMap] = useState({});
+  const [playerContracts, setPlayerContracts] = useState([]);
+
+  // --- Free Agency Tab State (must be top-level for React hooks rules) ---
+// (Free Agency tab state removed, placeholder only)
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -93,10 +99,7 @@ export default function MyTeam() {
   const [leagueTradedPicks, setLeagueTradedPicks] = useState({});
   const loaded = useRef(false);
 
-  // Player map from BBB_Contracts.csv
-  const [playerMap, setPlayerMap] = useState({});
-  // Add full player contract data
-  const [playerContracts, setPlayerContracts] = useState([]);
+  // ...existing code...
   // Sorting and player card modal
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
@@ -1148,11 +1151,77 @@ export default function MyTeam() {
           <div className="text-white/80 text-lg p-8 text-center">Draft content coming soon.</div>
         )}
         {activeTab === 'Free Agency' && (
-          <div className="text-white/80 text-lg p-8 text-center">Free Agency content coming soon.</div>
+          (() => {
+            // --- Free Agency Tab: Show team's free agent players by year ---
+            // Only use BBB_Contracts for all teams
+            const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
+            // Find user's team name by matching session user name to team name (case-insensitive)
+            const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
+            let myTeamName = '';
+            if (session?.user?.name) {
+              const nameLower = session.user.name.trim().toLowerCase();
+              myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
+              if (!myTeamName) {
+                myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
+              }
+            }
+            if (!myTeamName) {
+              const teamCounts = {};
+              activeContracts.forEach(p => {
+                const t = p.team.trim();
+                teamCounts[t] = (teamCounts[t] || 0) + 1;
+              });
+              myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+            }
+
+            // Find all contracts for user's team that are free agents in each year
+            // Assume contractFinalYear is the year the player becomes a free agent
+            const currentYear = new Date().getFullYear();
+            const years = [currentYear, currentYear + 1, currentYear + 2, currentYear + 3];
+            // For each year, get players whose contractFinalYear == year
+            const freeAgentsByYear = years.map(year => {
+              return {
+                year,
+                players: activeContracts.filter(p => p.team === myTeamName && String(p.contractFinalYear) === String(year))
+              };
+            });
+
+            return (
+              <div>
+                <h2 className="text-2xl font-bold mb-6 text-white text-center">Upcoming Free Agents By Year</h2>
+                <div className="grid gap-8" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
+                  {freeAgentsByYear.map(({ year, players }) => (
+                    <div key={year} className="bg-black/30 rounded-xl border border-white/10 p-6 shadow-lg">
+                      <h3 className="text-xl font-bold text-[#FF4B1F] mb-4">{year + 1} Free Agents</h3>
+                      {players.length > 0 ? (
+                        <ul className="divide-y divide-white/10">
+                          {players.map(player => (
+                            <li key={player.playerId} className="py-2 flex items-center gap-2">
+                              <div className="w-8 h-8 flex-shrink-0">
+                                <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
+                              </div>
+                              <span className="font-semibold text-white/90 text-sm">{player.playerName}</span>
+                              <span className="text-white/60 text-xs">({player.position})</span>
+                              <span className="ml-auto text-white/70 text-xs">${player.curYear?.toFixed(1) ?? '-'}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-white/60 italic">No free agents for {year + 1}.</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()
         )}
         {activeTab === 'Assistant GM' && (
           <div className="max-w-xl mx-auto bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg">
             <h2 className="text-2xl font-bold mb-6 text-white text-center">Assistant GM Settings</h2>
+            <div className="mb-6 text-white/80 text-base text-center">
+              The Assistant GM settings control the aggressiveness, direction, and overall team building strategy of your Assistant GM. Change these settings to match your own strategy to put you and your assistant GM on the same page.
+            </div>
             {/* Team State Dropdown */}
             <div className="mb-6">
               <label className="block text-white/80 mb-2 font-semibold">Team State</label>
