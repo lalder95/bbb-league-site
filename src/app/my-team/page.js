@@ -1186,9 +1186,31 @@ export default function MyTeam() {
               };
             });
 
+            // --- Player Card Modal for Free Agency tab ---
+            // Only show if Free Agency tab is active and selectedPlayerId is set
             return (
               <div>
                 <h2 className="text-2xl font-bold mb-6 text-white text-center">Upcoming Free Agents By Year</h2>
+                {/* Player Card Modal (Free Agency tab) */}
+                {selectedPlayerId && activeTab === 'Free Agency' && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+                    onClick={() => setSelectedPlayerId(null)}
+                  >
+                    <div
+                      className="bg-transparent p-0 rounded-lg shadow-2xl relative"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <PlayerProfileCard playerId={selectedPlayerId} expanded={true} className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]" />
+                      <button
+                        className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
+                        onClick={() => setSelectedPlayerId(null)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="grid gap-8" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
                   {freeAgentsByYear.map(({ year, players }) => (
                     <div key={year} className="bg-black/30 rounded-xl border border-white/10 p-6 shadow-lg">
@@ -1200,7 +1222,12 @@ export default function MyTeam() {
                               <div className="w-8 h-8 flex-shrink-0">
                                 <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
                               </div>
-                              <span className="font-semibold text-white/90 text-sm">{player.playerName}</span>
+                              <span
+                                className="font-semibold text-white/90 text-sm cursor-pointer underline"
+                                onClick={() => setSelectedPlayerId(player.playerId)}
+                              >
+                                {player.playerName}
+                              </span>
                               <span className="text-white/60 text-xs">({player.position})</span>
                               <span className="ml-auto text-white/70 text-xs">${player.curYear?.toFixed(1) ?? '-'}</span>
                             </li>
