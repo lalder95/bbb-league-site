@@ -1,36 +1,149 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+
+# BBB League Site
+
+>This is a comprehensive web application for managing and displaying information about the BBB fantasy football league. Built with [Next.js](https://nextjs.org), it features custom admin tools, draft management, player contracts, free agency, and more.
+
+---
+
+## Table of Contents
+- [Project Overview](#project-overview)
+- [Features](#features)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Scripts](#scripts)
+- [Configuration](#configuration)
+- [Technologies Used](#technologies-used)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Project Overview
+
+This project is a fantasy football league management site, providing:
+- League news and analytics
+- Draft management and mock drafts
+- Player contract and salary cap tracking
+- Free agency and trade tools
+- Admin dashboard for user management
+- Historical league data and Hall of Fame
+
+## Features
+- **Admin Panel:** Manage users and league data
+- **Draft Tools:** Mock drafts, draft order, rookie salaries, and strategy tips
+- **Team Management:** My Team page, player contracts, salary cap, and trades
+- **League Analytics:** News ticker, analytics dashboard, and history
+- **Media:** Upload and view league-related media
+- **Authentication:** Secure login and password management
+- **Responsive UI:** Built with Tailwind CSS and modern UI components
+
+## Project Structure
+
+```
+bbb-league-site/
+├── public/                # Static assets (images, PDFs, data)
+│   ├── data/              # League data files
+│   ├── leagueimages/      # Division images
+│   ├── players/           # Player images
+│   └── ...
+├── scripts/               # Node.js scripts for data migration, password hashing, etc.
+├── src/
+│   ├── app/               # Next.js app directory (routing, pages, API)
+│   │   ├── admin/         # Admin dashboard and user management
+│   │   ├── analytics/     # League analytics
+│   │   ├── api/           # API routes (auth, admin, news, etc.)
+│   │   ├── draft/         # Draft tools and mock draft
+│   │   ├── free-agency/   # Free agency management
+│   │   ├── hall-of-fame/  # Hall of Fame page
+│   │   ├── history/       # League history
+│   │   ├── login/         # Authentication
+│   │   ├── my-team/       # Team management
+│   │   ├── offseason/     # Offseason tools
+│   │   ├── player-contracts/ # Player contracts
+│   │   ├── rules/         # League rules
+│   │   ├── salary-cap/    # Salary cap management
+│   │   └── trade/         # Trade tools
+│   ├── components/        # Reusable React components
+│   ├── data/              # User and league data
+│   ├── lib/               # Helper libraries (auth, db, etc.)
+│   ├── pages/             # (If used) Legacy Next.js pages
+│   └── utils/             # Utility functions
+├── package.json           # Project metadata and scripts
+├── tailwind.config.mjs    # Tailwind CSS configuration
+├── next.config.mjs        # Next.js configuration
+├── eslint.config.mjs      # ESLint configuration
+└── README.md              # Project documentation
+```
 
 ## Getting Started
 
-First, run the development server(s):
+### Prerequisites
+- Node.js (v18+ recommended)
+- npm, yarn, pnpm, or bun
 
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/bbb-league-site.git
+   cd bbb-league-site
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   # or
+   yarn install
+   # or
+   pnpm install
+   # or
+   bun install
+   ```
+
+### Development
+Start the development server:
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# or yarn dev, pnpm dev, bun dev
 ```
+Visit [http://localhost:3000](http://localhost:3000) in your browser.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Build
+To build the app for production:
+```bash
+npm run build
+```
+The output will be in the `.next` directory.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+### Deployment
+Deploy easily on [Vercel](https://vercel.com/) or any platform supporting Next.js. See [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+- `npm run dev` – Start development server
+- `npm run build` – Build for production
+- `npm run start` – Start production server
+- Custom scripts in `scripts/` for data migration, password hashing, etc.
 
-To learn more about Next.js, take a look at the following resources:
+## Configuration
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **next.config.mjs** – Next.js configuration
+- **tailwind.config.mjs** – Tailwind CSS setup
+- **eslint.config.mjs** – Linting rules
+- **public/data/** – League and user data
+- **src/lib/** – Database and authentication helpers
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Technologies Used
 
-## Deploy on Vercel
+- [Next.js](https://nextjs.org/)
+- [React](https://react.dev/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [MongoDB](https://www.mongodb.com/) (via `src/lib/mongodb.js`)
+- [Vercel](https://vercel.com/) (deployment)
+- [ESLint](https://eslint.org/)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Contributing
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
+
+## License
+
+This project is licensed under the MIT License.
