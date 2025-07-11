@@ -1,3 +1,9 @@
+// Defensive display helper to avoid rendering objects/arrays as React children
+function safeDisplay(val) {
+  if (val === null || val === undefined) return '-';
+  if (typeof val === 'object') return '[object]';
+  return String(val);
+}
 import React, { useEffect, useState } from "react";
 
 function normalizeName(name) {
@@ -17,10 +23,27 @@ export default function PlayerProfileCard({
   teamAvatars = {},
   teamName = "",
 }) {
+  // Debug: Log playerId and its type
+  console.log('[PlayerProfileCard] playerId:', playerId, '| type:', typeof playerId);
+  if (typeof playerId !== 'string' && typeof playerId !== 'number') {
+    console.warn('[PlayerProfileCard] Invalid playerId, not string/number:', playerId);
+    return null;
+  }
   const [contract, setContract] = useState(null);
   const [imgSrc, setImgSrc] = useState(null);
   const [flipped, setFlipped] = useState(false);
   const [allContracts, setAllContracts] = useState([]);
+
+  // Debug: Log contract and allContracts after they are set
+  useEffect(() => {
+    console.log('[PlayerProfileCard] contract:', contract, '| type:', typeof contract);
+    console.log('[PlayerProfileCard] allContracts:', allContracts, '| type:', typeof allContracts);
+    if (Array.isArray(allContracts)) {
+      allContracts.forEach((c, idx) => {
+        console.log(`[PlayerProfileCard] allContracts[${idx}]:`, c, '| type:', typeof c);
+      });
+    }
+  }, [contract, allContracts]);
 
   useEffect(() => {
     async function fetchContract() {
@@ -167,26 +190,66 @@ export default function PlayerProfileCard({
 
   if (!contract) {
     return (
-      <div className="w-[95vw] h-[95vw] min-h-[22rem] max-h-[95vh] md:w-96 md:h-[32rem] flex items-center justify-center bg-gray-900 rounded-lg shadow-lg text-white text-xl overflow-hidden">
+      <div
+        className={
+          expanded
+            ? "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem] flex items-center justify-center bg-gray-900 rounded-lg shadow-lg text-white text-xl overflow-hidden"
+            : "w-16 h-16 flex items-center justify-center bg-gray-900 rounded-lg shadow-lg text-white text-xl overflow-hidden"
+        }
+      >
         Loading...
       </div>
     );
   }
 
-  const Bubble = ({ children, className = "" }) => (
-    <span
-      className={
-        "inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-black/20 text-white mr-1 mb-1 " +
-        className
-      }
-    >
-      {children}
-    </span>
-  );
+  // Utility to safely render only strings/numbers in bubbles
+  function safeDisplay(val) {
+    if (val === null || val === undefined) return "-";
+    if (typeof val === "string" || typeof val === "number") return val;
+    if (typeof val === "boolean") return val ? "Yes" : "No";
+    // If it's an object or array, return a dash
+    return "-";
+  }
+
+  const Bubble = ({ children, className = "" }) => {
+    // Debug: Log Bubble children and their type
+    if (typeof window !== 'undefined') {
+      console.log('[Bubble] children:', children, '| type:', typeof children);
+    }
+    let display;
+    if (children === null || children === undefined) {
+      display = "-";
+    } else if (typeof children === "string" || typeof children === "number" || typeof children === "boolean") {
+      display = safeDisplay(children);
+    } else {
+      display = "-";
+    }
+    // Always coerce to string to avoid React child errors
+    return (
+      <span
+        className={
+          "inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-black/20 text-white mr-1 mb-1 " +
+          className
+        }
+      >
+        {String(display)}
+      </span>
+    );
+  };
 
   return (
-    <div className="flex flex-col items-center w-full h-full">
-      <div className={`relative w-[95vw] h-[95vw] min-h-[22rem] max-h-[95vh] md:w-96 md:h-[32rem] rounded-lg shadow-lg bg-gray-900 overflow-hidden ${className}`}>
+    <div className="flex flex-col items-center justify-center min-h-screen w-full py-8" style={{ overflowX: 'auto' }}>
+      <div
+        className={`relative ${
+          expanded
+            ? (
+                flipped
+                  ? "h-[95vh] max-h-[95vh] aspect-[3.5/2.5] min-w-[22rem] max-w-[95vw] md:h-[32rem] md:max-h-none md:aspect-[3.5/2.5] md:w-[32rem]"
+                  : "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem]"
+              )
+            : "w-16 h-16"
+        } rounded-lg shadow-lg bg-gray-900 overflow-hidden ${className}`}
+      >
         <div
           className="relative w-full h-full"
           style={{
@@ -194,7 +257,7 @@ export default function PlayerProfileCard({
           }}
         >
           <div
-            className={`transition-transform duration-[600ms] ease-in-out w-full h-full absolute top-0 left-0`}
+            className={`transition-transform duration-[1000ms] ease-in-out w-full h-full absolute top-0 left-0`}
             style={{
               transformStyle: "preserve-3d",
               // Diagonal flip: rotateY(180deg) rotateZ(90deg)
@@ -224,30 +287,32 @@ export default function PlayerProfileCard({
                   {expanded ? "✕" : "i"}
                 </button>
               )}
-              {expanded && (
-                <div className="absolute bottom-0 left-0 w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-                  <Bubble className="bg-[#FF4B1F] bg-opacity-50">{contract.playerName}</Bubble>
-                  <Bubble className="bg-blue-700 bg-opacity-50">{contract.position}</Bubble>
+              {expanded && !flipped && contract && typeof contract === 'object' && !Array.isArray(contract) && (
+                <div className="w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent mt-2 absolute bottom-0 left-0 z-10">
+                  {safeDisplay(contract.playerName) !== '-' && <Bubble className="bg-[#FF4B1F] bg-opacity-50">{String(safeDisplay(contract.playerName))}</Bubble>}
+                  {safeDisplay(contract.position) !== '-' && <Bubble className="bg-blue-700 bg-opacity-50">{String(safeDisplay(contract.position))}</Bubble>}
                   <Bubble className="bg-green-700 bg-opacity-50">
-                    ${contract.curYear ? contract.curYear.toFixed(1) : "-"}
+                    {typeof contract.curYear === 'number' ? `$${contract.curYear.toFixed(1)}` : "-"}
                   </Bubble>
-                  <Bubble className="bg-indigo-700 bg-opacity-50">{contract.contractType}</Bubble>
-                  <Bubble className="bg-purple-700 bg-opacity-50">{contract.team}</Bubble>
-                  <Bubble
-                    className={
-                      "bg-yellow-700 bg-opacity-50 " +
-                      (Number(contract.age) >= 30 ? "animate-pulse" : "")
-                    }
-                  >
-                    Age: {contract.age || "-"}
-                  </Bubble>
+                  {safeDisplay(contract.contractType) !== '-' && <Bubble className="bg-indigo-700 bg-opacity-50">{String(safeDisplay(contract.contractType))}</Bubble>}
+                  {safeDisplay(contract.team) !== '-' && <Bubble className="bg-purple-700 bg-opacity-50">{String(safeDisplay(contract.team))}</Bubble>}
+                  {safeDisplay(contract.age) !== '-' && (
+                    <Bubble
+                      className={
+                        "bg-yellow-700 bg-opacity-50 " +
+                        (Number(contract.age) >= 30 ? "animate-pulse" : "")
+                      }
+                    >
+                      {`Age: ${String(safeDisplay(contract.age))}`}
+                    </Bubble>
+                  )}
                   <Bubble
                     className={
                       "bg-cyan-700 bg-opacity-50 " +
                       (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")
                     }
                   >
-                    RFA: {String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}
+                    {`RFA: ${String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
                   </Bubble>
                   <Bubble
                     className={
@@ -255,10 +320,10 @@ export default function PlayerProfileCard({
                       (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")
                     }
                   >
-                    Tag: {String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}
+                    {`Tag: ${String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
                   </Bubble>
                   <Bubble className="bg-teal-700 bg-opacity-50">
-                    KTC: {contract.ktcValue ? contract.ktcValue : "-"}
+                    {`KTC: ${String(safeDisplay(contract.ktcValue))}`}
                   </Bubble>
                   <Bubble
                     className={
@@ -266,7 +331,7 @@ export default function PlayerProfileCard({
                       (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")
                     }
                   >
-                    Final Year: {contract.contractFinalYear || "-"}
+                    {`Final Year: ${String(safeDisplay(contract.contractFinalYear))}`}
                   </Bubble>
                 </div>
               )}
@@ -279,7 +344,7 @@ export default function PlayerProfileCard({
                 backfaceVisibility: "hidden",
               }}
             >
-            <div className="flex flex-col items-center justify-center w-full h-full p-4 bg-gradient-to-br from-[#001A2B] via-gray-900 to-[#22223b] rounded-lg border border-white/10 shadow-xl relative">
+            <div className="flex flex-col items-center justify-center w-full h-full box-border bg-gradient-to-br from-[#001A2B] via-gray-900 to-[#22223b] rounded-lg border border-white/10 shadow-xl relative overflow-x-auto">
             {/* Player image background, 5% opacity, behind overlays */}
             {imgSrc && (
               <img
@@ -296,8 +361,8 @@ export default function PlayerProfileCard({
                 }}
               />
             )}
-              {/* Player card image as a low-opacity background */}
-              {imgSrc && (
+            {/* Player card image as a low-opacity background */}
+            {imgSrc && (
               <img
                 src={imgSrc}
                 alt={contract?.playerName}
@@ -314,56 +379,16 @@ export default function PlayerProfileCard({
                   transform: 'scaleX(-1)',
                 }}
               />
-              )}
-              {/* Player age bottom-left, rotated 90deg */}
-              {(contract?.position || contract?.age) && (
-                <>
-                  {contract?.position && (
-                    <div
-                      className="flex items-center gap-2 z-10"
-                      style={{
-                        position: 'absolute',
-                        left: '1.5rem',
-                        bottom: '8.5rem',
-                        transform: 'rotate(90deg)',
-                        transformOrigin: 'bottom left',
-                        background: 'rgba(0,0,0,0.5)',
-                        padding: '0.25rem 0.75rem',
-                        borderRadius: '0.75rem',
-                        boxShadow: '0 2px 8px 0 rgba(0,0,0,0.25)',
-                        maxWidth: '90%',
-                      }}
-                    >
-                      <span className="text-white/80 text-base font-semibold drop-shadow">{contract.position}</span>
-                    </div>
-                  )}
-                  {contract?.age && (
-                    <div
-                      className="flex items-center gap-2 z-10"
-                      style={{
-                        position: 'absolute',
-                        left: '1.5rem',
-                        bottom: '6rem',
-                        transform: 'rotate(90deg)',
-                        transformOrigin: 'bottom left',
-                        background: 'rgba(0,0,0,0.5)',
-                        padding: '0.25rem 0.75rem',
-                        borderRadius: '0.75rem',
-                        boxShadow: '0 2px 8px 0 rgba(0,0,0,0.25)',
-                        maxWidth: '90%',
-                      }}
-                    >
-                      <span className="text-white/80 text-base font-semibold drop-shadow">Age: {contract.age}</span>
-                    </div>
-                  )}
-                </>
-              )}
-              {/* Team avatar and KTC score removed from back of card */}
-              <div className="mb-4 text-lg font-bold tracking-wide text-[#FF4B1F] drop-shadow">Active Contracts</div>
-              {/* Contract Table */}
-              {allContracts.filter(c => c.status === "Active" || c.status === "Future").length > 0 ? (
-                <div className="w-full flex justify-center items-center h-full">
-                  <table className="w-auto text-sm border border-white/10 rounded bg-black/30 mx-auto rotate-90 origin-center shadow-lg">
+            )}
+            {/* Player age bottom-left, rotated 90deg */}
+            {/* Position and age bubbles removed from back of card as requested */}
+            {/* Team avatar and KTC score removed from back of card */}
+            {/* Contract Table */}
+            {allContracts.filter(c => c.status === "Active" || c.status === "Future").length > 0 ? (
+              <div className="w-full h-full flex flex-col items-center justify-center" style={{height: '100%', minHeight: 0}}>
+                <div className="flex flex-col h-full w-full justify-center items-center" style={{height: '100%', minHeight: 0}}>
+                  <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%'}}>
+                    <table className="w-auto text-sm border border-white/10 rounded bg-black/30 mx-auto rotate-90 origin-center shadow-lg" style={{margin: '0 auto', maxWidth: '95%', transform: 'scale(0.925) rotate(90deg)'}}>
                     <thead>
                       <tr className="bg-black/60 text-[#FF4B1F] text-base">
                         <th className="p-2 border-b border-white/10 font-semibold">Type</th>
@@ -376,23 +401,29 @@ export default function PlayerProfileCard({
                       </tr>
                     </thead>
                     <tbody>
-                      {allContracts.filter(c => c.status === "Active" || c.status === "Future").map((c, idx) => (
-                        <tr key={idx} className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
-                          <td className="p-2 text-white/90">{c.contractType}</td>
-                          <td className="p-2 text-white/80">{c.contractStartYear || '-'}</td>
-                          <td className="p-2 text-green-400">{c.curYear ? `$${c.curYear.toFixed(1)}` : '-'}</td>
-                          <td className="p-2 text-green-400">{c.year2 ? `$${c.year2.toFixed(1)}` : '-'}</td>
-                          <td className="p-2 text-green-400">{c.year3 ? `$${c.year3.toFixed(1)}` : '-'}</td>
-                          <td className="p-2 text-green-400">{c.year4 ? `$${c.year4.toFixed(1)}` : '-'}</td>
-                          <td className="p-2 text-white/80">{c.contractFinalYear || '-'}</td>
-                        </tr>
-                      ))}
+                      {allContracts.filter(c => c.status === "Active" || c.status === "Future").map((c, idx) => {
+                        // Debug: Log each contract row before rendering
+                        console.log(`[PlayerProfileCard] Rendering contract row idx=${idx}:`, c, '| type:', typeof c);
+                        return (
+                          <tr key={idx} className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
+                            <td className="p-2 text-white/90">{safeDisplay(c.contractType)}</td>
+                            <td className="p-2 text-white/80">{safeDisplay(c.contractStartYear)}</td>
+                            <td className="p-2 text-green-400">{typeof c.curYear === 'number' ? `$${c.curYear.toFixed(1)}` : safeDisplay(c.curYear)}</td>
+                            <td className="p-2 text-green-400">{typeof c.year2 === 'number' ? `$${c.year2.toFixed(1)}` : safeDisplay(c.year2)}</td>
+                            <td className="p-2 text-green-400">{typeof c.year3 === 'number' ? `$${c.year3.toFixed(1)}` : safeDisplay(c.year3)}</td>
+                            <td className="p-2 text-green-400">{typeof c.year4 === 'number' ? `$${c.year4.toFixed(1)}` : safeDisplay(c.year4)}</td>
+                            <td className="p-2 text-white/80">{safeDisplay(c.contractFinalYear)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
-                  </table>
+                    </table>
+                  </div>
                 </div>
-              ) : (
-                <div className="text-white/60">No active or future contracts found.</div>
-              )}
+              </div>
+            ) : (
+              <div className="text-white/60">No active or future contracts found.</div>
+            )}
             </div>
             </div>
           </div>

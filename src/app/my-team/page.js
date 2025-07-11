@@ -627,7 +627,7 @@ export default function MyTeam() {
                   <h3 className="text-xl font-bold text-[#FF4B1F] mb-4">Roster Overview</h3>
                   <div className="text-white/80 mb-2">A summary of your current roster, including KTC values, positional breakdown, and age profile.</div>
                   {/* Player Card Modal */}
-                  {selectedPlayerId && (
+                  {(typeof selectedPlayerId === 'string' || typeof selectedPlayerId === 'number') && (
                     <div
                       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
                       onClick={() => setSelectedPlayerId(null)}
@@ -1198,7 +1198,7 @@ export default function MyTeam() {
               <div>
                 <h2 className="text-2xl font-bold mb-6 text-white text-center">Upcoming Free Agents By Year</h2>
                 {/* Player Card Modal (Free Agency tab) */}
-                {selectedPlayerId && activeTab === 'Free Agency' && (
+                {(typeof selectedPlayerId === 'string' || typeof selectedPlayerId === 'number') && activeTab === 'Free Agency' && (
                   <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
                     onClick={() => setSelectedPlayerId(null)}
