@@ -395,7 +395,6 @@ export default function PlayerProfileCard({
                     <thead>
                       <tr className="bg-black/60 text-[#FF4B1F] text-base">
                         <th className="p-2 border-b border-white/10 font-semibold">Type</th>
-                        <th className="p-2 border-b border-white/10 font-semibold">Status</th>
                         <th className="p-2 border-b border-white/10 font-semibold">Start Year</th>
                         <th className="p-2 border-b border-white/10 font-semibold">Year 1</th>
                         <th className="p-2 border-b border-white/10 font-semibold">Year 2</th>
@@ -408,7 +407,6 @@ export default function PlayerProfileCard({
                       {allContracts.filter(c => c.status === "Active" || c.status === "Future").map((c, idx) => (
                         <tr key={idx} className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
                           <td className="p-2 text-white/90">{c.contractType}</td>
-                          <td className="p-2 text-white/90">{c.status}</td>
                           <td className="p-2 text-white/80">{c.contractStartYear || '-'}</td>
                           <td className="p-2 text-green-400">{c.curYear ? `$${c.curYear.toFixed(1)}` : '-'}</td>
                           <td className="p-2 text-green-400">{c.year2 ? `$${c.year2.toFixed(1)}` : '-'}</td>
