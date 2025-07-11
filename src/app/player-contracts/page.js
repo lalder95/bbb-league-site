@@ -292,6 +292,11 @@ export default function Home() {
               playerId={selectedPlayerId}
               expanded={true}
               className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
+              teamAvatars={teamAvatars}
+              teamName={(() => {
+                const player = players.find(p => String(p.playerId) === String(selectedPlayerId));
+                return player ? player.team : '';
+              })()}
             />
             <button
               className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
