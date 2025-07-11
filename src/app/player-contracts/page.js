@@ -223,7 +223,14 @@ export default function Home() {
     setFilterSet(newFilters);
   };
 
-  const filteredAndSortedPlayers = [...players]
+  // Remove duplicate playerId rows before sorting
+  const uniquePlayersMap = new Map();
+  players.forEach(player => {
+    if (!uniquePlayersMap.has(player.playerId)) {
+      uniquePlayersMap.set(player.playerId, player);
+    }
+  });
+  const filteredAndSortedPlayers = Array.from(uniquePlayersMap.values())
     .filter(player =>
       player.playerName.toLowerCase().includes(searchTerm.toLowerCase()) &&
       (positionFilters.size === 0 || positionFilters.has(player.position)) &&
@@ -232,13 +239,30 @@ export default function Home() {
       (player.curYear !== 0 || player.year2 !== 0 || player.year3 !== 0 || player.year4 !== 0)
     )
     .sort((a, b) => {
-      const aVal = a[sortConfig.key];
-      const bVal = b[sortConfig.key];
+      const key = sortConfig.key;
+      let aVal = a[key];
+      let bVal = b[key];
 
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
+      // Special handling for KTC and numeric columns
+      const numericKeys = ['curYear', 'ktcValue', 'year2', 'year3', 'year4', 'age', 'contractFinalYear'];
+      if (numericKeys.includes(key)) {
+        aVal = aVal === null || aVal === undefined || isNaN(Number(aVal)) ? -Infinity : Number(aVal);
+        bVal = bVal === null || bVal === undefined || isNaN(Number(bVal)) ? -Infinity : Number(bVal);
         return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
       }
 
+      // Fallback for string comparison (case-insensitive)
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = bVal.toLowerCase();
+        if (sortConfig.direction === 'asc') {
+          return aVal.localeCompare(bVal);
+        } else {
+          return bVal.localeCompare(aVal);
+        }
+      }
+
+      // Fallback for other types
       if (sortConfig.direction === 'asc') {
         return aVal > bVal ? 1 : -1;
       }
@@ -488,32 +512,37 @@ export default function Home() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-black/40 border-b border-white/10">
-                {[
+                {[ 
                   { key: 'profile', label: '' }, // PlayerProfileCard column
                   { key: 'playerName', label: 'Player Name' },
                   { key: 'team', label: 'Team' },
                   { key: 'contractType', label: 'Contract Type' },
                   { key: 'curYear', label: 'Salary' }, // Renamed from "Cur Year"
-                  { key: 'ktcValue', label: <span title="KeepTradeCut Value">KTC</span> }, // <-- Add this line
+                  { key: 'ktcValue', label: <span title="KeepTradeCut Value">KTC</span> },
                   { key: 'rfaEligible', label: <span title="Restricted Free Agent Eligible">RFA?</span> },
                   { key: 'franchiseTagEligible', label: <span title="Franchise Tag Eligible">FT?</span> },
                   { key: 'contractFinalYear', label: 'Final Year' }
-                ].map(({ key, label }) => (
-                  <th
-                    key={key}
-                    onClick={key !== 'profile' ? () => handleSort(key) : undefined}
-                    className="p-3 text-left cursor-pointer hover:bg-white/5 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      {label}
-                      {sortConfig.key === key && key !== 'profile' && (
-                        <span className="text-[#FF4B1F]">
-                          {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                ))}
+                ].map(({ key, label }) => {
+                  // Only make sortable columns have pointer and click handler
+                  const isSortable = !['profile'].includes(key);
+                  return (
+                    <th
+                      key={key}
+                      onClick={isSortable ? (e) => { e.stopPropagation(); handleSort(key); } : undefined}
+                      className={`p-3 text-left transition-colors ${isSortable ? 'cursor-pointer hover:bg-white/5' : ''}`}
+                      style={isSortable ? { userSelect: 'none' } : {}}
+                    >
+                      <div className="flex items-center gap-2">
+                        {label}
+                        {sortConfig.key === key && isSortable && (
+                          <span className="text-[#FF4B1F]">
+                            {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>

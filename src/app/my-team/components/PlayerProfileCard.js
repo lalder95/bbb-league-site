@@ -308,7 +308,7 @@ export default function PlayerProfileCard({
                   width: '100%',
                   height: '100%',
                   objectFit: 'contain',
-                  opacity: 0.05,
+                  opacity: 0.10,
                   zIndex: 0,
                   pointerEvents: 'none',
                   transform: 'scaleX(-1)',
@@ -361,30 +361,58 @@ export default function PlayerProfileCard({
               {/* Team avatar and name top-right, rotated 90deg */}
               {(teamName || teamAvatars[teamName]) && (
                 <div
-                  className="flex items-center gap-2 z-10"
+                  className="flex flex-col gap-2 z-10 items-end"
                   style={{
                     position: 'absolute',
                     right: '1.5rem',
                     top: '7rem',
                     transform: 'rotate(90deg)',
                     transformOrigin: 'top right',
+                    maxWidth: '90%',
+                  }}
+                >
+                  <div
+                    className="flex items-center gap-2"
+                    style={{
+                      background: 'rgba(0,0,0,0.5)',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '0.75rem',
+                      boxShadow: '0 2px 8px 0 rgba(0,0,0,0.25)',
+                      marginBottom: '0.25rem',
+                    }}
+                  >
+                    {teamAvatars[teamName] ? (
+                      <img
+                        src={`https://sleepercdn.com/avatars/${teamAvatars[teamName]}`}
+                        alt={teamName}
+                        className="w-8 h-8 rounded-full border border-white/20 shadow"
+                      />
+                    ) : (
+                      <span className="w-8 h-8 rounded-full bg-white/10 inline-block"></span>
+                    )}
+                    <span className="text-white/80 text-base font-semibold drop-shadow truncate" style={{maxWidth: '7rem'}}>{teamName}</span>
+                  </div>
+                </div>
+              )}
+              {/* KTC value top-left, rotated 90deg, same style as team info */}
+              {contract?.ktcValue && (
+                <div
+                  className="flex items-center gap-2 z-10"
+                  style={{
+                    position: 'absolute',
+                    left: '-2.5rem',
+                    top: '1.5rem',
+                    transform: 'rotate(90deg)',
+                    transformOrigin: 'top left',
                     background: 'rgba(0,0,0,0.5)',
                     padding: '0.25rem 0.75rem',
                     borderRadius: '0.75rem',
                     boxShadow: '0 2px 8px 0 rgba(0,0,0,0.25)',
+                    marginBottom: '0.25rem',
                     maxWidth: '90%',
                   }}
                 >
-                  {teamAvatars[teamName] ? (
-                    <img
-                      src={`https://sleepercdn.com/avatars/${teamAvatars[teamName]}`}
-                      alt={teamName}
-                      className="w-8 h-8 rounded-full border border-white/20 shadow"
-                    />
-                  ) : (
-                    <span className="w-8 h-8 rounded-full bg-white/10 inline-block"></span>
-                  )}
-                  <span className="text-white/80 text-base font-semibold drop-shadow truncate" style={{maxWidth: '7rem'}}>{teamName}</span>
+                  <span className="text-white/80 text-base font-semibold drop-shadow">KTC: {contract.ktcValue}</span>
                 </div>
               )}
               <div className="mb-4 text-lg font-bold tracking-wide text-[#FF4B1F] drop-shadow">Active Contracts</div>
