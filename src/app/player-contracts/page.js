@@ -552,14 +552,12 @@ export default function Home() {
                   className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                 >
                   {/* PlayerProfileCard column */}
-                  <td className="p-3">
-                    <div className="w-8 h-8 flex-shrink-0">
-                      <PlayerProfileCard
-                        playerId={player.playerId}
-                        expanded={false}
-                        className="w-8 h-8 rounded-full overflow-hidden shadow"
-                      />
-                    </div>
+                  <td className="p-3 align-middle" style={{ width: '40px', minWidth: '40px' }}>
+                    <PlayerProfileCard
+                      playerId={player.playerId}
+                      expanded={false}
+                      className="w-8 h-8 rounded-full overflow-hidden shadow object-cover m-0 p-0"
+                    />
                   </td>
                   {/* Player Name column */}
                   <td
@@ -569,17 +567,19 @@ export default function Home() {
                     {player.playerName}
                   </td>
                   {/* Team column */}
-                  <td className="p-3 flex items-center gap-2">
-                    {teamAvatars[player.team] ? (
-                      <img
-                        src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
-                        alt={player.team}
-                        className="w-5 h-5 rounded-full mr-2"
-                      />
-                    ) : (
-                      <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
-                    )}
-                    {player.team}
+                  <td className="p-3 align-middle">
+                    <div className="flex items-center gap-2">
+                      {teamAvatars[player.team] ? (
+                        <img
+                          src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                          alt={player.team}
+                          className="w-5 h-5 rounded-full mr-2"
+                        />
+                      ) : (
+                        <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
+                      )}
+                      {player.team}
+                    </div>
                   </td>
                   <td className={`p-3 ${getContractTypeColor(player.contractType)}`}>
                     {player.contractType}

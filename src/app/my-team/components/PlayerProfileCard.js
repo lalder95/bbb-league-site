@@ -238,7 +238,14 @@ export default function PlayerProfileCard({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen w-full py-8" style={{ overflowX: 'auto' }}>
+    <div
+      className={
+        expanded
+          ? "flex flex-col items-center justify-center min-h-screen w-full py-8"
+          : "flex flex-col items-center justify-center"
+      }
+      style={expanded ? { overflowX: 'auto' } : {}}
+    >
       <div
         className={`relative ${
           expanded
@@ -247,7 +254,7 @@ export default function PlayerProfileCard({
                   ? "h-[95vh] max-h-[95vh] aspect-[3.5/2.5] min-w-[22rem] max-w-[95vw] md:h-[32rem] md:max-h-none md:aspect-[3.5/2.5] md:w-[32rem]"
                   : "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem]"
               )
-            : "w-16 h-16"
+            : "w-8 h-8"
         } rounded-lg shadow-lg bg-gray-900 overflow-hidden ${className}`}
       >
         <div
@@ -373,7 +380,7 @@ export default function PlayerProfileCard({
                   width: '100%',
                   height: '100%',
                   objectFit: 'contain',
-                  opacity: 0.10,
+                  opacity: 0.05,
                   zIndex: 0,
                   pointerEvents: 'none',
                   transform: 'scaleX(-1)',
