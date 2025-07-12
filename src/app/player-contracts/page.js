@@ -309,6 +309,7 @@ export default function Home() {
             <PlayerProfileCard
               playerId={selectedPlayerId}
               expanded={true}
+              onExpandClick={() => setSelectedPlayerId(null)}
               className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
               teamAvatars={teamAvatars}
               teamName={(() => {

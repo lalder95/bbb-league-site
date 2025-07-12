@@ -33,6 +33,7 @@ export default function PlayerProfileCard({
   const [imgSrc, setImgSrc] = useState(null);
   const [flipped, setFlipped] = useState(false);
   const [allContracts, setAllContracts] = useState([]);
+  // No internal expanded state; rely on prop only
 
   // Debug: Log contract and allContracts after they are set
   useEffect(() => {
@@ -287,8 +288,8 @@ export default function PlayerProfileCard({
               {onExpandClick && (
                 <button
                   onClick={onExpandClick}
-                  className="absolute top-1 right-1 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
-                  style={{ fontSize: 16, lineHeight: 1 }}
+                  className="absolute top-2 right-2 z-20 bg-[#FF4B1F] text-white rounded-full p-3 hover:bg-orange-600 shadow-lg border-2 border-white/80 transition-all duration-200"
+                  style={{ fontSize: 32, lineHeight: 1, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   aria-label={expanded ? "Hide details" : "Show details"}
                 >
                   {expanded ? "✕" : "i"}
@@ -438,13 +439,16 @@ export default function PlayerProfileCard({
       </div>
       {/* Flip control below the card, only when expanded */}
       {expanded && (
-        <button
-          onClick={() => setFlipped(f => !f)}
-          className="mt-4 bg-blue-700 text-white rounded px-4 py-2 text-base font-semibold shadow hover:bg-blue-800 transition-colors"
-          aria-label="Flip card"
-        >
-          Flip
-        </button>
+        <div className="flex flex-row gap-4 mt-4 w-full justify-center">
+          <button
+            onClick={() => setFlipped(f => !f)}
+            className="bg-blue-700 text-white rounded px-4 py-2 text-base font-semibold shadow hover:bg-blue-800 transition-colors min-w-[90px]"
+            aria-label="Flip card"
+            type="button"
+          >
+            Flip
+          </button>
+        </div>
       )}
     </div>
   );
