@@ -223,14 +223,8 @@ export default function Home() {
     setFilterSet(newFilters);
   };
 
-  // Remove duplicate playerId rows before sorting
-  const uniquePlayersMap = new Map();
-  players.forEach(player => {
-    if (!uniquePlayersMap.has(player.playerId)) {
-      uniquePlayersMap.set(player.playerId, player);
-    }
-  });
-  const filteredAndSortedPlayers = Array.from(uniquePlayersMap.values())
+  // Filter and sort players (do not remove duplicates)
+  const filteredAndSortedPlayers = players
     .filter(player =>
       player.playerName.toLowerCase().includes(searchTerm.toLowerCase()) &&
       (positionFilters.size === 0 || positionFilters.has(player.position)) &&
@@ -548,7 +542,7 @@ export default function Home() {
             <tbody>
               {filteredAndSortedPlayers.map((player) => (
                 <tr
-                  key={player.playerId} // <-- Use playerId, not index
+                  key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`} // Use contractId if available, fallback to composite key
                   className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                 >
                   {/* PlayerProfileCard column */}

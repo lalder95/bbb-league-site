@@ -28,18 +28,19 @@ export default function FreeAgency() {
   const [positionSortConfig, setPositionSortConfig] = useState({ key: 'ktcValue', direction: 'desc' });
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
 
-  // Fetch contract data
+  // Fetch contract data and deduplicate by playerId, using max contractFinalYear (from all contracts)
   useEffect(() => {
     async function fetchData() {
       try {
         const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
         const text = await response.text();
         const rows = text.split('\n');
-        const parsedData = rows.slice(1)
+        const allContracts = rows.slice(1)
           .filter(row => row.trim())
           .map(row => {
             const values = row.split(',');
             return {
+              contractId: values[39], // ContractID is the key
               playerId: values[0],
               playerName: values[1],
               position: values[21],
@@ -52,12 +53,63 @@ export default function FreeAgency() {
               rfaEligible: values[37],
               franchiseTagEligible: values[38],
             };
-          })
-          .filter(player => player.status === 'Active'); // Only include active contracts
-        setPlayers(parsedData);
+          });
 
-        // Collect unique years for dropdown
-        const uniqueYears = Array.from(new Set(parsedData.map(p => p.contractFinalYear).filter(Boolean)))
+
+
+        // For each playerId, find all contracts where status !== 'Expired', then get max contractFinalYear
+        const playerIdToContracts = {};
+        allContracts.forEach(p => {
+          if (!p.playerId) return;
+          if (String(p.status).toLowerCase() === 'expired') return;
+          const year = parseInt(p.contractFinalYear);
+          if (isNaN(year)) return;
+          if (!playerIdToContracts[p.playerId]) {
+            playerIdToContracts[p.playerId] = [];
+          }
+          playerIdToContracts[p.playerId].push(p);
+        });
+
+        const playerIdToContract = {};
+        Object.entries(playerIdToContracts).forEach(([playerId, contracts]) => {
+          // Find max year among non-expired contracts
+          let maxYear = Math.max(...contracts.map(c => parseInt(c.contractFinalYear)));
+          // Get all contracts with that year
+          let maxYearContracts = contracts.filter(c => parseInt(c.contractFinalYear) === maxYear);
+          // Prefer contract with both playerName and team
+          let preferred = maxYearContracts.find(c => c.playerName && c.team);
+          if (!preferred) {
+            // Fallback: contract with playerName
+            preferred = maxYearContracts.find(c => c.playerName);
+          }
+          if (!preferred) {
+            // Fallback: contract with team
+            preferred = maxYearContracts.find(c => c.team);
+          }
+          if (!preferred) {
+            // Fallback: contract with highest KTC
+            preferred = maxYearContracts.reduce((a, b) => (a.ktcValue ?? -1) > (b.ktcValue ?? -1) ? a : b, maxYearContracts[0]);
+          }
+          if (!preferred) {
+            // Fallback: just pick the first
+            preferred = maxYearContracts[0];
+          }
+          playerIdToContract[playerId] = preferred;
+        });
+
+        // Now, for each contract, add a computed field: freeAgencyYear = maxFinalYear + 1
+        const processedPlayers = Object.values(playerIdToContract).map(p => ({
+          ...p,
+          freeAgencyYear: p.contractFinalYear ? (parseInt(p.contractFinalYear, 10) + 1).toString() : null
+        }));
+
+        setPlayers(processedPlayers);
+
+        // Collect unique years for dropdown (use maxFinalYear, not contractFinalYear)
+        const uniqueYears = Array.from(new Set(
+          processedPlayers.map(p => p.contractFinalYear)
+        ))
+          .filter(Boolean)
           .sort();
         setYears(uniqueYears);
         if (uniqueYears.length > 0) setYear(uniqueYears[0]);
@@ -117,9 +169,10 @@ export default function FreeAgency() {
   }, [leagueId]);
 
   // Filter for selected year (players who will become FA after this year)
-  const faYear = (parseInt(year, 10) + 1).toString();
+  // Now, players have a computed freeAgencyYear field
+  const faYear = year ? (parseInt(year, 10) + 1).toString() : '';
   const freeAgents = players.filter(
-    p => p.contractFinalYear === year && p.playerName && p.team
+    p => p.freeAgencyYear === faYear && p.playerName && p.team
   );
 
   // Sorting helper

@@ -683,8 +683,8 @@ export default function MyTeam() {
                             </tr>
                           </thead>
                           <tbody>
-                            {myContracts.map((player, idx) => (
-                              <tr key={player.playerId + '-' + idx} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                            {myContracts.map((player) => (
+                              <tr key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
                                 {/* PlayerProfileCard column */}
                                 <td className="p-3">
                                   {/* Force small avatar size for table, matching Player Contracts page */}
@@ -1180,15 +1180,48 @@ export default function MyTeam() {
               myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
             }
 
-            // Find all contracts for user's team that are free agents in each year
-            // Assume contractFinalYear is the year the player becomes a free agent
+            // Find all contracts for user's team
+            let myContracts = activeContracts.filter(p => p.team === myTeamName);
+            // Deduplicate by playerId, keeping the contract with the highest salary (curYear)
+            const seen = new Set();
+            myContracts = myContracts
+              .sort((a, b) => (b.curYear || 0) - (a.curYear || 0))
+              .filter(player => {
+                if (seen.has(player.playerId)) return false;
+                seen.add(player.playerId);
+                return true;
+              });
+
+            // For each player, find the max contractFinalYear among all contracts (any team) with status Active or Future
+            const playerIdToMaxFinalYear = {};
+            playerContracts.forEach(p => {
+              if ((p.status === 'Active' || p.status === 'Future') && p.playerId) {
+                const year = parseInt(p.contractFinalYear);
+                if (!isNaN(year)) {
+                  if (!playerIdToMaxFinalYear[p.playerId] || year > playerIdToMaxFinalYear[p.playerId]) {
+                    playerIdToMaxFinalYear[p.playerId] = year;
+                  }
+                }
+              }
+            });
+
+            // For each player on user's team, assign their free agency year as maxFinalYear
+            const playerIdToPlayer = {};
+            myContracts.forEach(p => {
+              playerIdToPlayer[p.playerId] = p;
+            });
+
+            // Build free agents by year using max contractFinalYear
             const currentYear = new Date().getFullYear();
             const years = [currentYear, currentYear + 1, currentYear + 2, currentYear + 3];
-            // For each year, get players whose contractFinalYear == year
             const freeAgentsByYear = years.map(year => {
+              // For each player, if their maxFinalYear === year, include them
+              const players = myContracts.filter(p => playerIdToMaxFinalYear[p.playerId] === year);
+              // For display, update contractFinalYear to maxFinalYear for each player
+              const playersWithMaxYear = players.map(p => ({ ...p, contractFinalYear: playerIdToMaxFinalYear[p.playerId] }));
               return {
                 year,
-                players: activeContracts.filter(p => p.team === myTeamName && String(p.contractFinalYear) === String(year))
+                players: playersWithMaxYear
               };
             });
 

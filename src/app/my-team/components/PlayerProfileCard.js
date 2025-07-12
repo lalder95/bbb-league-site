@@ -264,7 +264,7 @@ export default function PlayerProfileCard({
           }}
         >
           <div
-            className={`transition-transform duration-[1000ms] ease-in-out w-full h-full absolute top-0 left-0`}
+            className={`transition-transform duration-[1500ms] ease-in-out w-full h-full absolute top-0 left-0`}
             style={{
               transformStyle: "preserve-3d",
               // Diagonal flip: rotateY(180deg) rotateZ(90deg)
