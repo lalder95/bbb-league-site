@@ -1,6 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
+import EscapeKeyListener from './EscapeKeyListener';
+import SwipeDownListener from './SwipeDownListener';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
@@ -309,7 +311,6 @@ export default function Home() {
             <PlayerProfileCard
               playerId={selectedPlayerId}
               expanded={true}
-              onExpandClick={() => setSelectedPlayerId(null)}
               className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
               teamAvatars={teamAvatars}
               teamName={(() => {
@@ -324,7 +325,14 @@ export default function Home() {
               ×
             </button>
           </div>
+          <EscapeKeyListener onEscape={() => setSelectedPlayerId(null)} />
+          <SwipeDownListener onSwipeDown={() => setSelectedPlayerId(null)} />
         </div>
+      )}
+
+      {/* Escape key closes modal */}
+      {selectedPlayerId && (
+        <EscapeKeyListener onEscape={() => setSelectedPlayerId(null)} />
       )}
 
       <div className="max-w-7xl mx-auto p-6">
