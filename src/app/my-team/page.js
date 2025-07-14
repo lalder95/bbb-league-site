@@ -64,7 +64,6 @@ function groupByYear(items, getYear) {
   }, {});
 }
 
-// ...existing code...
 // Remove the duplicate export default function MyTeam() above
 export default function MyTeam() {
   const { data: session, status } = useSession();
@@ -1576,15 +1575,7 @@ export default function MyTeam() {
                   <div className="bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg w-full md:w-1/2 flex flex-col">
                     <h2 className="text-xl font-bold mb-4 text-white text-center">Assistant GM Chat</h2>
                     <AssistantGMChat
-                      ref={ref => {
-                        if (ref) {
-                          ref.resetChat = () => {
-                            if (ref.setMessages && ref.systemPrompt) {
-                              ref.setMessages([{ role: 'system', content: ref.systemPrompt }]);
-                            }
-                          };
-                        }
-                      }}
+                      ref={assistantGMChatRef}
                       id="assistant-gm-chat-frame"
                       teamState={teamState}
                       assetPriority={assetPriority}
