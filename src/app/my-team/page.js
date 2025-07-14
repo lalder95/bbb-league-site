@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import ActivityBadges from './components/ActivityBadges';
 import TeamPedigreeBadges from './components/TeamPedigreeBadges';
 import PlayerProfileCard from './components/PlayerProfileCard';
+import AssistantGMChat from './components/AssistantGMChat';
+import { getSleeperLeagueWeekAndYear } from '../../utils/sleeperUtils';
 import {
   getAllLeagueTransactions,
   getUserLeagues,
@@ -27,6 +29,7 @@ import {
   LineController,
   ScatterController
 } from 'chart.js';
+import DraftPicksFetcher from '../../components/draft/DraftPicksFetcher';
 
 Chart.register(
   BarElement,
@@ -62,12 +65,26 @@ function groupByYear(items, getYear) {
 }
 
 export default function MyTeam() {
+  // --- Team Avatars and League ID (must be declared before any useEffect that uses them) ---
+  const [teamAvatars, setTeamAvatars] = useState({});
+  const [leagueId, setLeagueId] = useState(null);
+  // State for current league week and year
+  const [leagueWeek, setLeagueWeek] = useState(null);
+  const [leagueYear, setLeagueYear] = useState(null);
+  // Fetch current week and year from Sleeper API when leagueId changes
+  useEffect(() => {
+    if (!leagueId) return;
+    getSleeperLeagueWeekAndYear(leagueId).then(({ week, year }) => {
+      setLeagueWeek(week);
+      setLeagueYear(year);
+    });
+  }, [leagueId]);
   // --- Player map and contracts (must be declared before any useEffect that uses them) ---
   const [playerMap, setPlayerMap] = useState({});
   const [playerContracts, setPlayerContracts] = useState([]);
 
   // --- Free Agency Tab State (must be top-level for React hooks rules) ---
-// (Free Agency tab state removed, placeholder only)
+  // (Free Agency tab state removed, placeholder only)
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -99,7 +116,6 @@ export default function MyTeam() {
   const [leagueTradedPicks, setLeagueTradedPicks] = useState({});
   const loaded = useRef(false);
 
-  // ...existing code...
   // Sorting and player card modal
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
@@ -393,8 +409,7 @@ export default function MyTeam() {
   }, [activeTab, session, playerContracts]);
 
   // --- Team Avatars and League ID ---
-  const [teamAvatars, setTeamAvatars] = useState({});
-  const [leagueId, setLeagueId] = useState(null);
+  // (moved to top of component)
 
   // Find the user's BBB leagueId using Sleeper API (same logic as Player Contracts page)
   useEffect(() => {
@@ -474,6 +489,48 @@ export default function MyTeam() {
     }
     fetchAvatars();
   }, [leagueId]);
+
+  // Helper to get myTeamName for Assistant GM Chat
+  function getMyTeamName() {
+    const activeContracts = playerContracts.filter(p => (p.status === 'Active' || p.status === 'Future') && p.team);
+    const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
+    let myTeamName = '';
+    if (session?.user?.name) {
+      const nameLower = session.user.name.trim().toLowerCase();
+      myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
+      if (!myTeamName) {
+        myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
+      }
+    }
+    if (!myTeamName) {
+      const teamCounts = {};
+      activeContracts.forEach(p => {
+        const t = p.team.trim();
+        teamCounts[t] = (teamCounts[t] || 0) + 1;
+      });
+      myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    }
+    return myTeamName;
+  }
+
+  // Helper to get myContracts for Assistant GM Chat
+  function getMyContractsForAssistantGM() {
+    const myTeamName = getMyTeamName();
+    // Only Active or Future contracts for user's team
+    let myContracts = playerContracts.filter(
+      p => (p.status === 'Active' || p.status === 'Future') && p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()
+    );
+    // Deduplicate by playerId, keeping the contract with the highest salary (curYear)
+    const seen = new Set();
+    myContracts = myContracts
+      .sort((a, b) => (b.curYear || 0) - (a.curYear || 0))
+      .filter(player => {
+        if (seen.has(player.playerId)) return false;
+        seen.add(player.playerId);
+        return true;
+      });
+    return myContracts;
+  }
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
@@ -1154,11 +1211,110 @@ export default function MyTeam() {
           })()
         )}
         {activeTab === 'Draft' && (
-          <div className="text-white/80 text-lg p-8 text-center">Draft content coming soon.</div>
+          <DraftPicksFetcher
+            leagueId={leagueId}
+            rosters={leagueRosters[leagueId] || []}
+            render={(picksByOwner, loading, error, rosterIdToDisplayName) => {
+              // Flatten all picks from all owners into a single array
+              const allPicks = Object.values(picksByOwner).flat();
+
+              // Group picks by year, then by round
+              const picksByYear = {};
+              allPicks.forEach(pick => {
+                const year = pick.season || pick.year || pick.draftYear || 'Unknown';
+                const round = pick.round || 'Unknown';
+                if (!picksByYear[year]) picksByYear[year] = {};
+                if (!picksByYear[year][round]) picksByYear[year][round] = [];
+                picksByYear[year][round].push(pick);
+              });
+              const sortedYears = Object.keys(picksByYear).sort();
+
+              // Find the active user's roster_id (if available)
+              let myRosterId = null;
+              if (session?.user?.sleeperId && Array.isArray(leagueRosters[leagueId])) {
+                const myRoster = leagueRosters[leagueId].find(
+                  r => r.owner_id === session.user.sleeperId
+                );
+                if (myRoster) myRosterId = myRoster.roster_id;
+              }
+
+              // --- Toggle state ---
+              const [showMineOnly, setShowMineOnly] = React.useState(false);
+
+              return (
+                <div>
+                  <h2 className="text-2xl font-bold mb-6 text-white text-center">All League Draft Picks</h2>
+                  <div className="flex items-center gap-3 mb-4">
+                    <label className="flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showMineOnly}
+                        onChange={e => setShowMineOnly(e.target.checked)}
+                        className="form-checkbox h-5 w-5 text-[#FF4B1F] rounded focus:ring-[#FF4B1F] border-white/20"
+                      />
+                      <span className="ml-2 text-white/80 font-semibold">Show Only My Picks</span>
+                    </label>
+                  </div>
+                  {loading && (
+                    <div className="text-white/60 italic text-center">Loading draft picks...</div>
+                  )}
+                  {error && (
+                    <div className="text-red-400 text-center mb-4">Error: {error}</div>
+                  )}
+                  {!loading && allPicks.length === 0 && (
+                    <div className="text-white/60 italic text-center">No draft picks found for this league.</div>
+                  )}
+                  {!loading && allPicks.length > 0 && (
+                    <div className="space-y-8">
+                      {sortedYears.map(year => (
+                        <div key={year} className="bg-black/30 rounded-xl border border-white/10 p-6 shadow-lg">
+                          <h3 className="text-xl font-bold text-[#FF4B1F] mb-4">{year} Draft Picks</h3>
+                          <div className="flex flex-wrap gap-6">
+                            {Object.keys(picksByYear[year])
+                              .sort((a, b) => parseInt(a) - parseInt(b))
+                              .map(round => (
+                                <div key={round} className="bg-white/10 rounded px-4 py-2 text-white/90 font-semibold min-w-[120px]">
+                                  <div className="text-[#1FDDFF] font-bold mb-1">Round {round}</div>
+                                  <ul className="list-disc list-inside text-white/80 text-sm">
+                                    {picksByYear[year][round]
+                                      .filter(pick => !showMineOnly || (myRosterId && pick.owner_id === myRosterId))
+                                      .map((pick, idx) => {
+                                        const isMine = myRosterId && pick.owner_id === myRosterId;
+                                        return (
+                                          <li
+                                            key={idx}
+                                            style={isMine ? { color: '#FF4B1F', fontWeight: 'bold' } : {}}
+                                          >
+                                            Pick {pick.pick_no || pick.pick_id || '-'}
+
+                                            {pick.owner_id ? (
+                                              <span className="ml-2" style={isMine ? { color: '#FF4B1F' } : { color: 'rgba(255,255,255,0.6)' }}>
+                                                Owner: {rosterIdToDisplayName[pick.owner_id] || pick.owner_id}
+                                              </span>
+                                            ) : null}
+                                            {pick.original_owner_id && pick.owner_id !== pick.original_owner_id ? (
+                                              <span className="ml-2 text-white/60 text-xs">
+                                                (Originally from {rosterIdToDisplayName[pick.original_owner_id] || pick.original_owner_id})
+                                              </span>
+                                            ) : null}
+                                          </li>
+                                        );
+                                      })}
+                                  </ul>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }}
+          />
         )}
         {activeTab === 'Free Agency' && (
           (() => {
-            // --- Free Agency Tab: Show team's free agent players by year ---
             // Only use BBB_Contracts for all teams
             const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
             // Find user's team name by matching session user name to team name (case-insensitive)
@@ -1167,9 +1323,6 @@ export default function MyTeam() {
             if (session?.user?.name) {
               const nameLower = session.user.name.trim().toLowerCase();
               myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
-              if (!myTeamName) {
-                myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
-              }
             }
             if (!myTeamName) {
               const teamCounts = {};
@@ -1179,8 +1332,7 @@ export default function MyTeam() {
               });
               myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
             }
-
-            // Find all contracts for user's team
+            // User's contracts
             let myContracts = activeContracts.filter(p => p.team === myTeamName);
             // Deduplicate by playerId, keeping the contract with the highest salary (curYear)
             const seen = new Set();
@@ -1289,90 +1441,157 @@ export default function MyTeam() {
           })()
         )}
         {activeTab === 'Assistant GM' && (
-          <div className="max-w-xl mx-auto bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg">
-            <h2 className="text-2xl font-bold mb-6 text-white text-center">Assistant GM Settings</h2>
-            <div className="mb-6 text-white/80 text-base text-center">
-              The Assistant GM settings control the aggressiveness, direction, and overall team building strategy of your Assistant GM. Change these settings to match your own strategy to put you and your assistant GM on the same page.
-            </div>
-            {/* Team State Dropdown */}
-            <div className="mb-6">
-              <label className="block text-white/80 mb-2 font-semibold">Team State</label>
-              <select
-                className="w-full p-3 rounded bg-white/5 border border-white/10 text-white"
-                value={teamState}
-                onChange={e => setTeamState(e.target.value)}
-              >
-                <option value="Compete">Compete</option>
-                <option value="Rebuild">Rebuild</option>
-              </select>
-            </div>
-            {/* Asset Priority Draggable */}
-            <div className="mb-6">
-              <label className="block text-white/80 mb-2 font-semibold">Asset Priority (drag to reorder)</label>
-              <div className="text-white/60 text-sm mb-2">
-                <span>
-                  <strong>Left</strong> = Most Important, <strong>Right</strong> = Least Important
-                </span>
-              </div>
-              <div className="flex gap-2">
-                {assetPriority.map((asset, idx) => {
-                  // Color map for positions
-                  const colorMap = {
-                    QB: '#ef4444',
-                    RB: '#3b82f6',
-                    WR: '#22c55e',
-                    TE: '#a855f7',
-                    Picks: '#fbbf24',
-                  };
-                  return (
-                    <div
-                      key={asset}
-                      draggable
-                      onDragStart={e => handleDragStart(idx)}
-                      onDragOver={e => e.preventDefault()}
-                      onDrop={e => handleDrop(idx)}
-                      className="font-bold px-4 py-2 rounded shadow cursor-move select-none border border-white/20"
-                      style={{
-                        opacity: draggingIdx === idx ? 0.5 : 1,
-                        background: colorMap[asset] || '#1FDDFF',
-                        color: asset === 'Picks' ? '#222' : '#fff', // dark text for yellow
-                      }}
-                    >
-                      {asset}
+          <DraftPicksFetcher
+            leagueId={leagueId}
+            rosters={leagueRosters[leagueId] || []}
+            render={(picksByOwner, loading, error, rosterIdToDisplayName) => {
+              // Find the active user's roster_id (if available)
+              let myRosterId = null;
+              if (session?.user?.sleeperId && Array.isArray(leagueRosters[leagueId])) {
+                const myRoster = leagueRosters[leagueId].find(
+                  r => r.owner_id === session.user.sleeperId
+                );
+                if (myRoster) myRosterId = myRoster.roster_id;
+              }
+
+              // Flatten all picks from all owners into a single array
+              const allPicks = Object.values(picksByOwner).flat();
+              // Filter picks owned by the user
+              const myRawDraftPicks = myRosterId
+                ? allPicks.filter(pick => pick.owner_id === myRosterId)
+                : [];
+
+              // Format picks for display in the system prompt
+              const myDraftPicksList = myRawDraftPicks.map(pick => {
+                const year = pick.season || pick.year || pick.draftYear || 'Unknown';
+                const round = pick.round || '?';
+                let str = `${year} Round ${round}`;
+                if (pick.original_owner_id && pick.owner_id !== pick.original_owner_id) {
+                  str += ` (original: ${rosterIdToDisplayName[pick.original_owner_id] || pick.original_owner_id})`;
+                }
+                return str;
+              });
+
+              return (
+                <div className="flex flex-col md:flex-row gap-8 max-w-4xl mx-auto">
+                  {/* Assistant GM Settings */}
+                  <div className="bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg w-full md:w-1/2">
+                    <h2 className="text-2xl font-bold mb-6 text-white text-center">Assistant GM Settings</h2>
+                    <div className="mb-6 text-white/80 text-base text-center">
+                      The Assistant GM settings control the aggressiveness, direction, and overall team building strategy of your Assistant GM. Change these settings to match your own strategy to put you and your assistant GM on the same page.
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-            {/* Strategy Notes */}
-            <div className="mb-6">
-              <label className="block text-white/80 mb-2 font-semibold">Strategy Notes</label>
-              <textarea
-                className="w-full p-3 rounded bg-white/5 border border-white/10 text-white"
-                rows={4}
-                value={strategyNotes}
-                onChange={e => setStrategyNotes(e.target.value)}
-                placeholder="Describe your team's strategy for your assistant GM..."
-                maxLength={300}
-              />
-              <div className="text-right text-white/60 text-sm mt-1">
-                {strategyNotes.length} / 300 characters
-              </div>
-            </div>
-            {/* Save Button */}
-            <button
-              className="w-full p-3 bg-[#FF4B1F] rounded hover:bg-[#FF4B1F]/80 transition-colors font-bold text-white"
-              onClick={handleSaveAssistantGM}
-              disabled={saving}
-            >
-              {saving ? "Saving..." : "Save Assistant GM Settings"}
-            </button>
-            {saveMsg && <div className="mt-4 text-center text-green-400">{saveMsg}</div>}
-            {saveError && <div className="mt-4 text-center text-red-400">{saveError}</div>}
-          </div>
-        )}
-        {activeTab === 'Media' && (
-          <div className="text-white/80 text-lg p-8 text-center">Media content coming soon.</div>
+                    {/* Team State Dropdown */}
+                    <div className="mb-6">
+                      <label className="block text-white/80 mb-2 font-semibold">Team State</label>
+                      <select
+                        className="w-full p-3 rounded bg-white/5 border border-white/10 text-white"
+                        value={teamState}
+                        onChange={e => setTeamState(e.target.value)}
+                      >
+                        <option value="Compete">Compete</option>
+                        <option value="Rebuild">Rebuild</option>
+                      </select>
+                    </div>
+                    {/* Asset Priority Draggable */}
+                    <div className="mb-6">
+                      <label className="block text-white/80 mb-2 font-semibold">Asset Priority (drag to reorder)</label>
+                      <div className="text-white/60 text-sm mb-2">
+                        <span>
+                          <strong>Left</strong> = Most Important, <strong>Right</strong> = Least Important
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {assetPriority.map((asset, idx) => {
+                          // Color map for positions
+                          const colorMap = {
+                            QB: '#ef4444',
+                            RB: '#3b82f6',
+                            WR: '#22c55e',
+                            TE: '#a855f7',
+                            Picks: '#fbbf24',
+                          };
+                          return (
+                            <div
+                              key={asset}
+                              draggable
+                              onDragStart={e => handleDragStart(idx)}
+                              onDragOver={e => e.preventDefault()}
+                              onDrop={e => handleDrop(idx)}
+                              className="font-bold px-4 py-2 rounded shadow cursor-move select-none border border-white/20"
+                              style={{
+                                opacity: draggingIdx === idx ? 0.5 : 1,
+                                background: colorMap[asset] || '#1FDDFF',
+                                color: asset === 'Picks' ? '#222' : '#fff',
+                              }}
+                            >
+                              {asset}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {/* Strategy Notes */}
+                    <div className="mb-6">
+                      <label className="block text-white/80 mb-2 font-semibold">Strategy Notes</label>
+                      <textarea
+                        className="w-full p-3 rounded bg-white/5 border border-white/10 text-white resize-none h-24"
+                        value={strategyNotes}
+                        onChange={e => setStrategyNotes(e.target.value)}
+                        placeholder="Enter your strategy notes here..."
+                      />
+                    </div>
+                    {/* Save Button and Messages */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={async () => {
+                          await handleSaveAssistantGM();
+                          // Reset Assistant GM Chat after saving settings
+                          const chatFrame = document.getElementById('assistant-gm-chat-frame');
+                          if (chatFrame && chatFrame.resetChat) {
+                            chatFrame.resetChat();
+                          }
+                        }}
+                        disabled={saving}
+                        className="w-full px-4 py-2 rounded bg-[#FF4B1F] hover:bg-orange-600 text-white font-semibold transition-all duration-200 flex items-center justify-center gap-2 shadow disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {saving ? "Saving..." : "Save Assistant GM Settings"}
+                      </button>
+                      {saveMsg && <div className="mt-4 text-center text-green-400">{saveMsg}</div>}
+                      {saveError && <div className="mt-4 text-center text-red-400">{saveError}</div>}
+                    </div>
+                  </div>
+                  {/* Assistant GM Chat */}
+                  <div className="bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg w-full md:w-1/2 flex flex-col">
+                    <h2 className="text-xl font-bold mb-4 text-white text-center">Assistant GM Chat</h2>
+                    <AssistantGMChat
+                      ref={ref => {
+                        if (ref) {
+                          ref.resetChat = () => {
+                            if (ref.setMessages && ref.systemPrompt) {
+                              ref.setMessages([{ role: 'system', content: ref.systemPrompt }]);
+                            }
+                          };
+                        }
+                      }}
+                      id="assistant-gm-chat-frame"
+                      teamState={teamState}
+                      assetPriority={assetPriority}
+                      strategyNotes={strategyNotes}
+                      myContracts={getMyContractsForAssistantGM()}
+                      playerContracts={playerContracts}
+                      session={session}
+                      tradedPicks={leagueTradedPicks.tradedPicks || []}
+                      rosters={leagueRosters[leagueId] || []}
+                      users={[]}
+                      myDraftPicksList={myDraftPicksList}
+                      leagueWeek={leagueWeek}
+                      leagueYear={leagueYear}
+                    />
+                  </div>
+                </div>
+              );
+            }}
+          />
         )}
       </div>
     </main>

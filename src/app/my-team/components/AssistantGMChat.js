@@ -1,0 +1,301 @@
+import React, { useState, useMemo } from 'react';
+
+// Helper to get team name (mimics TradedPicks.js usage)
+function getTeamName(rosterId, rosters, users) {
+  if (!rosterId || !Array.isArray(rosters) || !Array.isArray(users)) return 'Unknown';
+  const roster = rosters.find(r => String(r.roster_id) === String(rosterId));
+  if (!roster) return 'Unknown';
+  const user = users.find(u => String(u.user_id) === String(roster.owner_id));
+  return user?.display_name || roster.name || 'Unknown';
+}
+
+// Helper to format draft pick string
+function formatPickString(pick, rosters, users) {
+  const original = getTeamName(pick.roster_id, rosters, users);
+  return `${pick.season} Round ${pick.round} (from ${original})`;
+}
+
+export default function AssistantGMChat({
+  teamState,
+  assetPriority,
+  strategyNotes,
+  myContracts,
+  playerContracts,
+  session,
+  tradedPicks = [],
+  rosters = [],
+  users = [],
+  myDraftPicksList: propMyDraftPicksList,
+  leagueWeek,  leagueYear
+}) {
+  // Find user's team name
+  const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
+  const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
+  let myTeamName = '';
+  if (session?.user?.name) {
+    const nameLower = session.user.name.trim().toLowerCase();
+    myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
+    if (!myTeamName) {
+      myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
+    }
+  }
+  if (!myTeamName) {
+    const teamCounts = {};
+    activeContracts.forEach(p => {
+      const t = p.team.trim();
+      teamCounts[t] = (teamCounts[t] || 0) + 1;
+    });
+    myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  }
+
+  // Find user's roster_id (for draft pick ownership)
+  let myRosterId = null;
+  if (Array.isArray(rosters) && Array.isArray(users) && session?.user?.name) {
+    // Try to match user by display_name (case-insensitive)
+    const userObj = users.find(u =>
+      typeof u.display_name === 'string' &&
+      u.display_name.trim().toLowerCase() === session.user.name.trim().toLowerCase()
+    );
+    if (userObj) {
+      const rosterObj = rosters.find(r => String(r.owner_id) === String(userObj.user_id));
+      if (rosterObj) myRosterId = rosterObj.roster_id;
+    }
+  }
+
+  // Get all picks currently owned by the user (per Sleeper API docs)
+  let myDraftPicksList = [];
+  if (propMyDraftPicksList) {
+    // If provided as a prop, use it
+    myDraftPicksList = propMyDraftPicksList;
+  } else if (myRosterId && Array.isArray(tradedPicks)) {
+    myDraftPicksList = tradedPicks
+      .filter(pick => String(pick.owner_id) === String(myRosterId))
+      .sort((a, b) => {
+        if (a.season !== b.season) return String(a.season).localeCompare(String(b.season));
+        return a.round - b.round;
+      })
+      .map(pick => formatPickString(pick, rosters, users));
+  }
+
+  // Group contracts by team, filter out salary 0
+  const contractsByTeam = {};
+  playerContracts.filter(p => p.curYear && parseFloat(p.curYear) > 0).forEach(p => {
+    const t = p.team.trim();
+    if (!contractsByTeam[t]) contractsByTeam[t] = [];
+    contractsByTeam[t].push(p);
+  });
+
+  // Format all rosters with contract status, fix years left, filter out 0 years left, and compute total salary
+  const allRostersString = Object.entries(contractsByTeam).map(([team, contracts]) => {
+    const isUser = team.trim().toLowerCase() === myTeamName.trim().toLowerCase();
+    // Add 1 to yearsRemaining, filter out contracts with yearsRemaining <= 0
+    const filteredContracts = contracts.map(p => {
+      let yearsRemaining = null;
+      const currentYear = new Date().getFullYear();
+      if (p.contractFinalYear && !isNaN(Number(p.contractFinalYear))) {
+        yearsRemaining = Number(p.contractFinalYear) - currentYear + 1;
+        if (yearsRemaining < 0) yearsRemaining = 0;
+      }
+      return { ...p, yearsRemaining };
+    }).filter(p => p.yearsRemaining === null || p.yearsRemaining > 0);
+    // Calculate total salary for this team
+    const totalSalary = filteredContracts.reduce((sum, p) => sum + (parseFloat(p.curYear) || 0), 0);
+    return `--- ${isUser ? 'USER TEAM: ' : ''}${team} (Total Salary: $${totalSalary.toFixed(1)}) ---\n` + filteredContracts.map(p => {
+      return `${p.playerName} (${p.position}), $${p.curYear}, KTC: ${p.ktcValue}, Age: ${p.age}, Years Left: ${p.yearsRemaining ?? '-'}, ${p.status}`;
+    }).join('\n');
+  }).join('\n\n');
+
+  // Memoize systemPrompt so it only changes when its dependencies change
+  const systemPrompt = useMemo(() => `You're my Assistant GM for my Budget Blitz Bowl dynasty fantasy football league. Let's keep it casual—just text me advice like a friend would. Be concise and don't write essays.
+
+This is a SuperFlex league, so teams can start 2 quarterbacks each week (one in the SuperFlex spot).
+
+Current league year: ${leagueYear || 'Unknown'}
+Current league week: ${leagueWeek || 'Unknown'}
+
+Contract status types:
+- Active: This player is on the team
+- Expired: This player is no longer on the team, but we are still paying dead cap fees on their contract
+- Future: This contract doesn't go into effect until the current contract expires
+
+If I ask for trade advice, always compare the KTC values of the players and picks involved to help me understand the value side.
+
+**Approximate KTC values for rookie draft picks:**
+Early 1st: 6000
+Mid 1st: 5000
+Late 1st: 4500
+
+Early 2nd: 3500
+Mid 2nd: 3200
+Late 2nd: 3000
+
+Early 3rd: 2500
+Mid 3rd: 2250
+Late 3rd: 2000
+
+Early 4th: 1700
+Mid 4th: 1500
+Late 4th: 1200
+
+Early 5th: 1000
+Mid 5th: 750
+Late 5th: 500
+
+All later picks have a negligible KTC value.
+
+- **My Upcoming Draft Picks:**
+${myDraftPicksList.length ? myDraftPicksList.join(', ') : 'None'}
+
+Here's what you need to know:
+- **All Team Rosters (including mine):**
+${allRostersString}
+
+- **My Team State:** ${teamState}
+- **My Asset Priority:** ${assetPriority.join(' > ')}
+- **My Strategy Notes:** ${strategyNotes || 'None provided'}
+
+League rules: $300 cap, contracts, extensions, tags, rookie deals, RFA, dead money, etc.
+
+When I ask for advice, keep it short and practical. If you suggest a move, just say what and why, like you're texting a buddy. No need for long explanations or formalities.
+  `, [
+    leagueYear,
+    leagueWeek,
+    teamState,
+    assetPriority,
+    strategyNotes,
+    myDraftPicksList,
+    allRostersString
+  ]);
+
+  // Use a stable chat key based only on user/team identity
+  const chatKey = `assistantGMChat_${session?.user?.name || 'guest'}`;
+
+  // Only clear chat if chatKey changes (not systemPrompt)
+  const [messages, setMessages] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(chatKey);
+      return saved ? JSON.parse(saved) : [];
+    }
+    return [];
+  });
+
+  // Save chat to localStorage when messages change
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(chatKey, JSON.stringify(messages));
+    }
+  }, [messages, chatKey]);
+
+  // Do not auto-reset chat when systemPrompt changes; only reset on Clear Chat
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function sendMessage(e) {
+    e.preventDefault();
+    if (!input.trim()) return;
+    setLoading(true);
+    const userMsg = { role: 'user', content: input };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+
+    let data;
+    try {
+      const res = await fetch('/api/assistant-gm-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+      const text = await res.text();
+      // Debug: log the raw response
+      // eslint-disable-next-line no-console
+      console.debug('[AssistantGMChat] Raw API response:', text);
+      data = JSON.parse(text);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[AssistantGMChat] Error parsing API response:', err);
+      setMessages([...newMessages, { role: 'assistant', content: 'Error: Could not parse response from server.' }]);
+      setLoading(false);
+      setInput('');
+      return;
+    }
+    setMessages([...newMessages, { role: 'assistant', content: data.reply }]);
+    setLoading(false);
+    setInput('');
+  }
+
+  // Helper: Format assistant message (bold **text** and split numbered lists)
+  function formatAssistantMessage(content) {
+    // Bold **text**
+    let formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Try to match all numbered items (e.g., 1. text, 2. text, ...)
+    const numberedRegex = /(?:^|\n)(\d+\.[\s\S]*?)(?=(?:\n\d+\.|$))/g;
+    const matches = [];
+    let match;
+    while ((match = numberedRegex.exec(formatted)) !== null) {
+      matches.push(match[1].trim());
+    }
+    if (matches.length > 1) {
+      return matches;
+    }
+    // Otherwise, split on line breaks for readability
+    return formatted.split(/\n{2,}|\n(?=\d+\.)/g).map(s => s.trim()).filter(Boolean);
+  }
+
+  function handleClearChat() {
+    setMessages([{ role: 'system', content: systemPrompt }]);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(chatKey, JSON.stringify([{ role: 'system', content: systemPrompt }]));
+    }
+  }
+
+  return (
+    <div className="bg-black/20 rounded-lg p-4 flex flex-col" style={{height:'100%', minHeight:'38rem', maxHeight:'56rem'}}>
+      <div className="flex-1 min-h-0 overflow-y-auto bg-black/10 rounded p-2 mb-2" style={{maxHeight:'34rem'}}>
+        {messages.filter(m => m.role !== 'system').flatMap((msg, i) => {
+          if (msg.role === 'assistant') {
+            const parts = formatAssistantMessage(msg.content);
+            return parts.map((part, j) => (
+              <div key={`${i}-${j}`} className="mb-2 text-left">
+                <span
+                  className="inline-block px-3 py-2 rounded bg-white/10 text-white/90"
+                  dangerouslySetInnerHTML={{ __html: part }}
+                />
+              </div>
+            ));
+          } else {
+            return (
+              <div key={i} className="mb-2 text-right">
+                <span className="inline-block px-3 py-2 rounded bg-[#FF4B1F] text-white">
+                  {msg.content}
+                </span>
+              </div>
+            );
+          }
+        })}
+      </div>
+      <form onSubmit={sendMessage} className="flex gap-2 mb-2">
+        <input
+          className="flex-1 p-2 rounded bg-white/10 text-white"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          disabled={loading}
+          placeholder="Ask your Assistant GM anything..."
+        />
+        <button
+          className="bg-[#FF4B1F] px-4 py-2 rounded text-white font-bold"
+          disabled={loading || !input.trim()}
+        >
+          {loading ? 'Sending...' : 'Send'}
+        </button>
+      </form>
+      <button
+        className="w-full p-2 bg-white/10 rounded text-white font-semibold hover:bg-white/20 transition-colors"
+        onClick={handleClearChat}
+        disabled={loading}
+        style={{ marginTop: '0.5rem' }}
+      >
+        Clear Chat
+      </button>
+    </div>
+  );
+}
