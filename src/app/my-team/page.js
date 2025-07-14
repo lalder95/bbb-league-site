@@ -64,19 +64,11 @@ function groupByYear(items, getYear) {
   }, {});
 }
 
-import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-
+// ...existing code...
+// Remove the duplicate export default function MyTeam() above
 export default function MyTeam() {
   const { data: session, status } = useSession();
   const router = useRouter();
-
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login');
-    }
-  }, [status, router]);
   // --- Team Avatars and League ID (must be declared before any useEffect that uses them) ---
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
@@ -94,11 +86,14 @@ export default function MyTeam() {
   // --- Player map and contracts (must be declared before any useEffect that uses them) ---
   const [playerMap, setPlayerMap] = useState({});
   const [playerContracts, setPlayerContracts] = useState([]);
-
   // --- Free Agency Tab State (must be top-level for React hooks rules) ---
   // (Free Agency tab state removed, placeholder only)
-  const { data: session, status } = useSession();
-  const router = useRouter();
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
 
   // Debug: print current username on every render
   useEffect(() => {
