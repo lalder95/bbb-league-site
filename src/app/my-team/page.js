@@ -64,7 +64,19 @@ function groupByYear(items, getYear) {
   }, {});
 }
 
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+
 export default function MyTeam() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
   // --- Team Avatars and League ID (must be declared before any useEffect that uses them) ---
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
@@ -530,6 +542,11 @@ export default function MyTeam() {
         return true;
       });
     return myContracts;
+  }
+
+  // Optionally, show nothing or a loading spinner while checking auth
+  if (status === 'loading') {
+    return null;
   }
 
   return (

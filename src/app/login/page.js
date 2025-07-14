@@ -28,8 +28,8 @@ export default function Login() {
       } 
       // Only redirect if passwordChangeRequired is explicitly false
       else if (session.user?.passwordChangeRequired === false) {
-        console.log("No password change required, redirecting to home");
-        router.push('/');
+        console.log("No password change required, redirecting to My Team page");
+        router.push('/my-team');
       }
     }
   }, [session, status, router]);
