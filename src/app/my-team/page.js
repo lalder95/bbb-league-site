@@ -121,6 +121,7 @@ export default function MyTeam() {
   const [leagueRosters, setLeagueRosters] = useState({});
   const [leagueTradedPicks, setLeagueTradedPicks] = useState({});
   const loaded = useRef(false);
+  const assistantGMChatRef = useRef(null);
 
   // Sorting and player card modal
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
