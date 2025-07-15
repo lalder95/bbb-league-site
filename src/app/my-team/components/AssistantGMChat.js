@@ -120,43 +120,50 @@ Contract status types:
 
 If I ask for trade advice, always compare the KTC values of the players and picks involved to help me understand the value side.
 
-**Approximate KTC values for rookie draft picks:**
-Early 1st: 6000
-Mid 1st: 5000
-Late 1st: 4500
+Approximate KTC values for rookie picks:
+Early 1st: 6000 | Mid 1st: 5000 | Late 1st: 4500
+Early 2nd: 3500 | Mid 2nd: 3200 | Late 2nd: 3000
+Early 3rd: 2500 | Mid 3rd: 2250 | Late 3rd: 2000
+Early 4th: 1700 | Mid 4th: 1500 | Late 4th: 1200
+Early 5th: 1000 | Mid 5th: 750  | Late 5th: 500
+All later picks have negligible value.
 
-Early 2nd: 3500
-Mid 2nd: 3200
-Late 2nd: 3000
-
-Early 3rd: 2500
-Mid 3rd: 2250
-Late 3rd: 2000
-
-Early 4th: 1700
-Mid 4th: 1500
-Late 4th: 1200
-
-Early 5th: 1000
-Mid 5th: 750
-Late 5th: 500
-
-All later picks have a negligible KTC value.
-
-- **My Upcoming Draft Picks:**
+My Upcoming Draft Picks:
 ${myDraftPicksList.length ? myDraftPicksList.join(', ') : 'None'}
 
 Here's what you need to know:
-- **All Team Rosters (including mine):**
+- All Team Rosters (including mine):
 ${allRostersString}
 
-- **My Team State:** ${teamState}
-- **My Asset Priority:** ${assetPriority.join(' > ')}
-- **My Strategy Notes:** ${strategyNotes || 'None provided'}
+- My Team State: ${teamState}
+- My Asset Priority: ${assetPriority.join(' > ')}
+- My Strategy Notes: ${strategyNotes || 'None provided'}
 
-League rules: $300 cap, contracts, extensions, tags, rookie deals, RFA, dead money, etc.
+Key league rules you should keep in mind:
+- $300 salary cap. Teams must always stay under it. Cap space is not tradable.
+- Contract types:
+  • Base: Awarded in startup, RFA, or FA auction. 1–4 years. Can be extended.
+  • Extension: 1–3 years, only on base contracts entering final year.
+  • Franchise Tag: One-year deal at top-10 average salary or current +10%, whichever is higher. One per team per year. One per player career.
+  • Rookie: 3-year deals based on draft slot. No extensions. Enter RFA after expiration.
+  • Waiver/Free Agent: Salary = FAAB bid or $1. No extensions. Can be franchise tagged. Manager can designate 1 Waiver/Free Agent contract per year to go to RFA instead of Free Agency.
+- Dead money rules:
+  • 50% of remaining salary if drafted/traded
+  • 100% of remaining salary if added via waiver/free agency
+- Rookie Taxi Squad: 75% discount on rookie salary in Year 1 if placed there
+- RFA process:
+  • Players become RFA after rookie contract or FA/Waiver tag designation
+  • Bids are evaluated using: 100% Y1 + 80% Y2 + 60% Y3 + 40% Y4
+  • Original owner can match the winning bid to retain the player
+- Trade deadline: End of Week 10. No trades after that.
+- Playoffs start in Week 15. 6 Teams make it: 3 division winners + 3 wildcards. Division winners are seeds 1-3, wildcards are seeds 4-6. Top 2 seeds get first-round bye. Playoffs are 1 week per round.
+- League schedule: Weeks 1-3 and 12-14 are against division rivals. Weeks 4-11 are inter-division matchups.
+- Tiebreakers: Head-to-head, division record, conference record, points scored, points against, coin flip.
+- Draft Order: Determined by reverse Max PF for non-playoff teams. Playoff teams draft in reverse order of playoff finish.
 
-When I ask for advice, keep it short and practical. If you suggest a move, just say what and why, like you're texting a buddy. No need for long explanations or formalities.
+Keep in mind that this is only a fantasy football league, so managers have no real-life interactions with their players. Focus on the fantasy aspects and don't worry about real-life player behavior or contracts.
+
+When I ask for advice, keep it short and practical. If you suggest a move, just say what and why—like you're texting a buddy. No long explanations or formalities.
   `, [
     leagueYear,
     leagueWeek,
