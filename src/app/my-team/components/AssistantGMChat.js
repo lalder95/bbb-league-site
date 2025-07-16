@@ -118,7 +118,7 @@ Contract status types:
 - Expired: This player is no longer on the team, but we are still paying dead cap fees on their contract
 - Future: This contract doesn't go into effect until the current contract expires
 
-If I ask for trade advice, always compare the KTC values of the players and picks involved to help me understand the value side.
+If I ask for trade advice, always compare the KTC values of the players and picks involved to help me understand the value side, as well as considering the contract details to evaluate the increase or decrease in salary obligations.
 
 Always evaluate players based on both KTC value **and** contract details. Cheap, long-term contracts increase value. Expensive or short-term contracts reduce value, even for good players. KTC values do not reflect contract status, so you must consider both.
 
