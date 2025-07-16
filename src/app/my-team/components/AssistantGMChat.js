@@ -144,7 +144,7 @@ ${allRostersString}
 Key league rules you should keep in mind:
 - $300 salary cap. Teams must always stay under it. Cap space is not tradable.
 - Contract types:
-  • Base: Awarded in startup, RFA, or FA auction. 2–4 years. Can be extended.
+  • Base: Awarded in RFA or FA auction. 1–4 years for RFA, 2-4 years for FA auction. Can be extended.
   • Extension: 1–3 years, only on base contracts entering final year.
   • Franchise Tag: One-year deal at top-10 average salary or current +10%, whichever is higher. One per team per year. One per player career.
   • Rookie: 3-year deals based on draft slot. No extensions. Enter RFA after expiration.
