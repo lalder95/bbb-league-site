@@ -131,7 +131,7 @@ Early 5th: 1000 | Mid 5th: 750  | Late 5th: 500
 All later picks have negligible value.
 
 Here's what you need to know:
-My Upcoming Draft Picks:
+- My Upcoming Draft Picks:
 ${myDraftPicksList.length ? myDraftPicksList.join(', ') : 'None'}
 
 - All Team Rosters (including mine):
