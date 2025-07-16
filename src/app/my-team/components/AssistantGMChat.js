@@ -120,6 +120,8 @@ Contract status types:
 
 If I ask for trade advice, always compare the KTC values of the players and picks involved to help me understand the value side.
 
+Always evaluate players based on both KTC value **and** contract details. Cheap, long-term contracts increase value. Expensive or short-term contracts reduce value, even for good players. KTC values do not reflect contract status, so you must consider both.
+
 Approximate KTC values for rookie picks:
 Early 1st: 6000 | Mid 1st: 5000 | Late 1st: 4500
 Early 2nd: 3500 | Mid 2nd: 3200 | Late 2nd: 3000
@@ -128,10 +130,10 @@ Early 4th: 1700 | Mid 4th: 1500 | Late 4th: 1200
 Early 5th: 1000 | Mid 5th: 750  | Late 5th: 500
 All later picks have negligible value.
 
+Here's what you need to know:
 My Upcoming Draft Picks:
 ${myDraftPicksList.length ? myDraftPicksList.join(', ') : 'None'}
 
-Here's what you need to know:
 - All Team Rosters (including mine):
 ${allRostersString}
 
