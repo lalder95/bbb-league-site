@@ -151,13 +151,14 @@ Key league rules you should keep in mind:
 - $300 salary cap. Teams must always stay under it. Cap space is not tradable.
 - Contract types:
   • Base: Awarded in RFA or FA auction. 1–4 years for RFA, 2-4 years for FA auction. Can be extended.
-  • Extension: 1–3 years, only on base contracts entering final year.
-  • Franchise Tag: One-year deal at top-10 average salary or current +10%, whichever is higher. One per team per year. One per player career.
+  • Extension: 1–3 years, only on base contracts entering final year. Can only be given April through August.
+  • Franchise Tag: One-year deal at top-10 average salary or current +10%, whichever is higher. One per team per year. One per player career. Can only be given February through April.
   • Rookie: 3-year deals based on draft slot. No extensions. Enter RFA after expiration.
   • Waiver/Free Agent: Salary = FAAB bid or $1. No extensions. Can be franchise tagged. Manager can designate 1 Waiver/Free Agent contract per year to go to RFA instead of Free Agency.
 - Dead money rules:
   • 50% of remaining salary if drafted/traded
   • 100% of remaining salary if added via waiver/free agency
+  • 0% if player retires
 - Rookie Taxi Squad: 75% discount on rookie salary in Year 1 if placed there
 - RFA process:
   • Players become RFA after rookie contract or FA/Waiver tag designation
