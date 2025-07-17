@@ -88,8 +88,9 @@ export default function MyTeam() {
   // --- Free Agency Tab State (must be top-level for React hooks rules) ---
   // (Free Agency tab state removed, placeholder only)
 
+  // More robust fix: Only redirect if unauthenticated AND not loading
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (status === 'unauthenticated' && status !== 'loading') {
       router.push('/login');
     }
   }, [status, router]);
@@ -191,12 +192,6 @@ export default function MyTeam() {
   function getPlayerName(id) {
     return playerMap[String(id)] || id;
   }
-
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login');
-    }
-  }, [status, router]);
 
   useEffect(() => {
     if (status !== 'authenticated' || loaded.current) return;
@@ -539,9 +534,9 @@ export default function MyTeam() {
     return myContracts;
   }
 
-  // Optionally, show nothing or a loading spinner while checking auth
+  // Updated conditional rendering: show nothing (or spinner) while loading
   if (status === 'loading') {
-    return null;
+    return null; // Or a spinner if you prefer
   }
 
   return (
