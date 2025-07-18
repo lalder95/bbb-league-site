@@ -30,6 +30,17 @@ export default function Home() {
   const [leagueId, setLeagueId] = useState(null);
   const [visibleCount, setVisibleCount] = useState(50);
 
+  // --- STEP 1: Safelist all avatar sizes for Tailwind production builds ---
+  // This ensures all avatar sizes are included in the final CSS bundle.
+  // You can place this anywhere in your component.
+  // It will not render anything visible, but will keep the classes in production.
+  const tailwindSafelist = (
+    <div className="hidden">
+      w-8 h-8 w-20 h-20 w-28 h-28 w-36 h-36 sm:w-32 sm:h-32 sm:w-40 sm:h-40
+    </div>
+  );
+  // --- END STEP 1 ---
+
   // Responsive
   useEffect(() => {
     function handleResize() {
@@ -292,6 +303,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
+      {tailwindSafelist}
       <div className={`${isMobile ? 'p-4' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
@@ -493,13 +505,13 @@ export default function Home() {
 
         {isMobile && (
           <div className="flex items-center gap-2 mb-4 px-2">
-            <label htmlFor="mobile-sort" className="text-base font-medium">Sort by:</label>
+            <label htmlFor="mobile-sort" className="text-lg font-semibold">Sort by:</label>
             <select
               id="mobile-sort"
               value={sortConfig.key}
               onChange={e => setSortConfig({ ...sortConfig, key: e.target.value })}
-              className="bg-black/40 border border-white/10 rounded px-4 py-2 text-white text-base"
-              style={{ minWidth: 180 }}
+              className="bg-black/40 border border-white/10 rounded px-6 py-3 text-white text-lg"
+              style={{ minWidth: 220, minHeight: 48 }}
             >
               <option value="playerName">Player Name</option>
               <option value="team">Team</option>
@@ -517,9 +529,9 @@ export default function Home() {
                   direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'
                 })
               }
-              className="ml-2 px-3 py-2 rounded bg-[#FF4B1F] text-white text-base"
+              className="ml-2 px-5 py-3 rounded bg-[#FF4B1F] text-white text-lg"
               title="Toggle sort direction"
-              style={{ minHeight: 40 }}
+              style={{ minHeight: 48 }}
             >
               {sortConfig.direction === 'asc' ? '↑' : '↓'}
             </button>
