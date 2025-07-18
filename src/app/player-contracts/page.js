@@ -28,6 +28,7 @@ export default function Home() {
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(50);
 
   // Responsive
   useEffect(() => {
@@ -265,6 +266,12 @@ export default function Home() {
       return aVal < bVal ? 1 : -1;
     });
 
+  const visiblePlayers = filteredAndSortedPlayers.slice(0, visibleCount);
+
+  const handleShowMore = () => {
+    setVisibleCount((prev) => prev + 50);
+  };
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (!event.target.closest('.dropdown-container')) {
@@ -484,6 +491,41 @@ export default function Home() {
           </div>
         </div>
 
+        {isMobile && (
+          <div className="flex items-center gap-2 mb-4 px-2">
+            <label htmlFor="mobile-sort" className="text-base font-medium">Sort by:</label>
+            <select
+              id="mobile-sort"
+              value={sortConfig.key}
+              onChange={e => setSortConfig({ ...sortConfig, key: e.target.value })}
+              className="bg-black/40 border border-white/10 rounded px-4 py-2 text-white text-base"
+              style={{ minWidth: 180 }}
+            >
+              <option value="playerName">Player Name</option>
+              <option value="team">Team</option>
+              <option value="contractType">Contract Type</option>
+              <option value="curYear">Salary</option>
+              <option value="ktcValue">KTC</option>
+              <option value="rfaEligible">RFA?</option>
+              <option value="franchiseTagEligible">FT?</option>
+              <option value="contractFinalYear">Final Year</option>
+            </select>
+            <button
+              onClick={() =>
+                setSortConfig({
+                  ...sortConfig,
+                  direction: sortConfig.direction === 'asc' ? 'desc' : 'asc'
+                })
+              }
+              className="ml-2 px-3 py-2 rounded bg-[#FF4B1F] text-white text-base"
+              title="Toggle sort direction"
+              style={{ minHeight: 40 }}
+            >
+              {sortConfig.direction === 'asc' ? '↑' : '↓'}
+            </button>
+          </div>
+        )}
+
         <div className="mb-4 flex flex-wrap gap-4">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-red-500"></div>
@@ -512,133 +554,237 @@ export default function Home() {
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-black/40 border-b border-white/10">
-                {[ 
-                  { key: 'profile', label: '' }, // PlayerProfileCard column
-                  { key: 'playerName', label: 'Player Name' },
-                  { key: 'team', label: 'Team' },
-                  { key: 'contractType', label: 'Contract Type' },
-                  { key: 'curYear', label: 'Salary' }, // Renamed from "Cur Year"
-                  { key: 'ktcValue', label: <span title="KeepTradeCut Value">KTC</span> },
-                  { key: 'rfaEligible', label: <span title="Restricted Free Agent Eligible">RFA?</span> },
-                  { key: 'franchiseTagEligible', label: <span title="Franchise Tag Eligible">FT?</span> },
-                  { key: 'contractFinalYear', label: 'Final Year' }
-                ].map(({ key, label }) => {
-                  // Only make sortable columns have pointer and click handler
-                  const isSortable = !['profile'].includes(key);
-                  return (
-                    <th
-                      key={key}
-                      onClick={isSortable ? (e) => { e.stopPropagation(); handleSort(key); } : undefined}
-                      className={`p-3 text-left transition-colors ${isSortable ? 'cursor-pointer hover:bg-white/5' : ''}`}
-                      style={isSortable ? { userSelect: 'none' } : {}}
+          {!isMobile ? (
+            <>
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-black/40 border-b border-white/10">
+                    {[ 
+                      { key: 'profile', label: '' }, // PlayerProfileCard column
+                      { key: 'playerName', label: 'Player Name' },
+                      { key: 'team', label: 'Team' },
+                      { key: 'contractType', label: 'Contract Type' },
+                      { key: 'curYear', label: 'Salary' }, // Renamed from "Cur Year"
+                      { key: 'ktcValue', label: <span title="KeepTradeCut Value">KTC</span> },
+                      { key: 'rfaEligible', label: <span title="Restricted Free Agent Eligible">RFA?</span> },
+                      { key: 'franchiseTagEligible', label: <span title="Franchise Tag Eligible">FT?</span> },
+                      { key: 'contractFinalYear', label: 'Final Year' }
+                    ].map(({ key, label }) => {
+                      // Only make sortable columns have pointer and click handler
+                      const isSortable = !['profile'].includes(key);
+                      return (
+                        <th
+                          key={key}
+                          onClick={isSortable ? (e) => { e.stopPropagation(); handleSort(key); } : undefined}
+                          className={`p-3 text-left transition-colors ${isSortable ? 'cursor-pointer hover:bg-white/5' : ''}`}
+                          style={isSortable ? { userSelect: 'none' } : {}}
+                        >
+                          <div className="flex items-center gap-2">
+                            {label}
+                            {sortConfig.key === key && isSortable && (
+                              <span className="text-[#FF4B1F]">
+                                {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                              </span>
+                            )}
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visiblePlayers.map((player) => (
+                    <tr
+                      key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`}
+                      className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                     >
-                      <div className="flex items-center gap-2">
-                        {label}
-                        {sortConfig.key === key && isSortable && (
-                          <span className="text-[#FF4B1F]">
-                            {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                      {/* PlayerProfileCard column */}
+                      <td
+                        className="p-3 align-middle"
+                        style={{ width: '40px', minWidth: '40px', cursor: 'pointer' }}
+                        onClick={() => setSelectedPlayerId(player.playerId)}
+                        title="View Player Card"
+                      >
+                        <PlayerProfileCard
+                          playerId={player.playerId}
+                          expanded={false}
+                          className="w-8 h-8 rounded-full overflow-hidden shadow object-cover m-0 p-0"
+                        />
+                      </td>
+                      {/* Player Name column */}
+                      <td
+                        className={`p-3 font-medium ${getStatusColor(player.status)} cursor-pointer underline`}
+                        onClick={() => setSelectedPlayerId(player.playerId)}
+                      >
+                        {player.playerName}
+                      </td>
+                      {/* Team column */}
+                      <td className="p-3 align-middle">
+                        <div className="flex items-center gap-2">
+                          {teamAvatars[player.team] ? (
+                            <img
+                              src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                              alt={player.team}
+                              className="w-5 h-5 rounded-full mr-2"
+                            />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
+                          )}
+                          {player.team}
+                        </div>
+                      </td>
+                      <td className={`p-3 ${getContractTypeColor(player.contractType)}`}>
+                        {player.contractType}
+                      </td>
+                      <td className={`p-3 ${getSalaryColor(player.curYear, player.isDeadCap)}`}>
+                        {formatSalary(player.curYear, player.isDeadCap)}
+                      </td>
+                      {/* KTC Value column */}
+                      <td className="p-3 text-center">
+                        {player.ktcValue ? player.ktcValue : '-'}
+                      </td>
+                      {/* RFA? icon */}
+                      <td className="p-3 text-center">
+                        {String(player.rfaEligible).toLowerCase() === 'true' ? (
+                          <span
+                            title="This Player will enter RFA when this contract expires."
+                            className="text-green-400"
+                            aria-label="RFA Eligible"
+                          >
+                            ✔️
+                          </span>
+                        ) : (
+                          <span
+                            title="This player will NOT enter RFA."
+                            className="text-red-400"
+                            aria-label="Not RFA Eligible"
+                          >
+                            ❌
                           </span>
                         )}
-                      </div>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAndSortedPlayers.map((player) => (
-                <tr
-                  key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`} // Use contractId if available, fallback to composite key
-                  className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
-                >
-                  {/* PlayerProfileCard column */}
-                  <td className="p-3 align-middle" style={{ width: '40px', minWidth: '40px' }}>
-                    <PlayerProfileCard
-                      playerId={player.playerId}
-                      expanded={false}
-                      className="w-8 h-8 rounded-full overflow-hidden shadow object-cover m-0 p-0"
-                    />
-                  </td>
-                  {/* Player Name column */}
-                  <td
-                    className={`p-3 font-medium ${getStatusColor(player.status)} cursor-pointer underline`}
-                    onClick={() => setSelectedPlayerId(player.playerId)}
+                      </td>
+                      {/* Franchise Tag Eligible? icon */}
+                      <td className="p-3 text-center">
+                        {String(player.franchiseTagEligible).toLowerCase() === 'true' ? (
+                          <span
+                            title="This player is Franchise Tag eligible."
+                            className="text-green-400"
+                            aria-label="Franchise Tag Eligible"
+                          >
+                            ✔️
+                          </span>
+                        ) : (
+                          <span
+                            title="This player is NOT Franchise Tag eligible."
+                            className="text-red-400"
+                            aria-label="Not Franchise Tag Eligible"
+                          >
+                            ❌
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3">{player.contractFinalYear}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {visibleCount < filteredAndSortedPlayers.length && (
+                <div className="flex justify-center py-4">
+                  <button
+                    onClick={handleShowMore}
+                    className="px-4 py-2 rounded bg-[#FF4B1F] text-white font-semibold hover:bg-[#e03e0f] transition"
                   >
-                    {player.playerName}
-                  </td>
-                  {/* Team column */}
-                  <td className="p-3 align-middle">
-                    <div className="flex items-center gap-2">
-                      {teamAvatars[player.team] ? (
-                        <img
-                          src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
-                          alt={player.team}
-                          className="w-5 h-5 rounded-full mr-2"
-                        />
-                      ) : (
-                        <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
-                      )}
-                      {player.team}
+                    Show More
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col gap-4 p-2">
+                {visiblePlayers.map((player) => (
+                  <div
+                    key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`}
+                    className={`bg-black/60 rounded-lg shadow p-4 border-l-4 ${getPositionStyles(player.position)} flex gap-4 items-center`}
+                  >
+                    <div className="flex flex-col items-center justify-center">
+                      <PlayerProfileCard
+                        playerId={player.playerId}
+                        expanded={false}
+                        className="w-36 h-36 sm:w-40 sm:h-40 rounded-full overflow-hidden shadow object-cover m-0 p-0"
+                      />
                     </div>
-                  </td>
-                  <td className={`p-3 ${getContractTypeColor(player.contractType)}`}>
-                    {player.contractType}
-                  </td>
-                  <td className={`p-3 ${getSalaryColor(player.curYear, player.isDeadCap)}`}>
-                    {formatSalary(player.curYear, player.isDeadCap)}
-                  </td>
-                  {/* KTC Value column */}
-                  <td className="p-3 text-center">
-                    {player.ktcValue ? player.ktcValue : '-'}
-                  </td>
-                  {/* RFA? icon */}
-                  <td className="p-3 text-center">
-                    {String(player.rfaEligible).toLowerCase() === 'true' ? (
-                      <span
-                        title="This Player will enter RFA when this contract expires."
-                        className="text-green-400"
-                        aria-label="RFA Eligible"
-                      >
-                        ✔️
-                      </span>
-                    ) : (
-                      <span
-                        title="This player will NOT enter RFA."
-                        className="text-red-400"
-                        aria-label="Not RFA Eligible"
-                      >
-                        ❌
-                      </span>
-                    )}
-                  </td>
-                  {/* Franchise Tag Eligible? icon */}
-                  <td className="p-3 text-center">
-                    {String(player.franchiseTagEligible).toLowerCase() === 'true' ? (
-                      <span
-                        title="This player is Franchise Tag eligible."
-                        className="text-green-400"
-                        aria-label="Franchise Tag Eligible"
-                      >
-                        ✔️
-                      </span>
-                    ) : (
-                      <span
-                        title="This player is NOT Franchise Tag eligible."
-                        className="text-red-400"
-                        aria-label="Not Franchise Tag Eligible"
-                      >
-                        ❌
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3">{player.contractFinalYear}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span
+                          className={`font-bold text-lg underline cursor-pointer ${getStatusColor(player.status)}`}
+                          onClick={() => setSelectedPlayerId(player.playerId)}
+                        >
+                          {player.playerName}
+                        </span>
+                        <span className="text-xs px-2 py-1 rounded ml-2" style={{ background: "#222", color: "#FF4B1F" }}>
+                          {player.position}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-1">
+                        {teamAvatars[player.team] ? (
+                          <img
+                            src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                            alt={player.team}
+                            className="w-5 h-5 rounded-full"
+                          />
+                        ) : (
+                          <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
+                        )}
+                        <span className="font-medium">{player.team}</span>
+                      </div>
+                      <div className="text-sm mb-1">
+                        <span className={`px-2 py-1 rounded ${getContractTypeColor(player.contractType)}`}>
+                          {player.contractType}
+                        </span>
+                      </div>
+                      <div className="text-sm mb-1">
+                        <span className={getSalaryColor(player.curYear, player.isDeadCap)}>
+                          Salary: {formatSalary(player.curYear, player.isDeadCap)}
+                        </span>
+                      </div>
+                      <div className="text-sm mb-1">
+                        KTC: <span>{player.ktcValue ? player.ktcValue : '-'}</span>
+                      </div>
+                      <div className="text-sm mb-1">
+                        RFA?{' '}
+                        {String(player.rfaEligible).toLowerCase() === 'true' ? (
+                          <span className="text-green-400" title="RFA Eligible">✔️</span>
+                        ) : (
+                          <span className="text-red-400" title="Not RFA Eligible">❌</span>
+                        )}
+                        &nbsp;|&nbsp;
+                        FT?{' '}
+                        {String(player.franchiseTagEligible).toLowerCase() === 'true' ? (
+                          <span className="text-green-400" title="Franchise Tag Eligible">✔️</span>
+                        ) : (
+                          <span className="text-red-400" title="Not Franchise Tag Eligible">❌</span>
+                        )}
+                      </div>
+                      <div className="text-sm">
+                        Final Year: <span>{player.contractFinalYear}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {visibleCount < filteredAndSortedPlayers.length && (
+                <div className="flex justify-center py-4">
+                  <button
+                    onClick={handleShowMore}
+                    className="px-4 py-2 rounded bg-[#FF4B1F] text-white font-semibold hover:bg-[#e03e0f] transition"
+                  >
+                    Show More
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </main>
