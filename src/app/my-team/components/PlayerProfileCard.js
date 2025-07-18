@@ -247,7 +247,7 @@ export default function PlayerProfileCard({
           : "flex flex-col items-center justify-center"
       }
       style={expanded ? { overflowX: 'auto' } : {}}
-      onClick={onClick} // <-- Add this line
+      onClick={onClick}
     >
       <div
         className={`relative ${
@@ -257,8 +257,9 @@ export default function PlayerProfileCard({
                   ? "h-[95vh] max-h-[95vh] aspect-[3.5/2.5] min-w-[22rem] max-w-[95vw] md:h-[32rem] md:max-h-none md:aspect-[3.5/2.5] md:w-[32rem]"
                   : "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem]"
               )
-            : "w-8 h-8"
-        } rounded-lg shadow-lg bg-gray-900 overflow-hidden ${className}`}
+            // --- CHANGE: Use larger size for mobile list view, small for table avatar ---
+            : `${className} ${className.includes('w-8') ? '' : 'w-36 h-36 sm:w-40 sm:h-40'}`
+        } rounded-lg shadow-lg bg-gray-900 overflow-hidden`}
       >
         <div
           className="relative w-full h-full"
