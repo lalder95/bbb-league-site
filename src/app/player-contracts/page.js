@@ -723,7 +723,8 @@ export default function Home() {
                       <PlayerProfileCard
                         playerId={player.playerId}
                         expanded={false}
-                        className="w-36 h-36 sm:w-40 sm:h-40 rounded-full overflow-hidden shadow object-cover m-0 p-0"
+                        className="w-36 h-36 sm:w-40 sm:h-40 rounded-full overflow-hidden shadow object-cover m-0 p-0 cursor-pointer"
+                        onClick={() => setSelectedPlayerId(player.playerId)}
                       />
                     </div>
                     <div className="flex-1">

@@ -19,6 +19,7 @@ export default function PlayerProfileCard({
   imageExtension = "png",
   expanded = false,
   onExpandClick,
+  onClick, // <-- Add this line
   className = "",
   teamAvatars = {},
   teamName = "",
@@ -246,6 +247,7 @@ export default function PlayerProfileCard({
           : "flex flex-col items-center justify-center"
       }
       style={expanded ? { overflowX: 'auto' } : {}}
+      onClick={onClick} // <-- Add this line
     >
       <div
         className={`relative ${
