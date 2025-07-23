@@ -1585,6 +1585,7 @@ export default function MyTeam() {
                       myDraftPicksList={myDraftPicksList}
                       leagueWeek={leagueWeek}
                       leagueYear={leagueYear}
+                      activeTab={activeTab} // <-- add this line
                     />
                   </div>
                 </div>

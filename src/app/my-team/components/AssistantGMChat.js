@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 
 // Helper to get team name (mimics TradedPicks.js usage)
 function getTeamName(rosterId, rosters, users) {
@@ -26,7 +26,8 @@ export default function AssistantGMChat({
   rosters = [],
   users = [],
   myDraftPicksList: propMyDraftPicksList,
-  leagueWeek,  leagueYear
+  leagueWeek,  leagueYear,
+  activeTab, // <-- add this prop
 }) {
   // Find user's team name
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
@@ -213,6 +214,7 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     const userMsg = { role: 'user', content: input };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
+    setInput(''); // <-- Clear input immediately
 
     let data;
     try {
@@ -222,21 +224,14 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
         body: JSON.stringify({ messages: newMessages }),
       });
       const text = await res.text();
-      // Debug: log the raw response
-      // eslint-disable-next-line no-console
-      console.debug('[AssistantGMChat] Raw API response:', text);
       data = JSON.parse(text);
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[AssistantGMChat] Error parsing API response:', err);
       setMessages([...newMessages, { role: 'assistant', content: 'Error: Could not parse response from server.' }]);
       setLoading(false);
-      setInput('');
       return;
     }
     setMessages([...newMessages, { role: 'assistant', content: data.reply }]);
     setLoading(false);
-    setInput('');
   }
 
   // Helper: Format assistant message (bold **text** and split numbered lists)
@@ -258,15 +253,35 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
   }
 
   function handleClearChat() {
-    setMessages([{ role: 'system', content: systemPrompt }]);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(chatKey, JSON.stringify([{ role: 'system', content: systemPrompt }]));
+    if (window.confirm('Are you sure you want to reset your conversation?')) {
+      setMessages([{ role: 'system', content: systemPrompt }]);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(chatKey, JSON.stringify([{ role: 'system', content: systemPrompt }]));
+      }
     }
   }
 
+  // --- Add this ref and effect for auto-scroll ---
+  const messagesEndRef = useRef(null);
+  const chatBoxRef = useRef(null);
+
+  useEffect(() => {
+    if (activeTab !== 'Assistant GM') return;
+    const chatBox = chatBoxRef.current;
+    if (chatBox) {
+      // Always scroll to the bottom of the chat box, but only affect the chat box
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  }, [messages, activeTab]);
+  // ------------------------------------------------
+
   return (
     <div className="bg-black/20 rounded-lg p-4 flex flex-col" style={{height:'100%', minHeight:'38rem', maxHeight:'56rem'}}>
-      <div className="flex-1 min-h-0 overflow-y-auto bg-black/10 rounded p-2 mb-2" style={{maxHeight:'34rem'}}>
+      <div
+        ref={chatBoxRef}
+        className="flex-1 min-h-0 overflow-y-auto bg-black/10 rounded p-2 mb-2"
+        style={{maxHeight:'34rem'}}
+      >
         {messages.filter(m => m.role !== 'system').flatMap((msg, i) => {
           if (msg.role === 'assistant') {
             const parts = formatAssistantMessage(msg.content);
@@ -288,8 +303,11 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
             );
           }
         })}
+        {/* --- Add this div for scroll target --- */}
+        <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={sendMessage} className="flex gap-2 mb-2">
+      {/* --- Update form className for responsive layout --- */}
+      <form onSubmit={sendMessage} className="flex flex-col sm:flex-row gap-2 mb-2">
         <input
           className="flex-1 p-2 rounded bg-white/10 text-white"
           value={input}
@@ -298,7 +316,11 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
           placeholder="Ask your Assistant GM anything..."
         />
         <button
-          className="bg-[#FF4B1F] px-4 py-2 rounded text-white font-bold"
+          className={`px-4 py-2 rounded font-bold transition-colors
+            ${loading
+              ? 'bg-gray-400 text-white opacity-70 cursor-not-allowed'
+              : 'bg-[#FF4B1F] text-white'
+            }`}
           disabled={loading || !input.trim()}
         >
           {loading ? 'Sending...' : 'Send'}
