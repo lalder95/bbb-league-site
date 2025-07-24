@@ -121,13 +121,17 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold mb-2">User Management</h2>
             <p className="text-white/70">Create, edit, and manage user accounts</p>
           </Link>
-          
-          {/* You can add more admin features here as needed */}
+          <Link 
+            href="/admin/drafts/create"
+            className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
+          >
+            <h2 className="text-xl font-bold mb-2">Create Draft</h2>
+            <p className="text-white/70">Start a new draft and manage draft settings</p>
+          </Link>
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
             <h2 className="text-xl font-bold mb-2">League Settings</h2>
             <p className="text-white/70">Configure league settings (Coming Soon)</p>
           </div>
-          
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
             <h2 className="text-xl font-bold mb-2">Content Management</h2>
             <p className="text-white/70">Manage website content (Coming Soon)</p>
