@@ -1699,20 +1699,37 @@ export default function MyTeam() {
                       <thead>
                         <tr>
                           <th className="p-2 text-white/80">Year</th>
-                          <th className="p-2 text-white/80">Cap Used</th>
-                          <th className="p-2 text-white/80">Cap Space</th>
+                          <th className="p-2 text-white/80 border-l border-white/10">Cap Used</th>
+                          <th className="p-2 text-white/80 border-l border-white/10">Extension Cost</th>
+                          <th className="p-2 text-white/80 border-l border-white/10">Cap Space</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {[0,1,2,3].map(i => (
-                          <tr key={i}>
-                            <td className="p-2">{curYear + i}</td>
-                            <td className="p-2">${yearSalaries[i].toFixed(1)}</td>
-                            <td className={`p-2 font-bold ${yearSalaries[i] > CAP ? 'text-red-400' : 'text-green-400'}`}>
-                              {(CAP - yearSalaries[i]).toFixed(1)}
-                            </td>
-                          </tr>
-                        ))}
+                        {[0,1,2,3].map(i => {
+                          // Calculate extension cost for this year (i=1: year2, i=2: year3, i=3: year4)
+                          let extensionCost = 0;
+                          eligiblePlayers.forEach(p => {
+                            const ext = extensionMap[p.playerId] || { years: 0, deny: false };
+                            if (ext.deny || !ext.years) return;
+                            let base = parseFloat(p.curYear) || 0;
+                            for (let y = 1; y <= ext.years; ++y) {
+                              base = roundUp1(base * 1.10);
+                              if (i === y) extensionCost += base;
+                            }
+                          });
+                          return (
+                            <tr key={i}>
+                              <td className="p-2">{curYear + i}</td>
+                              <td className="p-2 border-l border-white/10">${yearSalaries[i].toFixed(1)}</td>
+                              <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">
+                                {i === 0 ? '-' : `$${extensionCost.toFixed(1)}`}
+                              </td>
+                              <td className={`p-2 border-l border-white/10 font-bold ${yearSalaries[i] > CAP ? 'text-red-400' : 'text-green-400'}`}>
+                                {(CAP - yearSalaries[i]).toFixed(1)}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                     <div className="text-xs text-white/60">Cap limit: ${CAP} per year</div>
