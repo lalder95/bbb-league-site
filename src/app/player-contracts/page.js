@@ -727,7 +727,8 @@ export default function Home() {
                         onClick={() => setSelectedPlayerId(player.playerId)}
                       />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 flex flex-col gap-2">
+                      {/* Name & Position */}
                       <div className="flex items-center gap-2 mb-1">
                         <span
                           className={`font-bold text-lg underline cursor-pointer ${getStatusColor(player.status)}`}
@@ -735,11 +736,12 @@ export default function Home() {
                         >
                           {player.playerName}
                         </span>
-                        <span className="text-xs px-2 py-1 rounded ml-2" style={{ background: "#222", color: "#FF4B1F" }}>
+                        <span className="text-xs px-2 py-1 rounded ml-2 bg-[#222] text-[#FF4B1F]">
                           {player.position}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 mb-1">
+                      {/* Team Block */}
+                      <div className="flex items-center gap-2 bg-white/5 rounded px-2 py-1">
                         {teamAvatars[player.team] ? (
                           <img
                             src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
@@ -751,36 +753,41 @@ export default function Home() {
                         )}
                         <span className="font-medium">{player.team}</span>
                       </div>
-                      <div className="text-sm mb-1">
+                      {/* Contract Block */}
+                      <div className="flex flex-wrap gap-2 bg-white/5 rounded px-2 py-1">
                         <span className={`px-2 py-1 rounded ${getContractTypeColor(player.contractType)}`}>
                           {player.contractType}
                         </span>
-                      </div>
-                      <div className="text-sm mb-1">
                         <span className={getSalaryColor(player.curYear, player.isDeadCap)}>
                           Salary: {formatSalary(player.curYear, player.isDeadCap)}
                         </span>
+                        <span>
+                          Final Year: <span className="font-semibold">{player.contractFinalYear}</span>
+                        </span>
                       </div>
-                      <div className="text-sm mb-1">
-                        KTC: <span>{player.ktcValue ? player.ktcValue : '-'}</span>
+                      {/* Value Block */}
+                      <div className="flex items-center gap-2 bg-white/5 rounded px-2 py-1">
+                        <span>KTC:</span>
+                        <span className="font-semibold">{player.ktcValue ? player.ktcValue : '-'}</span>
                       </div>
-                      <div className="text-sm mb-1">
-                        RFA?{' '}
-                        {String(player.rfaEligible).toLowerCase() === 'true' ? (
-                          <span className="text-green-400" title="RFA Eligible">✔️</span>
-                        ) : (
-                          <span className="text-red-400" title="Not RFA Eligible">❌</span>
-                        )}
-                        &nbsp;|&nbsp;
-                        FT?{' '}
-                        {String(player.franchiseTagEligible).toLowerCase() === 'true' ? (
-                          <span className="text-green-400" title="Franchise Tag Eligible">✔️</span>
-                        ) : (
-                          <span className="text-red-400" title="Not Franchise Tag Eligible">❌</span>
-                        )}
-                      </div>
-                      <div className="text-sm">
-                        Final Year: <span>{player.contractFinalYear}</span>
+                      {/* Eligibility Block */}
+                      <div className="flex items-center gap-4 bg-white/5 rounded px-2 py-1">
+                        <span>
+                          RFA?{' '}
+                          {String(player.rfaEligible).toLowerCase() === 'true' ? (
+                            <span className="text-green-400" title="RFA Eligible">✔️</span>
+                          ) : (
+                            <span className="text-red-400" title="Not RFA Eligible">❌</span>
+                          )}
+                        </span>
+                        <span>
+                          FT?{' '}
+                          {String(player.franchiseTagEligible).toLowerCase() === 'true' ? (
+                            <span className="text-green-400" title="Franchise Tag Eligible">✔️</span>
+                          ) : (
+                            <span className="text-red-400" title="Not Franchise Tag Eligible">❌</span>
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>
