@@ -1723,19 +1723,75 @@ export default function MyTeam() {
                     {eligiblePlayers.length === 0 ? (
                       <div className="text-white/60 italic">No players eligible for extension this year.</div>
                     ) : (
-                      <table className="w-full text-sm border border-white/10 rounded bg-white/5">
-                        <thead>
-                          <tr>
-                            <th className="p-2 text-white/80">Player</th>
-                            <th className="p-2 text-white/80">Current Salary</th>
-                            <th className="p-2 text-white/80">Extension</th>
-                            <th className="p-2 text-white/80">Simulated Years</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                      <>
+                        {/* Desktop Table */}
+                        <div className="overflow-x-auto rounded hidden md:block">
+                          <table className="min-w-[600px] w-full text-sm border border-white/10 rounded bg-white/5">
+                            <thead>
+                              <tr>
+                                <th className="p-2 text-white/80">Player</th>
+                                <th className="p-2 text-white/80">Current Salary</th>
+                                <th className="p-2 text-white/80">Extension</th>
+                                <th className="p-2 text-white/80">Simulated Years</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {eligiblePlayers.map(player => {
+                                const ext = extensionMap[player.playerId] || { years: 0, deny: false };
+                                let base = parseFloat(player.curYear) || 0;
+                                const simYears = [];
+                                for (let i = 1; i <= ext.years; ++i) {
+                                  base = roundUp1(base * 1.10);
+                                  simYears.push(`Year ${i+1}: $${base}`);
+                                }
+                                return (
+                                  <tr key={player.playerId}>
+                                    <td className="p-2 font-semibold text-white flex items-center gap-2">
+                                      <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
+                                      {player.playerName}
+                                    </td>
+                                    <td className="p-2">${parseFloat(player.curYear).toFixed(1)}</td>
+                                    <td className="p-2">
+                                      <select
+                                        className="bg-white/10 text-white rounded px-2 py-1"
+                                        value={ext.deny ? 'deny' : ext.years}
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          setExtensionChoices(prev => ({
+                                            ...prev,
+                                            [player.playerId]: val === 'deny'
+                                              ? { years: 0, deny: true }
+                                              : { years: Number(val), deny: false }
+                                          }));
+                                        }}
+                                      >
+                                        <option value={0}>No Extension</option>
+                                        <option value={1}>1 Year</option>
+                                        <option value={2}>2 Years</option>
+                                        <option value={3}>3 Years</option>
+                                      </select>
+                                    </td>
+                                    <td className="p-2">
+                                      {ext.deny || !ext.years ? (
+                                        <span className="text-white/60 italic">No extension</span>
+                                      ) : (
+                                        <div className="flex flex-col items-start">
+                                          {simYears.map((s, i) => (
+                                            <span key={i}>{s}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        {/* Mobile Cards */}
+                        <div className="flex flex-col gap-4 md:hidden">
                           {eligiblePlayers.map(player => {
                             const ext = extensionMap[player.playerId] || { years: 0, deny: false };
-                            // Calculate simulated salaries for extension
                             let base = parseFloat(player.curYear) || 0;
                             const simYears = [];
                             for (let i = 1; i <= ext.years; ++i) {
@@ -1743,48 +1799,61 @@ export default function MyTeam() {
                               simYears.push(`Year ${i+1}: $${base}`);
                             }
                             return (
-                              <tr key={player.playerId}>
-                                <td className="p-2 font-semibold text-white flex items-center gap-2">
-                                  <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
-                                  {player.playerName}
-                                </td>
-                                <td className="p-2">${parseFloat(player.curYear).toFixed(1)}</td>
-                                <td className="p-2">
-                                  <select
-                                    className="bg-white/10 text-white rounded px-2 py-1"
-                                    value={ext.deny ? 'deny' : ext.years}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setExtensionChoices(prev => ({
-                                        ...prev,
-                                        [player.playerId]: val === 'deny'
-                                          ? { years: 0, deny: true }
-                                          : { years: Number(val), deny: false }
-                                      }));
-                                    }}
-                                  >
-                                    <option value={0}>No Extension</option>
-                                    <option value={1}>1 Year</option>
-                                    <option value={2}>2 Years</option>
-                                    <option value={3}>3 Years</option>
-                                  </select>
-                                </td>
-                                <td className="p-2">
+                              <div
+                                key={player.playerId}
+                                className="bg-white/5 border border-white/10 rounded-xl p-0 flex flex-col shadow overflow-hidden"
+                              >
+                                {/* Header Block */}
+                                <div className="flex items-center gap-3 px-4 py-3 bg-black/20 border-b border-white/10">
+                                  <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-full overflow-hidden shadow" />
+                                  <span className="font-semibold text-white text-lg">{player.playerName}</span>
+                                </div>
+                                {/* Salary Block */}
+                                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/10">
+                                  <div>
+                                    <div className="text-xs text-white/60">Current Salary</div>
+                                    <div className="font-bold text-white text-base">${parseFloat(player.curYear).toFixed(1)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-white/60">Extension</div>
+                                    <select
+                                      className="bg-white/10 text-white rounded px-2 py-1 mt-1"
+                                      value={ext.deny ? 'deny' : ext.years}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        setExtensionChoices(prev => ({
+                                          ...prev,
+                                          [player.playerId]: val === 'deny'
+                                            ? { years: 0, deny: true }
+                                            : { years: Number(val), deny: false }
+                                        }));
+                                      }}
+                                    >
+                                      <option value={0}>No Extension</option>
+                                      <option value={1}>1 Year</option>
+                                      <option value={2}>2 Years</option>
+                                      <option value={3}>3 Years</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                {/* Simulated Years Block */}
+                                <div className="px-4 py-3 bg-black/10">
+                                  <div className="text-xs text-white/60 mb-1">Simulated Years</div>
                                   {ext.deny || !ext.years ? (
                                     <span className="text-white/60 italic">No extension</span>
                                   ) : (
-                                    <div className="flex flex-col items-start">
+                                    <div className="flex flex-col items-start gap-1">
                                       {simYears.map((s, i) => (
-                                        <span key={i}>{s}</span>
+                                        <span key={i} className="text-white">{s}</span>
                                       ))}
                                     </div>
                                   )}
-                                </td>
-                              </tr>
+                                </div>
+                              </div>
                             );
                           })}
-                        </tbody>
-                      </table>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
