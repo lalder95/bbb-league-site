@@ -88,6 +88,9 @@ export default function MyTeam() {
   // --- Free Agency Tab State (must be top-level for React hooks rules) ---
   // (Free Agency tab state removed, placeholder only)
 
+  // Contract Management Tab State (must be top-level for React hooks rules)
+  const [extensionChoices, setExtensionChoices] = useState({});
+
   // More robust fix: Only redirect if unauthenticated AND not loading
   useEffect(() => {
     if (status === 'unauthenticated' && status !== 'loading') {
@@ -143,6 +146,7 @@ export default function MyTeam() {
     'Assistant GM',
     'Badges',
     'Media',
+    'Contract Management', // <-- Add new tab here
   ];
 
   useEffect(() => {
@@ -1282,7 +1286,7 @@ export default function MyTeam() {
                               .map(round => (
                                 <div key={round} className="bg-white/10 rounded px-4 py-2 text-white/90 font-semibold min-w-[120px]">
                                   <div className="text-[#1FDDFF] font-bold mb-1">Round {round}</div>
-                                  <ul className="list-disc list-inside text-white/80 text-sm">
+                                  <ul className="list-disc list-inside text-left mx-auto" style={{ maxWidth: 400 }}>
                                     {picksByYear[year][round]
                                       .filter(pick => !showMineOnly || (myRosterId && pick.owner_id === myRosterId))
                                       .map((pick, idx) => {
@@ -1592,6 +1596,201 @@ export default function MyTeam() {
               );
             }}
           />
+        )}
+        {activeTab === 'Contract Management' && (
+          (() => {
+            // Helper: round up to 1 decimal
+            function roundUp1(num) {
+              return Math.ceil(num * 10) / 10;
+            }
+            // Get current league year (from state or fallback to current year)
+            const curYear = Number(leagueYear) || new Date().getFullYear();
+            // Calculate cap space for years 1-4
+            const CAP = 300;
+            // Only use contracts for user's team
+            const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
+            // Find user's team name
+            const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
+            let myTeamName = '';
+            if (session?.user?.name) {
+              const nameLower = session.user.name.trim().toLowerCase();
+              myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
+              if (!myTeamName) {
+                myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
+              }
+            }
+            if (!myTeamName) {
+              const teamCounts = {};
+              activeContracts.forEach(p => {
+                const t = p.team.trim();
+                teamCounts[t] = (teamCounts[t] || 0) + 1;
+              });
+              myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+            }
+            // User's contracts
+            let myContracts = activeContracts.filter(p => p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase());
+            // Deduplicate by playerId, keeping the contract with the highest salary (curYear)
+            const seen = new Set();
+            myContracts = myContracts
+              .sort((a, b) => (b.curYear || 0) - (a.curYear || 0))
+              .filter(player => {
+                if (seen.has(player.playerId)) return false;
+                seen.add(player.playerId);
+                return true;
+              });
+
+            // --- Find eligible players for extension ---
+            // Filter out any player who has any contract with status "Future"
+            const playerIdsWithFuture = new Set(
+              playerContracts.filter(p => p.status === 'Future' && p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()).map(p => p.playerId)
+            );
+            const eligiblePlayers = myContracts.filter(
+              p =>
+                String(p.contractType).toLowerCase() === 'base' &&
+                String(p.rfaEligible).toLowerCase() !== 'true' &&
+                String(p.contractFinalYear) === String(curYear) &&
+                !playerIdsWithFuture.has(p.playerId)
+            );
+
+            // --- Simulate extensions ---
+            const extensionMap = {};
+            eligiblePlayers.forEach(p => {
+              const choice = extensionChoices[p.playerId] || { years: 0, deny: false };
+              extensionMap[p.playerId] = choice;
+            });
+
+            // Build simulated contracts for years 1-4
+            const yearSalaries = [0, 0, 0, 0]; // index 0 = curYear, 1 = curYear+1, etc.
+            myContracts.forEach(p => {
+              const years = [
+                parseFloat(p.curYear) || 0,
+                parseFloat(p.year2) || 0,
+                parseFloat(p.year3) || 0,
+                parseFloat(p.year4) || 0,
+              ];
+              years.forEach((amt, i) => {
+                yearSalaries[i] += amt;
+              });
+            });
+            eligiblePlayers.forEach(p => {
+              const ext = extensionMap[p.playerId] || { years: 0, deny: false };
+              if (ext.deny || !ext.years) return;
+              let base = parseFloat(p.curYear) || 0;
+              for (let i = 1; i <= ext.years; ++i) {
+                base = roundUp1(base * 1.10);
+                if (i < 4) yearSalaries[i] += base; // i=1: year2, i=2: year3, i=3: year4
+              }
+            });
+
+            // --- UI ---
+            return (
+              <div className="w-full flex flex-col items-center">
+                <h2 className="text-2xl font-bold mb-6 text-white text-center">Contract Management</h2>
+                {/* --- Contract Extensions Section --- */}
+                <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg mb-10">
+                  <h3 className="text-xl font-bold text-[#FF4B1F] mb-4">Contract Extensions</h3>
+                  <div className="mb-6 text-white/80 text-base">
+                    Extend players on expiring base contracts (not entering RFA). Simulate different extension scenarios and see the impact on your cap space.
+                  </div>
+                  {/* Cap Space Table */}
+                  <div className="mb-8">
+                    <h4 className="font-semibold text-white mb-2">Simulated Cap Usage</h4>
+                    <table className="w-full text-center border border-white/10 rounded bg-white/5 mb-2">
+                      <thead>
+                        <tr>
+                          <th className="p-2 text-white/80">Year</th>
+                          <th className="p-2 text-white/80">Cap Used</th>
+                          <th className="p-2 text-white/80">Cap Space</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[0,1,2,3].map(i => (
+                          <tr key={i}>
+                            <td className="p-2">{curYear + i}</td>
+                            <td className="p-2">${yearSalaries[i].toFixed(1)}</td>
+                            <td className={`p-2 font-bold ${yearSalaries[i] > CAP ? 'text-red-400' : 'text-green-400'}`}>
+                              {(CAP - yearSalaries[i]).toFixed(1)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="text-xs text-white/60">Cap limit: ${CAP} per year</div>
+                  </div>
+                  {/* Eligible Players List */}
+                  <div>
+                    <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
+                    {eligiblePlayers.length === 0 ? (
+                      <div className="text-white/60 italic">No players eligible for extension this year.</div>
+                    ) : (
+                      <table className="w-full text-sm border border-white/10 rounded bg-white/5">
+                        <thead>
+                          <tr>
+                            <th className="p-2 text-white/80">Player</th>
+                            <th className="p-2 text-white/80">Current Salary</th>
+                            <th className="p-2 text-white/80">Extension</th>
+                            <th className="p-2 text-white/80">Simulated Years</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {eligiblePlayers.map(player => {
+                            const ext = extensionMap[player.playerId] || { years: 0, deny: false };
+                            // Calculate simulated salaries for extension
+                            let base = parseFloat(player.curYear) || 0;
+                            const simYears = [];
+                            for (let i = 1; i <= ext.years; ++i) {
+                              base = roundUp1(base * 1.10);
+                              simYears.push(`Year ${i+1}: $${base}`);
+                            }
+                            return (
+                              <tr key={player.playerId}>
+                                <td className="p-2 font-semibold text-white flex items-center gap-2">
+                                  <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
+                                  {player.playerName}
+                                </td>
+                                <td className="p-2">${parseFloat(player.curYear).toFixed(1)}</td>
+                                <td className="p-2">
+                                  <select
+                                    className="bg-white/10 text-white rounded px-2 py-1"
+                                    value={ext.deny ? 'deny' : ext.years}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setExtensionChoices(prev => ({
+                                        ...prev,
+                                        [player.playerId]: val === 'deny'
+                                          ? { years: 0, deny: true }
+                                          : { years: Number(val), deny: false }
+                                      }));
+                                    }}
+                                  >
+                                    <option value={0}>No Extension</option>
+                                    <option value={1}>1 Year</option>
+                                    <option value={2}>2 Years</option>
+                                    <option value={3}>3 Years</option>
+                                  </select>
+                                </td>
+                                <td className="p-2">
+                                  {ext.deny || !ext.years ? (
+                                    <span className="text-white/60 italic">No extension</span>
+                                  ) : (
+                                    <div className="flex flex-col items-start">
+                                      {simYears.map((s, i) => (
+                                        <span key={i}>{s}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()
         )}
       </div>
     </main>

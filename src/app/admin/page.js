@@ -128,6 +128,13 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold mb-2">Create Draft</h2>
             <p className="text-white/70">Start a new draft and manage draft settings</p>
           </Link>
+          <Link
+            href="/admin/drafts"
+            className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
+          >
+            <h2 className="text-xl font-bold mb-2">Drafts Overview</h2>
+            <p className="text-white/70">View and manage all drafts</p>
+          </Link>
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
             <h2 className="text-xl font-bold mb-2">League Settings</h2>
             <p className="text-white/70">Configure league settings (Coming Soon)</p>
