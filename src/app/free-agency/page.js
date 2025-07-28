@@ -23,10 +23,24 @@ export default function FreeAgency() {
   const [years, setYears] = useState([]);
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
-  const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
-  // Set default sort for position tables to KTC descending
+  // Default sort for all tables: KTC descending
+  const [sortConfig, setSortConfig] = useState({ key: 'ktcValue', direction: 'desc' });
   const [positionSortConfig, setPositionSortConfig] = useState({ key: 'ktcValue', direction: 'desc' });
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isMobile, setIsMobile] = useState(false);
+  const [positionPages, setPositionPages] = useState({}); // { QB: 1, RB: 1, ... }
+  const [teamPages, setTeamPages] = useState({});         // { TeamA: 1, TeamB: 1, ... }
+
+  // Detect mobile
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Fetch contract data and deduplicate by playerId, using max contractFinalYear (from all contracts)
   useEffect(() => {
@@ -242,6 +256,37 @@ export default function FreeAgency() {
     )
   }));
 
+  // Pagination logic
+  const itemsPerPage = isMobile ? 10 : 25;
+  const totalPages = Math.ceil(sortedFreeAgents.length / itemsPerPage);
+  const paginatedFreeAgents = sortedFreeAgents.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset page if year changes or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [year, sortConfig, isMobile]);
+
+  // Reset position/team pages when year, isMobile, or player data changes
+  useEffect(() => {
+    setPositionPages({});
+    setTeamPages({});
+  }, [year, isMobile, players]);
+
+  // Helper to get paginated players for a group
+  function getPaginated(players, page) {
+    const itemsPerPage = isMobile ? 10 : 25;
+    const totalPages = Math.ceil(players.length / itemsPerPage);
+    const currentPage = Math.min(page || 1, totalPages || 1);
+    return {
+      paginated: players.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+      totalPages,
+      currentPage,
+    };
+  }
+
   if (loading) return (
     <div className="min-h-screen bg-[#001A2B] flex items-center justify-center">
       <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#FF4B1F] border-t-transparent"></div>
@@ -315,93 +360,116 @@ export default function FreeAgency() {
         <section className="bg-black/40 border border-[#FF4B1F]/30 rounded-xl p-6 mb-10">
           <h2 className="text-2xl font-bold text-[#FF4B1F] mb-6">Free Agents by Position</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {faByPosition.map(({ pos, players }) => (
-              <div key={pos} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold text-white ${getPositionColor(pos)}`}>{pos}</span>
-                  <span className="font-semibold text-white">{pos} ({players.length})</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-white/80">
-                    <thead>
-                      <tr>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                          key: 'playerName',
-                          direction: prev.key === 'playerName' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                        }))}>
-                          Player {positionSortConfig.key === 'playerName' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                          key: 'team',
-                          direction: prev.key === 'team' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                        }))}>
-                          Team {positionSortConfig.key === 'team' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                          key: 'rfaEligible',
-                          direction: prev.key === 'rfaEligible' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                        }))}>
-                          RFA? {positionSortConfig.key === 'rfaEligible' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                          key: 'franchiseTagEligible',
-                          direction: prev.key === 'franchiseTagEligible' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                        }))}>
-                          Tag? {positionSortConfig.key === 'franchiseTagEligible' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                          key: 'ktcValue',
-                          direction: prev.key === 'ktcValue' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'desc'
-                        }))}>
-                          KTC {positionSortConfig.key === 'ktcValue' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {players.length === 0 && (
+            {faByPosition.map(({ pos, players }) => {
+              const { paginated, totalPages, currentPage } = getPaginated(players, positionPages[pos] || 1);
+              return (
+                <div key={pos} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold text-white ${getPositionColor(pos)}`}>{pos}</span>
+                    <span className="font-semibold text-white">{pos} ({players.length})</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-white/80">
+                      <thead>
                         <tr>
-                          <td colSpan={5} className="text-white/40 p-2">No free agents</td>
+                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
+                            key: 'playerName',
+                            direction: prev.key === 'playerName' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
+                          }))}>
+                            Player {positionSortConfig.key === 'playerName' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
+                          {/* Team column hidden on mobile */}
+                          {!isMobile && (
+                            <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
+                              key: 'team',
+                              direction: prev.key === 'team' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
+                            }))}>
+                              Team {positionSortConfig.key === 'team' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
+                            </th>
+                          )}
+                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
+                            key: 'rfaEligible',
+                            direction: prev.key === 'rfaEligible' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
+                          }))}>
+                            RFA? {positionSortConfig.key === 'rfaEligible' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
+                            key: 'franchiseTagEligible',
+                            direction: prev.key === 'franchiseTagEligible' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
+                          }))}>
+                            Tag? {positionSortConfig.key === 'franchiseTagEligible' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
+                            key: 'ktcValue',
+                            direction: prev.key === 'ktcValue' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'desc'
+                          }))}>
+                            KTC {positionSortConfig.key === 'ktcValue' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
                         </tr>
-                      )}
-                      {players.map(p => (
-                        <tr key={p.playerId + '-' + p.team}>
-                          <td className="p-2 flex items-center gap-2">
-                            <PlayerProfileCard
-                              playerId={p.playerId}
-                              contracts={[p]}
-                              imageExtension="png"
-                              className="!w-9 !h-9 min-w-[2.25rem] min-h-[2.25rem] max-w-[2.25rem] max-h-[2.25rem] rounded-full overflow-hidden shadow object-cover"
-                            />
-                            <span
-                              className="underline cursor-pointer hover:text-[#FF4B1F]"
-                              onClick={() => setSelectedPlayerId(p.playerId)}
-                            >
-                              {p.playerName}
-                            </span>
-                          </td>
-                          <td className="p-2">{p.team}</td>
-                          <td className="p-2">
-                            {String(p.rfaEligible).toLowerCase() === 'true' ? (
-                              <span className="text-green-400 font-bold">Yes</span>
-                            ) : (
-                              <span className="text-red-400">No</span>
-                            )}
-                          </td>
-                          <td className="p-2">
-                            {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
-                              <span className="text-yellow-400 font-bold">Yes</span>
-                            ) : (
-                              <span className="text-gray-400">No</span>
-                            )}
-                          </td>
-                          <td className="p-2">{p.ktcValue ?? '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {paginated.length === 0 && (
+                          <tr>
+                            <td colSpan={isMobile ? 4 : 5} className="text-white/40 p-2">No free agents</td>
+                          </tr>
+                        )}
+                        {paginated.map(p => (
+                          <tr key={p.playerId + '-' + p.team}>
+                            <td className="p-2 flex items-center gap-2">
+                              <PlayerProfileCard
+                                playerId={p.playerId}
+                                contracts={[p]}
+                                imageExtension="png"
+                                className="!w-9 !h-9 min-w-[2.25rem] min-h-[2.25rem] max-w-[2.25rem] max-h-[2.25rem] rounded-full overflow-hidden shadow object-cover"
+                              />
+                              <span
+                                className="underline cursor-pointer hover:text-[#FF4B1F]"
+                                onClick={() => setSelectedPlayerId(p.playerId)}
+                              >
+                                {p.playerName}
+                              </span>
+                            </td>
+                            {/* Team column hidden on mobile */}
+                            {!isMobile && <td className="p-2">{p.team}</td>}
+                            <td className="p-2">
+                              {String(p.rfaEligible).toLowerCase() === 'true' ? (
+                                <span className="text-green-400 font-bold">Yes</span>
+                              ) : (
+                                <span className="text-red-400">No</span>
+                              )}
+                            </td>
+                            <td className="p-2">
+                              {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
+                                <span className="text-yellow-400 font-bold">Yes</span>
+                              ) : (
+                                <span className="text-gray-400">No</span>
+                              )}
+                            </td>
+                            <td className="p-2">{p.ktcValue ?? '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Pagination Controls at the bottom */}
+                  {totalPages > 1 && (
+                    <div className="flex justify-between items-center mt-2">
+                      <button
+                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
+                        onClick={() => setPositionPages(p => ({ ...p, [pos]: Math.max(1, (p[pos] || 1) - 1) }))}
+                        disabled={currentPage === 1}
+                      >Prev</button>
+                      <span className="text-white/60 text-xs">Page {currentPage} of {totalPages}</span>
+                      <button
+                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
+                        onClick={() => setPositionPages(p => ({ ...p, [pos]: Math.min(totalPages, (p[pos] || 1) + 1) }))}
+                        disabled={currentPage === totalPages}
+                      >Next</button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
@@ -409,253 +477,350 @@ export default function FreeAgency() {
         <section className="bg-black/40 border border-white/10 rounded-xl p-6 mb-10">
           <h2 className="text-2xl font-bold text-[#FF4B1F] mb-6">Free Agents by Team</h2>
           <div className="grid md:grid-cols-2 gap-6">
-            {faByTeam.map(({ team, players }) => (
-              <div key={team} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="flex items-center gap-2 mb-2">
-                  {teamAvatars[team] ? (
-                    <img
-                      src={`https://sleepercdn.com/avatars/${teamAvatars[team]}`}
-                      alt={team}
-                      className="w-6 h-6 rounded-full"
-                    />
-                  ) : (
-                    <span className="w-6 h-6 rounded-full bg-white/10 inline-block"></span>
-                  )}
-                  <span className="font-semibold text-white">{team}</span>
-                  <span className="text-white/40 text-xs">({players.length})</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-white/80">
-                    <thead>
-                      <tr>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('playerName')}>
-                          Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('position')}>
-                          Pos {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('rfaEligible')}>
-                          RFA? {sortConfig.key === 'rfaEligible' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('franchiseTagEligible')}>
-                          Tag? {sortConfig.key === 'franchiseTagEligible' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                        <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('ktcValue')}>
-                          KTC {sortConfig.key === 'ktcValue' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {players.length === 0 && (
+            {faByTeam.map(({ team, players }) => {
+              const { paginated, totalPages, currentPage } = getPaginated(players, teamPages[team] || 1);
+              return (
+                <div key={team} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                  <div className="flex items-center gap-2 mb-2">
+                    {teamAvatars[team] ? (
+                      <img
+                        src={`https://sleepercdn.com/avatars/${teamAvatars[team]}`}
+                        alt={team}
+                        className="w-6 h-6 rounded-full"
+                      />
+                    ) : (
+                      <span className="w-6 h-6 rounded-full bg-white/10 inline-block"></span>
+                    )}
+                    <span className="font-semibold text-white">{team}</span>
+                    <span className="text-white/40 text-xs">({players.length})</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-white/80">
+                      <thead>
                         <tr>
-                          <td colSpan={5} className="text-white/40 p-2">No free agents</td>
+                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('playerName')}>
+                            Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
+                          {/* Team column hidden on mobile */}
+                          {!isMobile && (
+                            <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('position')}>
+                              Pos {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
+                            </th>
+                          )}
+                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('rfaEligible')}>
+                            RFA? {sortConfig.key === 'rfaEligible' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('franchiseTagEligible')}>
+                            Tag? {sortConfig.key === 'franchiseTagEligible' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
+                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('ktcValue')}>
+                            KTC {sortConfig.key === 'ktcValue' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
+                          </th>
                         </tr>
-                      )}
-                      {players.map(p => (
-                        <tr key={p.playerId + '-' + p.team}>
-                          <td className="p-2 flex items-center gap-2">
-                            <PlayerProfileCard
-                              playerId={p.playerId}
-                              contracts={[p]}
-                              imageExtension="png"
-                              className="!w-8 !h-8 min-w-[2rem] min-h-[2rem] max-w-[2rem] max-h-[2rem] rounded-full overflow-hidden shadow object-cover"
-                            />
-                            <span
-                              className="underline cursor-pointer hover:text-[#FF4B1F]"
-                              onClick={() => setSelectedPlayerId(p.playerId)}
-                            >
-                              {p.playerName}
-                            </span>
-                          </td>
-                          <td className="p-2">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white ${getPositionColor(p.position)}`}>{p.position}</span>
-                          </td>
-                          <td className="p-2">
-                            {String(p.rfaEligible).toLowerCase() === 'true' ? (
-                              <span className="text-green-400 font-bold">Yes</span>
-                            ) : (
-                              <span className="text-red-400">No</span>
+                      </thead>
+                      <tbody>
+                        {paginated.length === 0 && (
+                          <tr>
+                            <td colSpan={isMobile ? 4 : 5} className="text-white/40 p-2">No free agents</td>
+                          </tr>
+                        )}
+                        {paginated.map(p => (
+                          <tr key={p.playerId + '-' + p.team}>
+                            <td className="p-2 flex items-center gap-2">
+                              <PlayerProfileCard
+                                playerId={p.playerId}
+                                contracts={[p]}
+                                imageExtension="png"
+                                className="!w-8 !h-8 min-w-[2rem] min-h-[2rem] max-w-[2rem] max-h-[2rem] rounded-full overflow-hidden shadow object-cover"
+                              />
+                              <span
+                                className="underline cursor-pointer hover:text-[#FF4B1F]"
+                                onClick={() => setSelectedPlayerId(p.playerId)}
+                              >
+                                {p.playerName}
+                              </span>
+                            </td>
+                            {/* Team column hidden on mobile */}
+                            {!isMobile && (
+                              <td className="p-2">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white ${getPositionColor(p.position)}`}>{p.position}</span>
+                              </td>
                             )}
-                          </td>
-                          <td className="p-2">
-                            {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
-                              <span className="text-yellow-400 font-bold">Yes</span>
-                            ) : (
-                              <span className="text-gray-400">No</span>
-                            )}
-                          </td>
-                          <td className="p-2">{p.ktcValue ?? '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            <td className="p-2">
+                              {String(p.rfaEligible).toLowerCase() === 'true' ? (
+                                <span className="text-green-400 font-bold">Yes</span>
+                              ) : (
+                                <span className="text-red-400">No</span>
+                              )}
+                            </td>
+                            <td className="p-2">
+                              {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
+                                <span className="text-yellow-400 font-bold">Yes</span>
+                              ) : (
+                                <span className="text-gray-400">No</span>
+                              )}
+                            </td>
+                            <td className="p-2">{p.ktcValue ?? '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Pagination Controls at the bottom */}
+                  {totalPages > 1 && (
+                    <div className="flex justify-between items-center mt-2">
+                      <button
+                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
+                        onClick={() => setTeamPages(p => ({ ...p, [team]: Math.max(1, (p[team] || 1) - 1) }))}
+                        disabled={currentPage === 1}
+                      >Prev</button>
+                      <span className="text-white/60 text-xs">Page {currentPage} of {totalPages}</span>
+                      <button
+                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
+                        onClick={() => setTeamPages(p => ({ ...p, [team]: Math.min(totalPages, (p[team] || 1) + 1) }))}
+                        disabled={currentPage === totalPages}
+                      >Next</button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
         {/* Full Table */}
         <section className="bg-black/30 border border-white/10 rounded-xl p-8 mb-10">
           <h2 className="text-2xl font-bold text-[#FF4B1F] mb-4">All Free Agents ({faYear})</h2>
-          <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-black/40 border-b border-white/10">
-                  <th className="p-3"></th>
-                  <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('playerName')}>
-                    <div className="flex items-center gap-2">
-                      Player Name
-                      {sortConfig.key === 'playerName' && (
-                        <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('team')}>
-                    <div className="flex items-center gap-2">
-                      Team
-                      {sortConfig.key === 'team' && (
-                        <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('position')}>
-                    <div className="flex items-center gap-2">
-                      Pos
-                      {sortConfig.key === 'position' && (
-                        <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('age')}>
-                    <div className="flex items-center gap-2">
-                      Age
-                      {sortConfig.key === 'age' && (
-                        <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="p-3 text-center text-white cursor-pointer" onClick={() => handleSort('ktcValue')}>
-                    <div className="flex items-center gap-2">
-                      KTC
-                      {sortConfig.key === 'ktcValue' && (
-                        <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="p-3 text-center text-white cursor-pointer" onClick={() => handleSort('rfaEligible')}>
-                    <div className="flex items-center gap-2">
-                      RFA?
-                      {sortConfig.key === 'rfaEligible' && (
-                        <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="p-3 text-center text-white cursor-pointer" onClick={() => handleSort('franchiseTagEligible')}>
-                    <div className="flex items-center gap-2">
-                      Tag?
-                      {sortConfig.key === 'franchiseTagEligible' && (
-                        <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="text-white">
-                {sortedFreeAgents.map((p, idx) => (
-                  <tr
-                    key={p.playerId + '-' + p.team}
-                    className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
-                  >
-                    {/* PlayerProfileCard column */}
-                    <td className="p-3">
-                      <div className="w-8 h-8 flex-shrink-0">
-                        <PlayerProfileCard
-                          playerId={p.playerId}
-                          expanded={false}
-                          className="w-8 h-8 rounded-full overflow-hidden shadow"
-                        />
-                      </div>
-                    </td>
-                    {/* Player Name column */}
-                    <td
-                      className="p-3 font-medium text-white underline cursor-pointer hover:text-[#FF4B1F]"
+          {/* Mobile Card Layout */}
+          {isMobile ? (
+            <div className="flex flex-col gap-4">
+              {paginatedFreeAgents.map(p => (
+                <div
+                  key={p.playerId + '-' + p.team}
+                  className="bg-white/5 rounded-lg p-4 flex items-center gap-4 shadow"
+                >
+                  <PlayerProfileCard
+                    playerId={p.playerId}
+                    expanded={false}
+                    className="w-12 h-12 rounded-full overflow-hidden shadow"
+                  />
+                  <div className="flex-1">
+                    <div
+                      className="font-bold text-white underline cursor-pointer hover:text-[#FF4B1F]"
                       onClick={() => setSelectedPlayerId(p.playerId)}
                     >
                       {p.playerName}
-                    </td>
-                    {/* Team column */}
-                    <td className="p-3 flex items-center gap-2 text-white">
-                      {teamAvatars[p.team] ? (
-                        <img
-                          src={`https://sleepercdn.com/avatars/${teamAvatars[p.team]}`}
-                          alt={p.team}
-                          className="w-5 h-5 rounded-full mr-2"
-                        />
-                      ) : (
-                        <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
-                      )}
-                      {p.team}
-                    </td>
-                    {/* Position column */}
-                    <td className="p-3 text-white">
+                    </div>
+                    <div className="text-white/80 text-sm">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white ${getPositionColor(p.position)}`}>{p.position}</span>
-                    </td>
-                    {/* Age column */}
-                    <td className="p-3 text-white">{p.age}</td>
-                    {/* KTC column */}
-                    <td className="p-3 text-center text-white">{p.ktcValue ?? '-'}</td>
-                    {/* RFA? icon */}
-                    <td className="p-3 text-center">
-                      {String(p.rfaEligible).toLowerCase() === 'true' ? (
-                        <span
-                          title="This Player will enter RFA when this contract expires."
-                          className="text-yellow-400 font-bold"
-                          aria-label="RFA Eligible"
-                        >
-                          Yes
-                        </span>
-                      ) : (
-                        <span
-                          title="This player will NOT enter RFA."
-                          className="text-red-400 font-bold"
-                          aria-label="Not RFA Eligible"
-                        >
-                          No
-                        </span>
-                      )}
-                    </td>
-                    {/* Franchise Tag Eligible? icon */}
-                    <td className="p-3 text-center">
-                      {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
-                        <span
-                          title="This player is Franchise Tag eligible."
-                          className="text-yellow-400 font-bold"
-                          aria-label="Franchise Tag Eligible"
-                        >
-                          Yes
-                        </span>
-                      ) : (
-                        <span
-                          title="This player is NOT Franchise Tag eligible."
-                          className="text-gray-400 font-bold"
-                          aria-label="Not Franchise Tag Eligible"
-                        >
-                          No
-                        </span>
-                      )}
-                    </td>
+                    </div>
+                    <div className="text-white/60 text-xs mt-1">
+                      Age: {p.age} &middot; KTC: {p.ktcValue ?? '-'}
+                    </div>
+                    <div className="text-xs mt-1">
+                      <span className={String(p.rfaEligible).toLowerCase() === 'true' ? 'text-yellow-400 font-bold' : 'text-red-400 font-bold'}>
+                        RFA: {String(p.rfaEligible).toLowerCase() === 'true' ? 'Yes' : 'No'}
+                      </span>
+                      {' | '}
+                      <span className={String(p.franchiseTagEligible).toLowerCase() === 'true' ? 'text-yellow-400 font-bold' : 'text-gray-400 font-bold'}>
+                        Tag: {String(p.franchiseTagEligible).toLowerCase() === 'true' ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {paginatedFreeAgents.length === 0 && (
+                <div className="p-6 text-center text-white/60">
+                  No free agents for this year.
+                </div>
+              )}
+            </div>
+          ) : (
+            // Desktop Table Layout
+            <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-black/40 border-b border-white/10">
+                    <th className="p-3"></th>
+                    <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('playerName')}>
+                      <div className="flex items-center gap-2">
+                        Player Name
+                        {sortConfig.key === 'playerName' && (
+                          <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                    </th>
+                    {/* Team column hidden on mobile */}
+                    {!isMobile && (
+                      <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('team')}>
+                        <div className="flex items-center gap-2">
+                          Team
+                          {sortConfig.key === 'team' && (
+                            <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </div>
+                      </th>
+                    )}
+                    <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('position')}>
+                      <div className="flex items-center gap-2">
+                        Pos
+                        {sortConfig.key === 'position' && (
+                          <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="p-3 text-left text-white cursor-pointer" onClick={() => handleSort('age')}>
+                      <div className="flex items-center gap-2">
+                        Age
+                        {sortConfig.key === 'age' && (
+                          <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="p-3 text-center text-white cursor-pointer" onClick={() => handleSort('ktcValue')}>
+                      <div className="flex items-center gap-2">
+                        KTC
+                        {sortConfig.key === 'ktcValue' && (
+                          <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="p-3 text-center text-white cursor-pointer" onClick={() => handleSort('rfaEligible')}>
+                      <div className="flex items-center gap-2">
+                        RFA?
+                        {sortConfig.key === 'rfaEligible' && (
+                          <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                    </th>
+                    <th className="p-3 text-center text-white cursor-pointer" onClick={() => handleSort('franchiseTagEligible')}>
+                      <div className="flex items-center gap-2">
+                        Tag?
+                        {sortConfig.key === 'franchiseTagEligible' && (
+                          <span className="text-[#FF4B1F]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                    </th>
                   </tr>
-                ))}
-                {sortedFreeAgents.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="p-6 text-center text-white/60">
-                      No free agents for this year.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="text-white">
+                  {paginatedFreeAgents.map((p, idx) => (
+                    <tr
+                      key={p.playerId + '-' + p.team}
+                      className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                    >
+                      {/* PlayerProfileCard column */}
+                      <td className="p-3">
+                        <div className="w-8 h-8 flex-shrink-0">
+                          <PlayerProfileCard
+                            playerId={p.playerId}
+                            expanded={false}
+                            className="w-8 h-8 rounded-full overflow-hidden shadow"
+                          />
+                        </div>
+                      </td>
+                      {/* Player Name column */}
+                      <td
+                        className="p-3 font-medium text-white underline cursor-pointer hover:text-[#FF4B1F]"
+                        onClick={() => setSelectedPlayerId(p.playerId)}
+                      >
+                        {p.playerName}
+                      </td>
+                      {/* Team column hidden on mobile */}
+                      {!isMobile && (
+                        <td className="p-3 flex items-center gap-2 text-white">
+                          {teamAvatars[p.team] ? (
+                            <img
+                              src={`https://sleepercdn.com/avatars/${teamAvatars[p.team]}`}
+                              alt={p.team}
+                              className="w-5 h-5 rounded-full mr-2"
+                            />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
+                          )}
+                          {p.team}
+                        </td>
+                      )}
+                      {/* Position column */}
+                      <td className="p-3 text-white">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white ${getPositionColor(p.position)}`}>{p.position}</span>
+                      </td>
+                      {/* Age column */}
+                      <td className="p-3 text-white">{p.age}</td>
+                      {/* KTC column */}
+                      <td className="p-3 text-center text-white">{p.ktcValue ?? '-'}</td>
+                      {/* RFA? icon */}
+                      <td className="p-3 text-center">
+                        {String(p.rfaEligible).toLowerCase() === 'true' ? (
+                          <span
+                            title="This Player will enter RFA when this contract expires."
+                            className="text-yellow-400 font-bold"
+                            aria-label="RFA Eligible"
+                          >
+                            Yes
+                          </span>
+                        ) : (
+                          <span
+                            title="This player will NOT enter RFA."
+                            className="text-red-400 font-bold"
+                            aria-label="Not RFA Eligible"
+                          >
+                            No
+                          </span>
+                        )}
+                      </td>
+                      {/* Franchise Tag Eligible? icon */}
+                      <td className="p-3 text-center">
+                        {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
+                          <span
+                            title="This player is Franchise Tag eligible."
+                            className="text-yellow-400 font-bold"
+                            aria-label="Franchise Tag Eligible"
+                          >
+                            Yes
+                          </span>
+                        ) : (
+                          <span
+                            title="This player is NOT Franchise Tag eligible."
+                            className="text-gray-400 font-bold"
+                            aria-label="Not Franchise Tag Eligible"
+                          >
+                            No
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {paginatedFreeAgents.length === 0 && (
+                    <tr>
+                      <td colSpan={isMobile ? 7 : 8} className="p-6 text-center text-white/60">
+                        No free agents for this year.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {/* Pagination Controls at the bottom */}
+          <div className="flex justify-between items-center mt-4">
+            <button
+              className="px-3 py-1 rounded bg-[#FF4B1F] text-white disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              Prev
+            </button>
+            <span className="text-white/80">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="px-3 py-1 rounded bg-[#FF4B1F] text-white disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </button>
           </div>
         </section>
       </div>
