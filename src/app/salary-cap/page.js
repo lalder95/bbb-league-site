@@ -10,6 +10,8 @@ export default function SalaryCap() {
   const [isMobile, setIsMobile] = useState(false);
   const [leagueId, setLeagueId] = useState(null);
   const [teamAvatars, setTeamAvatars] = useState({});
+  const [contracts, setContracts] = useState([]);
+  const [modalInfo, setModalInfo] = useState(null);
 
   useEffect(() => {
     function handleResize() {
@@ -79,29 +81,37 @@ export default function SalaryCap() {
         // Fetch contracts data
         const contractsResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
         const contractsText = await contractsResponse.text();
-        
+
         // Fetch fines data
         const finesResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv');
         const finesText = await finesResponse.text();
         
         // Parse contracts
         const contractRows = contractsText.split('\n');
-        const contracts = contractRows.slice(1)
+        // Parse contracts (update this in your fetchData useEffect)
+        const parsedContracts = contractRows.slice(1)
           .filter(row => row.trim())
           .map(row => {
             const values = row.split(',');
             const status = values[14];
-            const isActive = status === 'Active';
-            
+            // Always parse both salary and dead columns for all years
             return {
-              team: values[33], // TeamDisplayName
-              isActive: isActive,
-              curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
-              year2: isActive ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
-              year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
-              year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
+              playerName: values[1],
+              contractType: values[2],
+              team: values[33],
+              status,
+              isActive: status === 'Active',
+              curYear: parseFloat(values[15]) || 0,
+              year2: parseFloat(values[16]) || 0,
+              year3: parseFloat(values[17]) || 0,
+              year4: parseFloat(values[18]) || 0,
+              deadCurYear: parseFloat(values[24]) || 0,
+              deadYear2: parseFloat(values[25]) || 0,
+              deadYear3: parseFloat(values[26]) || 0,
+              deadYear4: parseFloat(values[27]) || 0,
             };
           });
+        setContracts(parsedContracts);
 
         // Parse fines
         const finesRows = finesText.split('\n');
@@ -122,7 +132,7 @@ export default function SalaryCap() {
         const teamCaps = {};
         
         // Initialize team data
-        contracts.forEach(contract => {
+        parsedContracts.forEach(contract => {
           if (!teamCaps[contract.team]) {
             teamCaps[contract.team] = {
               team: contract.team,
@@ -133,19 +143,12 @@ export default function SalaryCap() {
             };
           }
           
-          // Add contract values
+          // Add contract values (always include all contracts, regardless of status)
           const capData = teamCaps[contract.team];
-          if (contract.isActive) {
-            capData.curYear.active += contract.curYear;
-            capData.year2.active += contract.year2;
-            capData.year3.active += contract.year3;
-            capData.year4.active += contract.year4;
-          } else {
-            capData.curYear.dead += contract.curYear;
-            capData.year2.dead += contract.year2;
-            capData.year3.dead += contract.year3;
-            capData.year4.dead += contract.year4;
-          }
+          capData.curYear.active += contract.curYear;
+          capData.year2.active += contract.year2;
+          capData.year3.active += contract.year3;
+          capData.year4.active += contract.year4;
         });
 
         // Add fines and calculate remaining
@@ -209,17 +212,75 @@ export default function SalaryCap() {
     return 'text-red-500';
   };
 
-  const CapSpaceCell = ({ data, isFirstRow = false }) => {
+  // Helper to open modal with player data
+  const openPlayerModal = (team, yearKey) => {
+    // Map yearKey to correct property names
+    const yearMap = {
+      curYear: { salary: 'curYear', dead: 'deadCurYear' },
+      year2: { salary: 'year2', dead: 'deadYear2' },
+      year3: { salary: 'year3', dead: 'deadYear3' },
+      year4: { salary: 'year4', dead: 'deadYear4' },
+    };
+    const { salary, dead } = yearMap[yearKey];
+
+    // Collect all contracts for this team for this year, using correct salary logic
+    const players = contracts
+      .filter(c => c.team === team)
+      .map(c => {
+        let contractSalary = 0;
+        if (c.status === "Expired") {
+          contractSalary = c[dead];
+        } else {
+          contractSalary = c[salary];
+        }
+        return {
+          playerName: c.playerName,
+          contractType: c.contractType,
+          salary: contractSalary,
+          status: c.status,
+        };
+      })
+      .filter(c => c.salary > 0)
+      .sort((a, b) => b.salary - a.salary);
+
+    // Group by status
+    const grouped = players.reduce((acc, p) => {
+      if (!acc[p.status]) acc[p.status] = [];
+      acc[p.status].push(p);
+      return acc;
+    }, {});
+
+    // Sort groups: Active, Future, Expired, Cut, etc.
+    const statusOrder = ["Active", "Future", "Expired", "Cut"];
+    const orderedGroups = Object.keys(grouped)
+      .sort((a, b) => {
+        const ai = statusOrder.indexOf(a);
+        const bi = statusOrder.indexOf(b);
+        if (ai === -1 && bi === -1) return a.localeCompare(b);
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      })
+      .map(status => ({ status, players: grouped[status] }));
+
+    setModalInfo({ team, yearKey, groups: orderedGroups });
+  };
+
+  // Helper to close modal
+  const closeModal = () => setModalInfo(null);
+
+  // Update CapSpaceCell to accept onClick
+  const CapSpaceCell = ({ data, isFirstRow = false, onClick }) => {
     const [showTooltip, setShowTooltip] = useState(false);
 
     return (
       <td 
-        className={`p-3 relative ${getCapSpaceColor(data.remaining)}`}
+        className={`p-3 relative ${getCapSpaceColor(data.remaining)} cursor-pointer`}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        onClick={onClick}
       >
         {formatCapSpace(data.remaining)}
-        
         {showTooltip && (
           <div className={`absolute z-50 bg-gray-900 text-white p-3 rounded shadow-lg ${
             isFirstRow ? 'mt-2' : '-mt-32'
@@ -266,11 +327,26 @@ export default function SalaryCap() {
             <thead>
               <tr className="bg-black/40 border-b border-white/10">
                 {[
-                  { key: 'team', label: 'Team' },
-                  { key: 'curYear', label: 'Cur Year Cap Space' },
-                  { key: 'year2', label: 'Year 2 Cap Space' },
-                  { key: 'year3', label: 'Year 3 Cap Space' },
-                  { key: 'year4', label: 'Year 4 Cap Space' },
+                  {
+                    key: 'team',
+                    label: 'Team'
+                  },
+                  {
+                    key: 'curYear',
+                    label: 'Cur Year Cap Space'
+                  },
+                  {
+                    key: 'year2',
+                    label: 'Year 2 Cap Space'
+                  },
+                  {
+                    key: 'year3',
+                    label: 'Year 3 Cap Space'
+                  },
+                  {
+                    key: 'year4',
+                    label: 'Year 4 Cap Space'
+                  },
                 ].map(({ key, label }) => (
                   <th 
                     key={key}
@@ -307,16 +383,99 @@ export default function SalaryCap() {
                     )}
                     {team.team}
                   </td>
-                  <CapSpaceCell data={team.curYear} isFirstRow={index === 0} />
-                  <CapSpaceCell data={team.year2} isFirstRow={index === 0} />
-                  <CapSpaceCell data={team.year3} isFirstRow={index === 0} />
-                  <CapSpaceCell data={team.year4} isFirstRow={index === 0} />
+                  <CapSpaceCell 
+                    data={team.curYear} 
+                    isFirstRow={index === 0}
+                    onClick={() => openPlayerModal(team.team, 'curYear')}
+                  />
+                  <CapSpaceCell 
+                    data={team.year2} 
+                    isFirstRow={index === 0}
+                    onClick={() => openPlayerModal(team.team, 'year2')}
+                  />
+                  <CapSpaceCell 
+                    data={team.year3} 
+                    isFirstRow={index === 0}
+                    onClick={() => openPlayerModal(team.team, 'year3')}
+                  />
+                  <CapSpaceCell 
+                    data={team.year4} 
+                    isFirstRow={index === 0}
+                    onClick={() => openPlayerModal(team.team, 'year4')}
+                  />
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Modal for player contracts */}
+      {modalInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div
+            className="bg-[#1a2233] rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-[90vh] overflow-y-auto"
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              className="absolute top-2 right-2 text-white hover:text-[#FF4B1F] text-2xl font-bold focus:outline-none"
+              onClick={closeModal}
+              aria-label="Close"
+              tabIndex={0}
+            >×</button>
+            <h2 className="text-xl font-bold mb-2 text-[#FF4B1F]">
+              {modalInfo.team} – {(() => {
+                switch (modalInfo.yearKey) {
+                  case 'curYear': return 'Current Year';
+                  case 'year2': return 'Year 2';
+                  case 'year3': return 'Year 3';
+                  case 'year4': return 'Year 4';
+                  default: return '';
+                }
+              })()} Contracts
+            </h2>
+            {(!modalInfo.groups || modalInfo.groups.length === 0) ? (
+              <div className="text-gray-300">No players under contract for this season.</div>
+            ) : (
+              modalInfo.groups.map(group => (
+                <div key={group.status} className="mb-4">
+                  <div className="font-semibold text-lg text-white mb-1">{group.status}</div>
+                  <table className="w-full text-sm mb-2">
+                    <thead>
+                      <tr>
+                        <th className="text-left pb-1">Player</th>
+                        <th className="text-left pb-1">Type</th>
+                        <th className="text-right pb-1">Salary</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.players.map((p, i) => (
+                        <tr key={i}>
+                          <td className={(p.status === "Active" || p.status === "Future") ? "text-green-300" : "text-red-300"}>
+                            {p.playerName}
+                          </td>
+                          <td>{p.contractType}</td>
+                          <td className="text-right">{formatCapSpace(p.salary)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))
+            )}
+            <div className="flex justify-end mt-4">
+              <button
+                className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-[#ff6a3c] font-semibold"
+                onClick={closeModal}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
