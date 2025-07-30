@@ -154,3 +154,7 @@ select, option {
   color: #111 !important;         /* dark text */
   background: #fff !important;    /* white background */
 }
+
+.responsive-table {
+  -webkit-overflow-scrolling: touch;
+}

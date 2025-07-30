@@ -1,22 +1,16 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession, signIn } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { formatInTimeZone } from 'date-fns-tz';
 
 const USER_ID = '456973480269705216';
 
 // Always get "now" in Chicago time for comparisons
 function getChicagoNow() {
-  // Get the current UTC time and format it as Chicago time
-  // This returns a Date object with the same wall-clock time as Chicago
   const now = new Date();
-  // Get Chicago offset in minutes
-  const offsetMinutes = -now.getTimezoneOffset();
-  // Get Chicago offset in hours (Central Time is UTC-6 or UTC-5 for DST)
-  // We'll use formatInTimeZone to get the correct wall time
   const chicagoString = formatInTimeZone(now, 'America/Chicago', 'yyyy-MM-dd HH:mm:ss');
-  // Parse back to Date object in Chicago wall time
   const [datePart, timePart] = chicagoString.split(' ');
   const [year, month, day] = datePart.split('-');
   const [hour, minute, second] = timePart.split(':');
@@ -42,16 +36,49 @@ function getCapSpaceColor(value) {
 }
 
 function getPlayerStartTime(draftStartDate, startDelay) {
-  // Always treat draftStartDate as Chicago time
   const start = new Date(draftStartDate);
   start.setHours(start.getHours() + Number(startDelay || 0));
   return start;
 }
 
-function getPlayerEndTime(draftStartDate, startDelay, nomDuration) {
+// Updated: Accept highBid, bidLog, and apply 1% per $1 reduction, capped at 90%
+// End date is at least 24 hours after the most recent bid for this player
+function getPlayerEndTime(draftStartDate, startDelay, nomDuration, highBid = 0, bidLog = [], playerId) {
   const start = getPlayerStartTime(draftStartDate, startDelay);
-  start.setMinutes(start.getMinutes() + Number(nomDuration || 0));
-  return start;
+  const reductionPercent = Math.min(Number(highBid) * 0.0138, 0.95);
+  const effectiveDuration = Number(nomDuration || 0) * (1 - reductionPercent);
+  const calculatedEnd = new Date(start);
+  calculatedEnd.setMinutes(calculatedEnd.getMinutes() + effectiveDuration);
+
+  // Find the most recent bid for this player
+  const playerBids = (bidLog || []).filter(b => String(b.playerId) === String(playerId));
+  let latestBidTime = null;
+  if (playerBids.length > 0) {
+    latestBidTime = new Date(
+      playerBids.reduce((latest, b) => 
+        !latest || new Date(b.timestamp) > new Date(latest) ? b.timestamp : latest
+      , null)
+    );
+  }
+
+  // 24 hours after the most recent bid
+  let minEnd = null;
+  if (latestBidTime) {
+    minEnd = new Date(latestBidTime);
+    minEnd.setHours(minEnd.getHours() + 24);
+  }
+
+  // The end time is the later of calculatedEnd and minEnd
+  if (minEnd && minEnd > calculatedEnd) {
+    return minEnd;
+  }
+  return calculatedEnd;
+}
+
+// Helper to check if current user is in draft users
+function isUserInDraft(session, draft) {
+  if (!session?.user?.name || !Array.isArray(draft?.users)) return false;
+  return draft.users.some(u => u.username === session.user.name);
 }
 
 export default function FreeAgentAuctionPage() {
@@ -68,11 +95,22 @@ export default function FreeAgentAuctionPage() {
   const [playerCountdowns, setPlayerCountdowns] = useState({});
   const [capTeams, setCapTeams] = useState([]);
   const [teamAvatars, setTeamAvatars] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: 'highBid', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'countdown', direction: 'asc' });
   const [filterPosition, setFilterPosition] = useState('ALL');
   const [searchName, setSearchName] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
   const initialLoadDone = useRef(false);
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (!draft || !draft.players) return;
@@ -80,35 +118,27 @@ export default function FreeAgentAuctionPage() {
       const now = getChicagoNow();
       const countdowns = {};
       draft.players.forEach(p => {
+        const result = draft.results?.find(r => r.playerId === p.playerId);
+        const highBid = result ? Number(result.highBid) : 0;
         const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
-        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration);
-        if (now < playerStartTime) {
-          const diff = playerStartTime - now;
-          if (diff <= 0) {
-            countdowns[p.playerId] = '';
-          } else {
-            const hours = Math.floor(diff / (1000 * 60 * 60));
-            const minutes = Math.floor((diff / (1000 * 60)) % 60);
-            const seconds = Math.floor((diff / 1000) % 60);
-            countdowns[p.playerId] = (
-              <span className="text-green-400 font-mono">{`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`}</span>
-            );
-          }
-        } else if (now >= playerStartTime && now < playerEndTime) {
-          const diff = playerEndTime - now;
-          if (diff <= 0) {
-            countdowns[p.playerId] = '';
-          } else {
-            const hours = Math.floor(diff / (1000 * 60 * 60));
-            const minutes = Math.floor((diff / (1000 * 60)) % 60);
-            const seconds = Math.floor((diff / 1000) % 60);
-            countdowns[p.playerId] = (
-              <span className="text-red-400 font-mono">{`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`}</span>
-            );
-          }
-        } else {
-          countdowns[p.playerId] = '';
-        }
+        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, highBid, draft.bidLog, p.playerId);
+        let group = 'Ended';
+        if (now < playerStartTime) group = 'Upcoming';
+        else if (now >= playerStartTime && now < playerEndTime) group = 'Active';
+
+        let colorClass = '';
+        if (group === 'Active') colorClass = 'text-green-400';
+        else if (group === 'Upcoming') colorClass = 'text-blue-400';
+        else colorClass = 'text-gray-400';
+
+        let diff = 0;
+        if (group === 'Upcoming') diff = playerStartTime - now;
+        else if (group === 'Active') diff = playerEndTime - now;
+
+        countdowns[p.playerId] =
+          diff > 0
+            ? <span className={`${colorClass} font-mono`}>{formatCountdown(diff)}</span>
+            : '';
       });
       setPlayerCountdowns(countdowns);
     }, 1000);
@@ -157,20 +187,18 @@ export default function FreeAgentAuctionPage() {
         setCountdown('Auction Started!');
         clearInterval(interval);
       } else {
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff / (1000 * 60)) % 60);
-        const seconds = Math.floor((diff / 1000) % 60);
-        setCountdown(
-          `${hours.toString().padStart(2, '0')}:` +
-          `${minutes.toString().padStart(2, '0')}:` +
-          `${seconds.toString().padStart(2, '0')}`
-        );
+        setCountdown(formatCountdown(diff));
       }
     }, 1000);
     return () => clearInterval(interval);
   }, [draft?.startDate]);
 
   const handleBid = async () => {
+    if (!isUserInDraft(session, draft)) {
+      setError('You are not eligible to bid in this auction.');
+      return;
+    }
+
     if (
       !selectedPlayer ||
       !bidAmount ||
@@ -178,6 +206,11 @@ export default function FreeAgentAuctionPage() {
       !Number.isInteger(Number(bidAmount))
     ) {
       setError('Bid must be a whole number.');
+      return;
+    }
+
+    if (Number(bidAmount) > 120) {
+      setError('Maximum bid allowed is $120.');
       return;
     }
 
@@ -218,15 +251,24 @@ export default function FreeAgentAuctionPage() {
         expiration: '',
       };
 
+      const newBid = {
+        playerId: selectedPlayer.playerId,
+        team: session?.user?.name || 'Unknown',
+        amount: Number(bidAmount),
+        timestamp: new Date().toISOString()
+      };
+
       const updatedResults = [
         ...latestDraft.results.filter(r => r.playerId !== selectedPlayer.playerId),
         newResult,
       ];
 
+      const updatedBidLog = [...(latestDraft.bidLog || []), newBid];
+
       const patchRes = await fetch(`/api/admin/drafts/${latestDraft._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ results: updatedResults }),
+        body: JSON.stringify({ results: updatedResults, bidLog: updatedBidLog }),
       });
 
       if (!patchRes.ok) throw new Error(await patchRes.text());
@@ -404,6 +446,38 @@ export default function FreeAgentAuctionPage() {
         aValue = draft.results?.find(r => r.playerId === a.playerId)?.username ?? '';
         bValue = draft.results?.find(r => r.playerId === b.playerId)?.username ?? '';
       }
+      // Add sorting for startDate, endDate, countdown
+      if (sortConfig.key === 'startDate') {
+        aValue = getPlayerStartTime(draft.startDate, a.startDelay);
+        bValue = getPlayerStartTime(draft.startDate, b.startDelay);
+      }
+      if (sortConfig.key === 'endDate') {
+        const aHighBid = draft.results?.find(r => r.playerId === a.playerId)?.highBid ?? 0;
+        const bHighBid = draft.results?.find(r => r.playerId === b.playerId)?.highBid ?? 0;
+        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aHighBid, draft.bidLog, a.playerId);
+        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bHighBid, draft.bidLog, b.playerId);
+      }
+      if (sortConfig.key === 'countdown') {
+        // Sort by time left until end (smaller = sooner)
+        const now = getChicagoNow();
+        const aHighBid = draft.results?.find(r => r.playerId === a.playerId)?.highBid ?? 0;
+        const bHighBid = draft.results?.find(r => r.playerId === b.playerId)?.highBid ?? 0;
+        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aHighBid, draft.bidLog, a.playerId);
+        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bHighBid, draft.bidLog, b.playerId);
+        aValue = aEnd - now;
+        bValue = bEnd - now;
+      }
+      // Fix: KTC should be sorted as a number
+      if (sortConfig.key === 'ktc') {
+        aValue = Number(a.ktc) || 0;
+        bValue = Number(b.ktc) || 0;
+      }
+
+      // For dates, compare as numbers
+      if (aValue instanceof Date && bValue instanceof Date) {
+        aValue = aValue.getTime();
+        bValue = bValue.getTime();
+      }
 
       if (typeof aValue === 'string') aValue = aValue.toLowerCase();
       if (typeof bValue === 'string') bValue = bValue.toLowerCase();
@@ -413,7 +487,7 @@ export default function FreeAgentAuctionPage() {
       return 0;
     });
     return playersCopy;
-  }, [filteredPlayers, draft?.results, sortConfig]);
+  }, [filteredPlayers, draft?.results, sortConfig, draft?.startDate, draft?.nomDuration, draft?.bidLog]);
 
   // Chicago time grouping
   const groupedPlayers = React.useMemo(() => {
@@ -421,14 +495,24 @@ export default function FreeAgentAuctionPage() {
     const now = getChicagoNow();
     const groups = { Active: [], Upcoming: [], Ended: [] };
     sortedPlayers.forEach(p => {
+      const result = draft.results?.find(r => r.playerId === p.playerId);
+      const highBid = result ? Number(result.highBid) : 0;
       const start = getPlayerStartTime(draft.startDate, p.startDelay);
-      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration);
-      if (now < start) groups.Upcoming.push(p);
-      else if (now >= start && now < end) groups.Active.push(p);
-      else groups.Ended.push(p);
+      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, highBid, draft.bidLog, p.playerId);
+
+      // If start or end is invalid, treat as Ended
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        groups.Ended.push(p);
+      } else if (now < start) {
+        groups.Upcoming.push(p);
+      } else if (now >= start && now < end) {
+        groups.Active.push(p);
+      } else {
+        groups.Ended.push(p);
+      }
     });
     return groups;
-  }, [sortedPlayers, draft?.startDate, draft?.nomDuration]);
+  }, [sortedPlayers, draft?.startDate, draft?.nomDuration, draft?.results, draft?.bidLog]);
 
   function handleSort(key) {
     setSortConfig(prev => {
@@ -437,6 +521,250 @@ export default function FreeAgentAuctionPage() {
       }
       return { key, direction: 'asc' };
     });
+  }
+
+  function renderPlayerRow(p, group) {
+    const result = draft.results?.find(r => r.playerId === p.playerId);
+    const highBid = result ? Number(result.highBid) : 0;
+    const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
+    const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, highBid, draft.bidLog, p.playerId);
+    const now = getChicagoNow();
+    const canBid =
+      now > playerStartTime &&
+      now < playerEndTime &&
+      (countdown === 'Auction Started!' || countdown === '') &&
+      isUserInDraft(session, draft); // <-- Add this check
+
+    const isUserHighBidder =
+      result && session?.user?.name &&
+      result.username === session.user.name;
+
+    return (
+      <tr
+        key={p.playerId}
+        className={`${
+          isUserHighBidder
+            ? 'bg-yellow-400/20'
+            : group === 'Active'
+            ? 'bg-green-900/10'
+            : group === 'Upcoming'
+            ? 'bg-blue-900/10'
+            : 'bg-gray-800/10'
+        } hover:opacity-90`}
+      >
+        <td className="py-2 px-3 font-extrabold text-[#FFB800] text-base">
+          {result ? `$${result.highBid}` : '-'}
+        </td>
+        <td className="py-2 px-3">{p.playerName}</td>
+        <td className="py-2 px-3">{p.position}</td>
+        <td className="py-2 px-3">{p.ktc ?? '-'}</td>
+        <td className="py-2 px-3">
+          {result ? result.username : '-'}
+        </td>
+        <td className="py-2 px-3">
+          <span
+            className="cursor-help"
+            title={
+              `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
+              `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+            }
+          >
+            {playerCountdowns[p.playerId] ?? ''}
+          </span>
+        </td>
+        <td className="py-2 px-3 flex gap-2">
+          {canBid && (
+            <button
+              className="px-2 py-1 bg-blue-600 rounded text-white hover:bg-blue-700"
+              onClick={() => setSelectedPlayer(p)}
+            >
+              Bid
+            </button>
+          )}
+          {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === p.playerId) && (
+            <>
+              <button
+                className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
+                title="Reset Bid"
+                onClick={() => setResetConfirmId(p.playerId)}
+              >
+                Reset
+              </button>
+              {resetConfirmId === p.playerId && (
+                <div className="absolute z-10 mt-2 bg-black border border-red-700 rounded p-3 text-sm text-red-200 shadow-lg">
+                  <div>Are you sure you want to reset this player's bid?</div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
+                      onClick={async () => {
+                        const updatedResults = draft.results.filter(r => r.playerId !== p.playerId);
+                        await fetch(`/api/admin/drafts/${draft._id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ results: updatedResults, bidLog: draft.bidLog }),
+                        });
+                        setResetConfirmId(null);
+                        await fetchDraft();
+                      }}
+                    >
+                      Yes, Reset
+                    </button>
+                    <button
+                      className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
+                      onClick={() => setResetConfirmId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </td>
+      </tr>
+    );
+  }
+
+  function PlayerCard({ player, group, draft, playerCountdowns, session, setSelectedPlayer, setResetConfirmId, resetConfirmId, fetchDraft, countdown }) {
+    const result = draft.results?.find(r => r.playerId === player.playerId);
+    const highBid = result ? Number(result.highBid) : 0;
+    const playerStartTime = getPlayerStartTime(draft.startDate, player.startDelay);
+    const playerEndTime = getPlayerEndTime(draft.startDate, player.startDelay, draft.nomDuration, highBid, draft.bidLog, player.playerId);
+    const now = getChicagoNow();
+    const canBid =
+      now > playerStartTime &&
+      now < playerEndTime &&
+      (countdown === 'Auction Started!' || countdown === '') &&
+      isUserInDraft(session, draft); // <-- Add this check
+
+    const isUserHighBidder =
+      result && session?.user?.name &&
+      result.username === session.user.name;
+
+    // Card background color logic
+    let cardBg = '';
+    if (isUserHighBidder) {
+      cardBg = 'bg-yellow-400/20';
+    } else if (group === 'Active') {
+      cardBg = 'bg-green-900/10';
+    } else if (group === 'Upcoming') {
+      cardBg = 'bg-blue-900/10';
+    } else {
+      cardBg = 'bg-gray-800/10';
+    }
+
+    return (
+      <div
+        key={player.playerId}
+        className={`relative rounded-lg shadow p-4 border-l-4 flex flex-col gap-2 ${cardBg} ${
+          group === 'Active'
+            ? 'border-green-400'
+            : group === 'Upcoming'
+            ? 'border-blue-400'
+            : 'border-gray-400'
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <span className="font-bold text-lg">{player.playerName}</span>
+          <span className="text-xs px-2 py-1 rounded bg-[#222] text-[#FF4B1F]">{player.position}</span>
+        </div>
+        <div className="flex flex-wrap gap-2 text-sm items-center">
+          <div>KTC: <span className="font-mono">{player.ktc ?? '-'}</span></div>
+          <div>Bidder: <span className="font-mono">{result?.username ?? '-'}</span></div>
+        </div>
+        <div className="mb-2">
+          <span
+            className="cursor-help"
+            title={
+              `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
+              `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+            }
+          >
+            {playerCountdowns[player.playerId] ?? ''}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          {canBid && (
+            <button
+              className="px-3 py-1 bg-blue-600 rounded text-white hover:bg-blue-700 text-xs"
+              onClick={() => setSelectedPlayer(player)}
+            >
+              Bid
+            </button>
+          )}
+          {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === player.playerId) && (
+            <>
+              <button
+                className="px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
+                title="Reset Bid"
+                onClick={() => setResetConfirmId(player.playerId)}
+              >
+                Reset
+              </button>
+              {resetConfirmId === player.playerId && (
+                <div className="mt-2 bg-black border border-red-700 rounded p-2 text-xs text-red-200 shadow-lg">
+                  <div>Reset this player's bid?</div>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
+                      onClick={async () => {
+                        const updatedResults = draft.results.filter(r => r.playerId !== player.playerId);
+                        await fetch(`/api/admin/drafts/${draft._id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ results: updatedResults, bidLog: draft.bidLog }),
+                        });
+                        setResetConfirmId(null);
+                        await fetchDraft();
+                      }}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
+                      onClick={() => setResetConfirmId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        {/* High Bid in bottom-right */}
+        <div className="absolute bottom-4 right-4 flex flex-col items-end">
+          <span className="uppercase text-xs text-white/60">High Bid</span>
+          <span className="font-mono font-extrabold text-2xl text-[#FFB800]">
+            {result?.highBid ? `$${result.highBid}` : '-'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  function formatCountdown(ms) {
+    if (ms <= 0) return '';
+    const totalSeconds = Math.floor(ms / 1000);
+    const days = Math.floor(totalSeconds / (60 * 60 * 24));
+    const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const timeStr = `${hours.toString().padStart(2, '0')}:` +
+      `${minutes.toString().padStart(2, '0')}:` +
+      `${seconds.toString().padStart(2, '0')}`;
+    return days > 0 ? `${days} Days ${timeStr}` : timeStr;
+  }
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  // Optionally, show nothing while loading session
+  if (status === 'loading') {
+    return null;
   }
 
   if (loading) {
@@ -530,391 +858,177 @@ export default function FreeAgentAuctionPage() {
                 </select>
               </div>
             </div>
-            <div className="overflow-x-auto max-h-96 border border-white/10 rounded bg-white/5">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-[#FF4B1F]/20 text-white/90">
-                    <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('playerName')}>
-                      Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('position')}>
-                      Position {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('ktc')}>
-                      KTC {sortConfig.key === 'ktc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('highBid')}>
-                      High Bid {sortConfig.key === 'highBid' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('highBidder')}>
-                      High Bidder {sortConfig.key === 'highBidder' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                    </th>
-                    <th className="py-2 px-3 text-left">Start Date</th>
-                    <th className="py-2 px-3 text-left">End Date</th>
-                    <th className="py-2 px-3 text-left">Countdown</th>
-                    <th className="py-2 px-3 text-left"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Active */}
-                  {groupedPlayers.Active.length > 0 && (
-                    <>
-                      <tr>
-                        <td colSpan="9" className="bg-green-900/40 text-green-300 font-bold px-3 py-2">Active</td>
-                      </tr>
-                      {groupedPlayers.Active.map(p => {
-                        const result = draft.results?.find(r => r.playerId === p.playerId);
-                        const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
-                        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration);
-                        const now = getChicagoNow();
-                        const canBid =
-                          now > playerStartTime &&
-                          now < playerEndTime &&
-                          (countdown === 'Auction Started!' || countdown === '');
-
-                        const isUserHighBidder =
-                          result && session?.user?.name &&
-                          result.username === session.user.name;
-
-                        return (
-                          <tr
-                            key={p.playerId}
-                            className={`hover:bg-black/20 ${isUserHighBidder ? 'bg-[#FF4B1F]/40' : ''}`}
-                          >
-                            <td className="py-2 px-3">{p.playerName}</td>
-                            <td className="py-2 px-3">{p.position}</td>
-                            <td className="py-2 px-3">{p.ktc ?? '-'}</td>
-                            <td className="py-2 px-3">
-                              {result ? `$${result.highBid}` : '-'}
-                            </td>
-                            <td className="py-2 px-3">
-                              {result ? result.username : '-'}
-                            </td>
-                            <td className="py-2 px-3">
-                              {isNaN(playerStartTime.getTime())
-                                ? '-'
-                                : formatInTimeZone(playerStartTime, 'America/Chicago', 'yyyy-MM-dd h:mm aaaa')}
-                            </td>
-                            <td className="py-2 px-3">
-                              {isNaN(playerEndTime.getTime())
-                                ? '-'
-                                : formatInTimeZone(playerEndTime, 'America/Chicago', 'yyyy-MM-dd h:mm aaaa')}
-                            </td>
-                            <td className="py-2 px-3">{playerCountdowns[p.playerId] ?? ''}</td>
-                            <td className="py-2 px-3 flex gap-2">
-                              {canBid && (
-                                <button
-                                  className="px-2 py-1 bg-blue-600 rounded text-white hover:bg-blue-700"
-                                  onClick={() => setSelectedPlayer(p)}
-                                >
-                                  Bid
-                                </button>
-                              )}
-                              {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === p.playerId) && (
-                                <>
-                                  <button
-                                    className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                                    title="Reset Bid"
-                                    onClick={() => setResetConfirmId(p.playerId)}
-                                  >
-                                    Reset
-                                  </button>
-                                  {resetConfirmId === p.playerId && (
-                                    <div className="absolute z-10 mt-2 bg-black border border-red-700 rounded p-3 text-sm text-red-200 shadow-lg">
-                                      <div>Are you sure you want to reset this player's bid?</div>
-                                      <div className="flex gap-2 mt-2">
-                                        <button
-                                          className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                                          onClick={async () => {
-                                            const updatedResults = draft.results.filter(r => r.playerId !== p.playerId);
-                                            await fetch(`/api/admin/drafts/${draft._id}`, {
-                                              method: 'PATCH',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({ results: updatedResults }),
-                                            });
-                                            setResetConfirmId(null);
-                                            await fetchDraft();
-                                          }}
-                                        >
-                                          Yes, Reset
-                                        </button>
-                                        <button
-                                          className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                                          onClick={() => setResetConfirmId(null)}
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </>
-                  )}
-                  {/* Upcoming */}
-                  {groupedPlayers.Upcoming.length > 0 && (
-                    <>
-                      <tr>
-                        <td colSpan="9" className="bg-blue-900/40 text-blue-300 font-bold px-3 py-2">Upcoming</td>
-                      </tr>
-                      {groupedPlayers.Upcoming.map(p => {
-                        const result = draft.results?.find(r => r.playerId === p.playerId);
-                        const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
-                        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration);
-                        const now = getChicagoNow();
-                        const canBid =
-                          now > playerStartTime &&
-                          now < playerEndTime &&
-                          (countdown === 'Auction Started!' || countdown === '');
-
-                        const isUserHighBidder =
-                          result && session?.user?.name &&
-                          result.username === session.user.name;
-
-                        return (
-                          <tr
-                            key={p.playerId}
-                            className={`hover:bg-black/20 ${isUserHighBidder ? 'bg-[#FF4B1F]/40' : ''}`}
-                          >
-                            <td className="py-2 px-3">{p.playerName}</td>
-                            <td className="py-2 px-3">{p.position}</td>
-                            <td className="py-2 px-3">{p.ktc ?? '-'}</td>
-                            <td className="py-2 px-3">
-                              {result ? `$${result.highBid}` : '-'}
-                            </td>
-                            <td className="py-2 px-3">
-                              {result ? result.username : '-'}
-                            </td>
-                            <td className="py-2 px-3">
-                              {isNaN(playerStartTime.getTime())
-                                ? '-'
-                                : formatInTimeZone(playerStartTime, 'America/Chicago', 'yyyy-MM-dd h:mm aaaa')}
-                            </td>
-                            <td className="py-2 px-3">
-                              {isNaN(playerEndTime.getTime())
-                                ? '-'
-                                : formatInTimeZone(playerEndTime, 'America/Chicago', 'yyyy-MM-dd h:mm aaaa')}
-                            </td>
-                            <td className="py-2 px-3">{playerCountdowns[p.playerId] ?? ''}</td>
-                            <td className="py-2 px-3 flex gap-2">
-                              {canBid && (
-                                <button
-                                  className="px-2 py-1 bg-blue-600 rounded text-white hover:bg-blue-700"
-                                  onClick={() => setSelectedPlayer(p)}
-                                >
-                                  Bid
-                                </button>
-                              )}
-                              {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === p.playerId) && (
-                                <>
-                                  <button
-                                    className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                                    title="Reset Bid"
-                                    onClick={() => setResetConfirmId(p.playerId)}
-                                  >
-                                    Reset
-                                  </button>
-                                  {resetConfirmId === p.playerId && (
-                                    <div className="absolute z-10 mt-2 bg-black border border-red-700 rounded p-3 text-sm text-red-200 shadow-lg">
-                                      <div>Are you sure you want to reset this player's bid?</div>
-                                      <div className="flex gap-2 mt-2">
-                                        <button
-                                          className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                                          onClick={async () => {
-                                            const updatedResults = draft.results.filter(r => r.playerId !== p.playerId);
-                                            await fetch(`/api/admin/drafts/${draft._id}`, {
-                                              method: 'PATCH',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({ results: updatedResults }),
-                                            });
-                                            setResetConfirmId(null);
-                                            await fetchDraft();
-                                          }}
-                                        >
-                                          Yes, Reset
-                                        </button>
-                                        <button
-                                          className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                                          onClick={() => setResetConfirmId(null)}
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </>
-                  )}
-                  {/* Ended */}
-                  {groupedPlayers.Ended.length > 0 && (
-                    <>
-                      <tr>
-                        <td colSpan="9" className="bg-gray-900/40 text-gray-300 font-bold px-3 py-2">Final</td>
-                      </tr>
-                      {groupedPlayers.Ended.map(p => {
-                        const result = draft.results?.find(r => r.playerId === p.playerId);
-                        const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
-                        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration);
-                        const now = getChicagoNow();
-                        const canBid =
-                          now > playerStartTime &&
-                          now < playerEndTime &&
-                          (countdown === 'Auction Started!' || countdown === '');
-
-                        const isUserHighBidder =
-                          result && session?.user?.name &&
-                          result.username === session.user.name;
-
-                        return (
-                          <tr
-                            key={p.playerId}
-                            className={`hover:bg-black/20 ${isUserHighBidder ? 'bg-[#FF4B1F]/40' : ''}`}
-                          >
-                            <td className="py-2 px-3">{p.playerName}</td>
-                            <td className="py-2 px-3">{p.position}</td>
-                            <td className="py-2 px-3">{p.ktc ?? '-'}</td>
-                            <td className="py-2 px-3">
-                              {result ? `$${result.highBid}` : '-'}
-                            </td>
-                            <td className="py-2 px-3">
-                              {result ? result.username : '-'}
-                            </td>
-                            <td className="py-2 px-3">
-                              {isNaN(playerStartTime.getTime())
-                                ? '-'
-                                : formatInTimeZone(playerStartTime, 'America/Chicago', 'yyyy-MM-dd h:mm aaaa')}
-                            </td>
-                            <td className="py-2 px-3">
-                              {isNaN(playerEndTime.getTime())
-                                ? '-'
-                                : formatInTimeZone(playerEndTime, 'America/Chicago', 'yyyy-MM-dd h:mm aaaa')}
-                            </td>
-                            <td className="py-2 px-3">{playerCountdowns[p.playerId] ?? ''}</td>
-                            <td className="py-2 px-3 flex gap-2">
-                              {canBid && (
-                                <button
-                                  className="px-2 py-1 bg-blue-600 rounded text-white hover:bg-blue-700"
-                                  onClick={() => setSelectedPlayer(p)}
-                                >
-                                  Bid
-                                </button>
-                              )}
-                              {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === p.playerId) && (
-                                <>
-                                  <button
-                                    className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                                    title="Reset Bid"
-                                    onClick={() => setResetConfirmId(p.playerId)}
-                                  >
-                                    Reset
-                                  </button>
-                                  {resetConfirmId === p.playerId && (
-                                    <div className="absolute z-10 mt-2 bg-black border border-red-700 rounded p-3 text-sm text-red-200 shadow-lg">
-                                      <div>Are you sure you want to reset this player's bid?</div>
-                                      <div className="flex gap-2 mt-2">
-                                        <button
-                                          className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                                          onClick={async () => {
-                                            const updatedResults = draft.results.filter(r => r.playerId !== p.playerId);
-                                            await fetch(`/api/admin/drafts/${draft._id}`, {
-                                              method: 'PATCH',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({ results: updatedResults }),
-                                            });
-                                            setResetConfirmId(null);
-                                            await fetchDraft();
-                                          }}
-                                        >
-                                          Yes, Reset
-                                        </button>
-                                        <button
-                                          className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                                          onClick={() => setResetConfirmId(null)}
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {/* Mobile Card List */}
+            {isMobile ? (
+              <div className="flex flex-col gap-4 p-2">
+                {['Active', 'Upcoming', 'Ended'].map(group => (
+                  groupedPlayers[group].length > 0 && (
+                    <React.Fragment key={group}>
+                      <div
+                        className={`font-bold px-2 py-1 mb-2 rounded border-l-8 ${
+                          group === 'Active'
+                            ? 'bg-green-900/80 text-green-200 border-green-400'
+                            : group === 'Upcoming'
+                            ? 'bg-blue-900/80 text-blue-200 border-blue-400'
+                            : 'bg-gray-800/80 text-gray-200 border-gray-400'
+                        }`}
+                      >
+                        {group === 'Ended' ? 'Final' : group}
+                      </div>
+                      {groupedPlayers[group].map(p => (
+                        <PlayerCard
+                          key={p.playerId}
+                          player={p}
+                          group={group}
+                          draft={draft}
+                          playerCountdowns={playerCountdowns}
+                          session={session}
+                          setSelectedPlayer={setSelectedPlayer}
+                          setResetConfirmId={setResetConfirmId}
+                          resetConfirmId={resetConfirmId}
+                          fetchDraft={fetchDraft}
+                          countdown={countdown}
+                        />
+                      ))}
+                    </React.Fragment>
+                  )
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-[70vh] border border-white/10 rounded bg-white/5">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-[#FF4B1F]/20 text-white/90">
+                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('highBid')}>
+                        High Bid {sortConfig.key === 'highBid' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('playerName')}>
+                        Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('position')}>
+                        Position {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('ktc')}>
+                        KTC {sortConfig.key === 'ktc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('highBidder')}>
+                        High Bidder {sortConfig.key === 'highBidder' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('countdown')}>
+                        Countdown {sortConfig.key === 'countdown' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="py-2 px-3 text-left"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Active */}
+                    {groupedPlayers.Active.length > 0 && (
+                      <>
+                        <tr>
+                          <td colSpan="9" className="bg-green-900/80 text-green-200 font-bold px-3 py-2 border-l-8 border-green-400">
+                            Active
+                          </td>
+                        </tr>
+                        {groupedPlayers.Active.map(p => renderPlayerRow(p, 'Active'))}
+                      </>
+                    )}
+                    {/* Upcoming */}
+                    {groupedPlayers.Upcoming.length > 0 && (
+                      <>
+                        <tr>
+                          <td colSpan="9" className="bg-blue-900/80 text-blue-200 font-bold px-3 py-2 border-l-8 border-blue-400">
+                            Upcoming
+                          </td>
+                        </tr>
+                        {groupedPlayers.Upcoming.map(p => renderPlayerRow(p, 'Upcoming'))}
+                      </>
+                    )}
+                    {/* Ended */}
+                    {groupedPlayers.Ended.length > 0 && (
+                      <>
+                        <tr>
+                          <td colSpan="9" className="bg-gray-800/80 text-gray-200 font-bold px-3 py-2 border-l-8 border-gray-400">
+                            Final
+                          </td>
+                        </tr>
+                        {groupedPlayers.Ended.map(p => renderPlayerRow(p, 'Ended'))}
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
           {selectedPlayer && (
-            <div className="bg-black/30 rounded-lg border border-white/10 p-6 max-w-md mx-auto">
-              <h3 className="text-lg font-bold mb-2 text-[#FF4B1F]">Bid on {selectedPlayer.playerName}</h3>
-              <input
-                type="number"
-                min={1}
-                step={1}
-                className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
-                placeholder="Enter bid amount"
-                value={bidAmount}
-                onChange={e => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  setBidAmount(val);
-                }}
-              />
-              <div className="flex gap-2">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+              <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-md w-full shadow-2xl relative">
                 <button
-                  className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
-                  onClick={handleBid}
-                  disabled={placingBid || !bidAmount}
-                >
-                  {placingBid ? 'Placing Bid...' : 'Place Bid'}
-                </button>
-                <button
-                  className="px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
+                  className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
                   onClick={() => setSelectedPlayer(null)}
                   disabled={placingBid}
+                  aria-label="Close"
                 >
-                  Cancel
+                  &times;
                 </button>
-              </div>
-              {success && <div className="text-green-400 mt-2">{success}</div>}
-              {error && (
-                <div className="mt-2 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
-                  {error}
+                <h3 className="text-lg font-bold mb-2 text-[#FF4B1F]">
+                  Bid on {selectedPlayer.playerName}
+                </h3>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
+                  placeholder="Enter bid amount"
+                  value={bidAmount}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setBidAmount(val);
+                  }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
+                    onClick={handleBid}
+                    disabled={placingBid || !bidAmount}
+                  >
+                    {placingBid ? 'Placing Bid...' : 'Place Bid'}
+                  </button>
+                  <button
+                    className="px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
+                    onClick={() => setSelectedPlayer(null)}
+                    disabled={placingBid}
+                  >
+                    Cancel
+                  </button>
                 </div>
-              )}
-              {showConfirm && (
-                <div className="mt-2 px-3 py-2 bg-yellow-900/80 text-yellow-200 rounded border border-yellow-700">
-                  Your bid is ${Number(bidAmount) - currentHighBid} above the current high bid. Are you sure?
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      className="px-3 py-1 bg-yellow-600 rounded text-white hover:bg-yellow-700"
-                      onClick={() => handleBid()}
-                      disabled={placingBid}
-                    >
-                      Yes, Place Bid
-                    </button>
-                    <button
-                      className="px-3 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                      onClick={() => setShowConfirm(false)}
-                      disabled={placingBid}
-                    >
-                      Cancel
-                    </button>
+                {success && <div className="text-green-400 mt-2">{success}</div>}
+                {error && (
+                  <div className="mt-2 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
+                    {error}
                   </div>
-                </div>
-              )}
+                )}
+                {showConfirm && (
+                  <div className="mt-2 px-3 py-2 bg-yellow-900/80 text-yellow-200 rounded border border-yellow-700">
+                    Your bid is ${Number(bidAmount) - currentHighBid} above the current high bid. Are you sure?
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        className="px-3 py-1 bg-yellow-600 rounded text-white hover:bg-yellow-700"
+                        onClick={() => handleBid()}
+                        disabled={placingBid}
+                      >
+                        Yes, Place Bid
+                      </button>
+                      <button
+                        className="px-3 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
+                        onClick={() => setShowConfirm(false)}
+                        disabled={placingBid}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -968,18 +1082,5 @@ export default function FreeAgentAuctionPage() {
         </div>
       </div>
     </main>
-  );
-}
-
-// Reusable Link Card for sidebar quick links
-function LinkCard({ title, description, href }) {
-  return (
-    <Link 
-      href={href}
-      className="block bg-black/20 rounded-lg p-3 hover:bg-black/30 transition-colors"
-    >
-      <h3 className="font-bold">{title}</h3>
-      <p className="text-sm text-white/70">{description}</p>
-    </Link>
   );
 }

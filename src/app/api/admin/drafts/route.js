@@ -23,7 +23,18 @@ const draftSchema = new mongoose.Schema({
     highBid: Number,
     state: String,
     expiration: String
-  }]
+  }],
+  bidLog: {
+    type: [
+      {
+        playerId: Number,
+        team: String,
+        amount: Number,
+        timestamp: Date
+      }
+    ],
+    default: []
+  }
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -50,7 +61,8 @@ export async function POST(request) {
     const draftData = { 
       ...body, 
       nomDuration: Number(body.nomDuration), 
-      players 
+      players,
+      bidLog: Array.isArray(body.bidLog) ? body.bidLog : [] // <-- Ensure bidLog is always present
     };
 
     // Debug: Log the final draft object to be saved

@@ -3,6 +3,16 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 
+// Helper to get YYYY-MM-DDTHH:mm for July 1st, 8am this year
+function getDefaultStartDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const dt = new Date(year, 6, 1, 8, 0, 0, 0); // July is month 6 (0-based)
+  // Pad to 'YYYY-MM-DDTHH:mm'
+  const pad = n => n.toString().padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
 export default function CreateDraftPage() {
   const router = useRouter();
   const [users, setUsers] = useState([]);
@@ -11,12 +21,12 @@ export default function CreateDraftPage() {
   const [activeContractIds, setActiveContractIds] = useState(new Set());
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
-  const [startDate, setStartDate] = useState('');
+  const [startDate, setStartDate] = useState(getDefaultStartDate());
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
-  const [nomDuration, setNomDuration] = useState(1440); // Default to 1,440 minutes (24 hours)
+  const [nomDuration, setNomDuration] = useState(43920); // Default to 43,920 minutes (30.5 days)
 
   // Add state for player start times
   const [playerStartTimes, setPlayerStartTimes] = useState({});
@@ -138,8 +148,11 @@ export default function CreateDraftPage() {
         .map(p => ({
           ...p,
           status: 'UPCOMING',
-          // Ensure startDelay is a number and included
-          startDelay: Number(playerStartDelays[p.playerId] ?? 504)
+          startDelay: Number(
+            playerStartDelays[p.playerId] !== undefined
+              ? playerStartDelays[p.playerId]
+              : 0 // Default to 0 if not set
+          )
         }));
       const selectedUserObjs = users
         .filter(u => selectedUsers.includes(u.id))
@@ -157,7 +170,8 @@ export default function CreateDraftPage() {
           nomDuration, // <-- Make sure this is included!
           users: selectedUserObjs,
           players: selectedPlayerObjs,
-          results: []
+          results: [],
+          bidLog: [] // <-- Add this line to initialize the bid log
         })
       });
       if (!res.ok) throw new Error(await res.text());
@@ -277,7 +291,7 @@ export default function CreateDraftPage() {
                           type="number"
                           min={0}
                           className="w-24 p-1 rounded bg-white/10 border border-white/10 text-white"
-                          value={playerStartDelays[p.playerId] ?? 504} // Default is now 504 (21 days in hours)
+                          value={playerStartDelays[p.playerId] ?? 0}
                           onChange={e =>
                             setPlayerStartDelays(prev => ({
                               ...prev,
@@ -304,6 +318,29 @@ export default function CreateDraftPage() {
               onChange={e => setNomDuration(Number(e.target.value))}
               required
             />
+            {/* Show calculated end time */}
+            <div className="mt-2 text-sm text-white/80">
+              {(() => {
+                if (!startDate || !nomDuration) return null;
+                const start = new Date(startDate);
+                if (isNaN(start.getTime())) return null;
+                const end = new Date(start.getTime() + nomDuration * 60000);
+                return (
+                  <>
+                    <span>
+                      <b>Draft End Preview:</b>{' '}
+                      {end.toLocaleString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </>
+                );
+              })()}
+            </div>
           </div>
           <button
             type="submit"

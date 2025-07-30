@@ -23,6 +23,12 @@ const draftSchema = new mongoose.Schema({
     highBid: Number,
     state: String,
     expiration: String
+  }],
+  bidLog: [{ // Added bidLog field
+    username: String,
+    playerId: Number,
+    bidAmount: Number,
+    timestamp: { type: Date, default: Date.now }
   }]
 });
 
@@ -33,9 +39,14 @@ export async function PATCH(request, { params }) {
   const { id } = params;
   const body = await request.json();
 
-  // Only allow updating the results array
-  if (!body.results) {
-    return new Response(JSON.stringify({ error: 'Missing results array.' }), {
+  // Allow updating state, results, and bidLog
+  const updateFields = {};
+  if (typeof body.state === 'string') updateFields.state = body.state;
+  if (Array.isArray(body.results)) updateFields.results = body.results;
+  if (Array.isArray(body.bidLog)) updateFields.bidLog = body.bidLog;
+
+  if (Object.keys(updateFields).length === 0) {
+    return new Response(JSON.stringify({ error: 'No valid fields to update.' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -43,7 +54,7 @@ export async function PATCH(request, { params }) {
 
   const draft = await Draft.findByIdAndUpdate(
     id,
-    { results: body.results },
+    updateFields,
     { new: true }
   );
 
