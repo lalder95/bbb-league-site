@@ -45,6 +45,25 @@ export default function DraftsListPage() {
     return groups;
   }
 
+  function finalizeDraft(draft) {
+    if (!window.confirm('Are you sure you want to finalize this draft? This action cannot be undone.')) return;
+    fetch(`/api/admin/drafts/${draft._id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: 'FINAL', nomDuration: 0 })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to finalize draft.');
+        return res.json();
+      })
+      .then(updatedDraft => {
+        setDrafts(drafts =>
+          drafts.map(d => (d._id === updatedDraft._id ? updatedDraft : d))
+        );
+      })
+      .catch(() => setError('Failed to finalize draft.'));
+  }
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white p-6">
       <div className="max-w-5xl mx-auto">
@@ -102,11 +121,19 @@ export default function DraftsListPage() {
                           <td className="py-2 px-3">{draft.players?.length ?? 0}</td>
                           <td className="py-2 px-3">
                             <button
-                              className="px-2 py-1 bg-blue-600 rounded text-white hover:bg-blue-700"
+                              className="px-2 py-1 bg-blue-600 rounded text-white hover:bg-blue-700 mr-2"
                               onClick={() => downloadDraftJson(draft)}
                             >
                               Download JSON
                             </button>
+                            {draft.state === 'ACTIVE' && (
+                              <button
+                                className="px-2 py-1 bg-green-600 rounded text-white hover:bg-green-700"
+                                onClick={() => finalizeDraft(draft)}
+                              >
+                                Finalize
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
