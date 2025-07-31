@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { formatInTimeZone } from 'date-fns-tz';
+import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 
 const USER_ID = '456973480269705216';
 
@@ -99,6 +100,9 @@ export default function FreeAgentAuctionPage() {
   const [filterPosition, setFilterPosition] = useState('ALL');
   const [searchName, setSearchName] = useState('');
   const [isMobile, setIsMobile] = useState(false);
+  const [showCapModal, setShowCapModal] = useState(false);
+  const [bidLogSearch, setBidLogSearch] = useState('');
+  const [bidLogBidder, setBidLogBidder] = useState('ALL');
   const initialLoadDone = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -209,8 +213,8 @@ export default function FreeAgentAuctionPage() {
       return;
     }
 
-    if (Number(bidAmount) > 120) {
-      setError('Maximum bid allowed is $120.');
+    if (Number(bidAmount) > 200) {
+      setError('Maximum bid allowed is $200.');
       return;
     }
 
@@ -343,7 +347,6 @@ export default function FreeAgentAuctionPage() {
               year4: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 }
             };
           }
-
           const capData = teamCaps[contract.team];
           if (contract.isActive) {
             capData.curYear.active += contract.curYear;
@@ -374,13 +377,23 @@ export default function FreeAgentAuctionPage() {
           });
         });
 
+        // After setCapTeams(Object.values(teamCaps));
+        if (draft && draft.results) {
+          Object.values(teamCaps).forEach(team => {
+            team.spend = draft.results
+              .filter(r => r.username === team.team)
+              .reduce((sum, r) => sum + (Number(r.highBid) || 0), 0);
+            // Optionally, adjust remaining here if you want to subtract spend from cap
+            // team.curYear.remaining -= team.spend;
+          });
+        }
         setCapTeams(Object.values(teamCaps));
       } catch (error) {
         // Optionally handle error
       }
     }
     fetchCapData();
-  }, []);
+  }, [draft]);
 
   useEffect(() => {
     async function fetchAvatars() {
@@ -533,7 +546,7 @@ export default function FreeAgentAuctionPage() {
       now > playerStartTime &&
       now < playerEndTime &&
       (countdown === 'Auction Started!' || countdown === '') &&
-      isUserInDraft(session, draft); // <-- Add this check
+      isUserInDraft(session, draft);
 
     const isUserHighBidder =
       result && session?.user?.name &&
@@ -552,16 +565,28 @@ export default function FreeAgentAuctionPage() {
             : 'bg-gray-800/10'
         } hover:opacity-90`}
       >
-        <td className="py-2 px-3 font-extrabold text-[#FFB800] text-base">
+        <td className="py-2 px-3 text-center align-middle"></td>
+        <td className="py-2 px-3 font-extrabold text-[#FFB800] text-base text-center align-middle">
           {result ? `$${result.highBid}` : '-'}
         </td>
-        <td className="py-2 px-3">{p.playerName}</td>
-        <td className="py-2 px-3">{p.position}</td>
-        <td className="py-2 px-3">{p.ktc ?? '-'}</td>
-        <td className="py-2 px-3">
-          {result ? result.username : '-'}
+        <td className="py-2 px-3 text-center align-middle">{p.playerName}</td>
+        <td className="py-2 px-3 text-center align-middle">{p.position}</td>
+        <td className="py-2 px-3 text-center align-middle">{p.ktc ?? '-'}</td>
+        <td className="py-2 px-3 text-center align-middle">
+          <div className="flex items-center justify-center gap-2">
+            {result?.username && teamAvatars[result.username] ? (
+              <img
+                src={`https://sleepercdn.com/avatars/${teamAvatars[result.username]}`}
+                alt={result.username}
+                className="w-5 h-5 rounded-full"
+              />
+            ) : (
+              <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
+            )}
+            <span>{result ? result.username : '-'}</span>
+          </div>
         </td>
-        <td className="py-2 px-3">
+        <td className="py-2 px-3 text-center align-middle">
           <span
             className="cursor-help"
             title={
@@ -572,10 +597,11 @@ export default function FreeAgentAuctionPage() {
             {playerCountdowns[p.playerId] ?? ''}
           </span>
         </td>
-        <td className="py-2 px-3 flex gap-2">
+        <td className="py-2 px-3 flex gap-2 justify-center items-center align-middle">
           {canBid && (
             <button
-              className="px-2 py-1 bg-blue-600 rounded text-white hover:bg-blue-700"
+              className="px-12 py-2 bg-[#FF4B1F] border-2 border-[#001A2B] rounded text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
+              style={{ fontFamily: '"Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
               onClick={() => setSelectedPlayer(p)}
             >
               Bid
@@ -635,7 +661,7 @@ export default function FreeAgentAuctionPage() {
       now > playerStartTime &&
       now < playerEndTime &&
       (countdown === 'Auction Started!' || countdown === '') &&
-      isUserInDraft(session, draft); // <-- Add this check
+      isUserInDraft(session, draft);
 
     const isUserHighBidder =
       result && session?.user?.name &&
@@ -656,21 +682,34 @@ export default function FreeAgentAuctionPage() {
     return (
       <div
         key={player.playerId}
-        className={`relative rounded-lg shadow p-4 border-l-4 flex flex-col gap-2 ${cardBg} ${
-          group === 'Active'
-            ? 'border-green-400'
-            : group === 'Upcoming'
-            ? 'border-blue-400'
-            : 'border-gray-400'
-        }`}
+        className={`relative rounded-lg shadow p-4 border-l-4 flex flex-col gap-2
+          ${cardBg}
+          bg-gradient-to-br from-[#001A2B] via-[#001A2B] via-55% to-[#FF4B1F] lg:bg-none
+          ${
+            group === 'Active'
+              ? 'border-green-400'
+              : group === 'Upcoming'
+              ? 'border-blue-400'
+              : 'border-gray-400'
+          }`}
       >
-        <div className="flex items-center justify-between">
-          <span className="font-bold text-lg">{player.playerName}</span>
-          <span className="text-xs px-2 py-1 rounded bg-[#222] text-[#FF4B1F]">{player.position}</span>
-        </div>
-        <div className="flex flex-wrap gap-2 text-sm items-center">
-          <div>KTC: <span className="font-mono">{player.ktc ?? '-'}</span></div>
-          <div>Bidder: <span className="font-mono">{result?.username ?? '-'}</span></div>
+        {/* Centered player name at the top */}
+        <div className="w-full flex justify-center mb-2 relative">
+          <span
+            className="text-3xl font-bold text-center pr-10"
+            style={{ fontFamily: '"Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '1px' }}
+          >
+            {player.playerName}
+          </span>
+          {/* Position and KTC badges in top-right, vertically aligned */}
+          <span className="absolute right-0 top-0 flex flex-col gap-1 items-end">
+            <span className="text-xs px-2 py-1 rounded bg-[#222] text-[#FF4B1F]">
+              {player.position}
+            </span>
+            <span className="text-xs px-2 py-1 rounded bg-[#FF4B1F] text-[#222] font-mono">
+              {player.ktc ?? '-'}
+            </span>
+          </span>
         </div>
         <div className="mb-2">
           <span
@@ -683,19 +722,20 @@ export default function FreeAgentAuctionPage() {
             {playerCountdowns[player.playerId] ?? ''}
           </span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 pr-24">
           {canBid && (
             <button
-              className="px-3 py-1 bg-blue-600 rounded text-white hover:bg-blue-700 text-xs"
+              className="w-full max-w-[180px] self-start px-12 py-4 bg-[#FF4B1F] border-2 border-[#001A2B] rounded text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
+              style={{ fontFamily: '"Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
               onClick={() => setSelectedPlayer(player)}
             >
-              Bid
+              PLACE BID
             </button>
           )}
           {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === player.playerId) && (
             <>
               <button
-                className="px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
+                className="w-full max-w-[180px] self-start px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs mt-1"
                 title="Reset Bid"
                 onClick={() => setResetConfirmId(player.playerId)}
               >
@@ -732,12 +772,23 @@ export default function FreeAgentAuctionPage() {
             </>
           )}
         </div>
-        {/* High Bid in bottom-right */}
+        {/* High Bid and Bidder in bottom-right */}
         <div className="absolute bottom-4 right-4 flex flex-col items-end">
-          <span className="uppercase text-xs text-white/60">High Bid</span>
-          <span className="font-mono font-extrabold text-2xl text-[#FFB800]">
+          <span className="font-mono font-extrabold text-3xl text-[#FFB800]">
             {result?.highBid ? `$${result.highBid}` : '-'}
           </span>
+          <div className="flex items-center gap-1 mt-1">
+            {result?.username && teamAvatars[result.username] ? (
+              <img
+                src={`https://sleepercdn.com/avatars/${teamAvatars[result.username]}`}
+                alt={result.username}
+                className="w-5 h-5 rounded-full"
+              />
+            ) : (
+              <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
+            )}
+            <span className="font-mono">{result?.username ?? '-'}</span>
+          </div>
         </div>
       </div>
     );
@@ -756,30 +807,49 @@ export default function FreeAgentAuctionPage() {
     return days > 0 ? `${days} Days ${timeStr}` : timeStr;
   }
 
+  function formatTimeAgo(dateString) {
+    if (!dateString) return '';
+    const now = new Date();
+    const date = new Date(dateString);
+    const diff = Math.floor((now - date) / 1000);
+
+    if (diff < 60) return `${diff} second${diff !== 1 ? 's' : ''} ago`;
+    if (diff < 3600) {
+      const min = Math.floor(diff / 60);
+      return `${min} minute${min !== 1 ? 's' : ''} ago`;
+    }
+    if (diff < 86400) {
+      const hr = Math.floor(diff / 3600);
+      return `${hr} hour${hr !== 1 ? 's' : ''} ago`;
+    }
+    const days = Math.floor(diff / 86400);
+    return `${days} day${days !== 1 ? 's' : ''} ago`;
+  }
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
     }
   }, [status, router]);
 
+  // Move this up here, before any return!
+  const filteredBidLog = React.useMemo(() => {
+    if (!draft?.bidLog) return [];
+    return draft.bidLog.filter(bid => {
+      const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
+      const playerName = player ? player.playerName : '';
+      const matchesName = !bidLogSearch || playerName.toLowerCase().includes(bidLogSearch.toLowerCase());
+      const matchesBidder = bidLogBidder === 'ALL' || bid.team === bidLogBidder;
+      return matchesName && matchesBidder;
+    });
+  }, [draft?.bidLog, draft?.players, bidLogSearch, bidLogBidder]);
+
   // Optionally, show nothing while loading session
-  if (status === 'loading') {
-    return null;
-  }
+  if (status === 'loading') return null;
 
   if (loading) {
     return (
       <main className="min-h-screen bg-[#001A2B] flex items-center justify-center flex-col">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#FF4B1F] border-t-transparent mb-4"></div>
-        <p className="text-white mb-8">Loading auction data...</p>
-      </main>
-    );
-  }
-
-  if (!draft) {
-    return (
-      <main className="min-h-screen bg-[#001A2B] text-white flex items-center justify-center flex-col p-6">
-        <h1 className="text-3xl font-bold text-[#FF4B1F] mb-4">Free Agent Auction</h1>
         <p className="text-lg text-white/70">No active draft found.</p>
       </main>
     );
@@ -816,6 +886,15 @@ export default function FreeAgentAuctionPage() {
       <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Auction Table */}
         <div className="lg:col-span-2 space-y-8">
+          {/* Cap Space Button moved here */}
+          <div className="flex justify-end mb-4">
+            <button
+              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
+              onClick={() => setShowCapModal(true)}
+            >
+              View Cap Space
+            </button>
+          </div>
           {/* Subtle error message at the top of the table */}
           {error && (
             <div className="mb-4 px-4 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
@@ -860,64 +939,93 @@ export default function FreeAgentAuctionPage() {
             </div>
             {/* Mobile Card List */}
             {isMobile ? (
-              <div className="flex flex-col gap-4 p-2">
-                {['Active', 'Upcoming', 'Ended'].map(group => (
-                  groupedPlayers[group].length > 0 && (
-                    <React.Fragment key={group}>
-                      <div
-                        className={`font-bold px-2 py-1 mb-2 rounded border-l-8 ${
-                          group === 'Active'
-                            ? 'bg-green-900/80 text-green-200 border-green-400'
-                            : group === 'Upcoming'
-                            ? 'bg-blue-900/80 text-blue-200 border-blue-400'
-                            : 'bg-gray-800/80 text-gray-200 border-gray-400'
-                        }`}
-                      >
-                        {group === 'Ended' ? 'Final' : group}
-                      </div>
-                      {groupedPlayers[group].map(p => (
-                        <PlayerCard
-                          key={p.playerId}
-                          player={p}
-                          group={group}
-                          draft={draft}
-                          playerCountdowns={playerCountdowns}
-                          session={session}
-                          setSelectedPlayer={setSelectedPlayer}
-                          setResetConfirmId={setResetConfirmId}
-                          resetConfirmId={resetConfirmId}
-                          fetchDraft={fetchDraft}
-                          countdown={countdown}
-                        />
-                      ))}
-                    </React.Fragment>
-                  )
-                ))}
+              <div>
+                {/* Card Sorting Controls */}
+                <div className="flex gap-2 mb-4 items-center px-2">
+                  <label htmlFor="cardSort" className="font-medium">Sort by:</label>
+                  <select
+                    id="cardSort"
+                    value={sortConfig.key}
+                    onChange={e => setSortConfig({ key: e.target.value, direction: 'asc' })}
+                    className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                  >
+                    <option value="countdown">Countdown</option>
+                    <option value="ktc">KTC</option>
+                    <option value="highBid">High Bid</option>
+                  </select>
+                  <button
+                    className="px-2 py-1 rounded border border-white/20 text-white bg-black/30 hover:bg-black/50"
+                    onClick={() =>
+                      setSortConfig(prev => ({
+                        ...prev,
+                        direction: prev.direction === 'asc' ? 'desc' : 'asc'
+                      }))
+                    }
+                    title={`Sort ${sortConfig.direction === 'asc' ? 'Descending' : 'Ascending'}`}
+                  >
+                    {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                  </button>
+                </div>
+                <div className="flex flex-col gap-4 p-2">
+                  {['Active', 'Upcoming', 'Ended'].map(group => (
+                    groupedPlayers[group].length > 0 && (
+                      <React.Fragment key={group}>
+                        <div
+                          className={`font-bold px-2 py-1 mb-2 rounded border-l-8 ${
+                            group === 'Active'
+                              ? 'bg-green-900/80 text-green-200 border-green-400'
+                              : group === 'Upcoming'
+                              ? 'bg-blue-900/80 text-blue-200 border-blue-400'
+                              : 'bg-gray-800/80 text-gray-200 border-gray-400'
+                          }`}
+                        >
+                          {group === 'Ended' ? 'Final' : group}
+                        </div>
+                        {groupedPlayers[group].map(p => (
+                          <PlayerCard
+                            key={p.playerId}
+                            player={p}
+                            group={group}
+                            draft={draft}
+                            playerCountdowns={playerCountdowns}
+                            session={session}
+                            setSelectedPlayer={setSelectedPlayer}
+                            setResetConfirmId={setResetConfirmId}
+                            resetConfirmId={resetConfirmId}
+                            fetchDraft={fetchDraft}
+                            countdown={countdown}
+                          />
+                        ))}
+                      </React.Fragment>
+                    )
+                  ))}
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto max-h-[70vh] border border-white/10 rounded bg-white/5">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="bg-[#FF4B1F]/20 text-white/90">
-                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('highBid')}>
+                      <th className="py-2 px-3 text-center align-middle"></th>
+                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('highBid')}>
                         High Bid {sortConfig.key === 'highBid' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('playerName')}>
+                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('playerName')}>
                         Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('position')}>
+                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('position')}>
                         Position {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('ktc')}>
+                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('ktc')}>
                         KTC {sortConfig.key === 'ktc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('highBidder')}>
+                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('highBidder')}>
                         High Bidder {sortConfig.key === 'highBidder' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="py-2 px-3 text-left cursor-pointer" onClick={() => handleSort('countdown')}>
+                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('countdown')}>
                         Countdown {sortConfig.key === 'countdown' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="py-2 px-3 text-left"></th>
+                      <th className="py-2 px-3 text-center align-middle"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1031,10 +1139,99 @@ export default function FreeAgentAuctionPage() {
               </div>
             </div>
           )}
+          {/* Bid Log Table */}
+          <div className="bg-black/30 rounded-lg border border-white/10 p-6 mt-8">
+            <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Bid Log</h2>
+            <div className="flex flex-wrap gap-4 mb-4 items-center">
+              <div>
+                <label htmlFor="bidLogSearch" className="mr-2 font-medium">Search Player:</label>
+                <input
+                  id="bidLogSearch"
+                  type="text"
+                  value={bidLogSearch}
+                  onChange={e => setBidLogSearch(e.target.value)}
+                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                  placeholder="Player name..."
+                />
+              </div>
+              <div>
+                <label htmlFor="bidLogBidder" className="mr-2 font-medium">Bidder:</label>
+                <select
+                  id="bidLogBidder"
+                  value={bidLogBidder}
+                  onChange={e => setBidLogBidder(e.target.value)}
+                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                >
+                  <option value="ALL">ALL</option>
+                  {Array.from(new Set(draft?.bidLog?.map(b => b.team) ?? []))
+                    .sort()
+                    .map(team => (
+                      <option key={team} value={team}>{team}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-[40vh] border border-white/10 rounded bg-white/5">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-[#FF4B1F]/20 text-white/90">
+                    <th className="py-2 px-3 text-left">Player Name</th>
+                    <th className="py-2 px-3 text-left">Bidder</th>
+                    <th className="py-2 px-3 text-left">Bid</th>
+                    <th className="py-2 px-3 text-left">Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBidLog.length > 0 ? (
+                    [...filteredBidLog]
+                      .slice()
+                      .reverse()
+                      .map((bid, idx) => {
+                        const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
+                        return (
+                          <tr key={idx} className="hover:bg-white/10">
+                            <td className="py-2 px-3">{player ? player.playerName : 'Unknown'}</td>
+                            <td className="py-2 px-3 flex items-center gap-2">
+                              {teamAvatars[bid.team] ? (
+                                <img
+                                  src={`https://sleepercdn.com/avatars/${teamAvatars[bid.team]}`}
+                                  alt={bid.team}
+                                  className="w-5 h-5 rounded-full"
+                                />
+                              ) : (
+                                <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
+                              )}
+                              {bid.team}
+                            </td>
+                            <td className="py-2 px-3 font-mono">${bid.amount}</td>
+                            <td className="py-2 px-3 text-gray-400">{formatTimeAgo(bid.timestamp)}</td>
+                          </tr>
+                        );
+                      })
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="py-4 text-center text-white/60">No bids yet.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
         {/* Sidebar */}
-        <div className="space-y-6">
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
+        <div className="space-y-6"></div>
+      </div>
+      {/* Cap Space Modal */}
+      {showCapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-2xl w-full shadow-2xl relative">
+            <button
+              className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
+              onClick={() => setShowCapModal(false)}
+              aria-label="Close"
+            >
+              &times;
+            </button>
             <h2 className="text-xl font-bold mb-4 text-[#FF4B1F]">Cap Space</h2>
             <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
               <table className="w-full border-collapse">
@@ -1048,39 +1245,34 @@ export default function FreeAgentAuctionPage() {
                 <tbody>
                   {capTeams
                     .sort((a, b) => a.team.localeCompare(b.team))
-                    .map((team, idx) => {
-                      const spend = draft?.results
-                        ?.filter(r => r.username === team.team)
-                        ?.reduce((sum, r) => sum + (Number(r.highBid) || 0), 0) || 0;
-                      return (
-                        <tr key={team.team || idx} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
-                          <td className="p-3 font-medium flex items-center gap-2">
-                            {teamAvatars[team.team] ? (
-                              <img
-                                src={`https://sleepercdn.com/avatars/${teamAvatars[team.team]}`}
-                                alt={team.team}
-                                className="w-5 h-5 rounded-full mr-2"
-                              />
-                            ) : (
-                              <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
-                            )}
-                            {team.team}
-                          </td>
-                          <td className={`p-3 ${getCapSpaceColor(team.curYear.remaining)}`}>
-                            {formatCapSpace(team.curYear.remaining)}
-                          </td>
-                          <td className="p-3 text-blue-300">
-                            {formatCapSpace(spend)}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    .map((team, idx) => (
+                      <tr key={team.team || idx} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                        <td className="p-3 font-medium flex items-center gap-2">
+                          {teamAvatars[team.team] ? (
+                            <img
+                              src={`https://sleepercdn.com/avatars/${teamAvatars[team.team]}`}
+                              alt={team.team}
+                              className="w-5 h-5 rounded-full mr-2"
+                            />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
+                          )}
+                          {team.team}
+                        </td>
+                        <td className={`p-3 ${getCapSpaceColor(team.curYear.remaining)}`}>
+                          {formatCapSpace(team.curYear.remaining)}
+                        </td>
+                        <td className="p-3 text-blue-300">
+                          {formatCapSpace(team.spend || 0)}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </main>
   );
 }
