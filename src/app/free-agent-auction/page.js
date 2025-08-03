@@ -42,11 +42,11 @@ function getPlayerStartTime(draftStartDate, startDelay) {
   return start;
 }
 
-// Updated: Accept highBid, bidLog, and apply 1% per $1 reduction, capped at 90%
 // End date is at least 24 hours after the most recent bid for this player
-function getPlayerEndTime(draftStartDate, startDelay, nomDuration, highBid = 0, bidLog = [], playerId) {
+function getPlayerEndTime(draftStartDate, startDelay, nomDuration, contractPoints = 0, bidLog = [], playerId) {
   const start = getPlayerStartTime(draftStartDate, startDelay);
-  const reductionPercent = Math.min(Number(highBid) * 0.0138, 0.95);
+  // Use contractPoints for reduction calculation
+  const reductionPercent = Math.min(Number(contractPoints) * 0.0138, 0.95);
   const effectiveDuration = Number(nomDuration || 0) * (1 - reductionPercent);
   const calculatedEnd = new Date(start);
   calculatedEnd.setMinutes(calculatedEnd.getMinutes() + effectiveDuration);
@@ -56,7 +56,7 @@ function getPlayerEndTime(draftStartDate, startDelay, nomDuration, highBid = 0, 
   let latestBidTime = null;
   if (playerBids.length > 0) {
     latestBidTime = new Date(
-      playerBids.reduce((latest, b) => 
+      playerBids.reduce((latest, b) =>
         !latest || new Date(b.timestamp) > new Date(latest) ? b.timestamp : latest
       , null)
     );
@@ -82,12 +82,30 @@ function isUserInDraft(session, draft) {
   return draft.users.some(u => u.username === session.user.name);
 }
 
+function calculateContractScore(salary, years) {
+  salary = Number(salary);
+  years = Number(years);
+  let total = 0;
+  let yearSalary = salary;
+  for (let y = 1; y <= years; y++) {
+    if (y > 1) {
+      yearSalary = Math.ceil(yearSalary * 1.1 * 10) / 10;
+    }
+    if (y === 1) total += yearSalary * 1.0;
+    if (y === 2) total += yearSalary * 0.8;
+    if (y === 3) total += yearSalary * 0.6;
+    if (y === 4) total += yearSalary * 0.4;
+  }
+  return Math.round(total * 10) / 10;
+}
+
 export default function FreeAgentAuctionPage() {
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [bidAmount, setBidAmount] = useState('');
+  const [bidSalary, setBidSalary] = useState('');
+  const [bidYears, setBidYears] = useState('');
   const [placingBid, setPlacingBid] = useState(false);
   const [success, setSuccess] = useState('');
   const [countdown, setCountdown] = useState('');
@@ -103,6 +121,7 @@ export default function FreeAgentAuctionPage() {
   const [showCapModal, setShowCapModal] = useState(false);
   const [bidLogSearch, setBidLogSearch] = useState('');
   const [bidLogBidder, setBidLogBidder] = useState('ALL');
+  const [showBidLogModal, setShowBidLogModal] = useState(false);
   const initialLoadDone = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -123,9 +142,9 @@ export default function FreeAgentAuctionPage() {
       const countdowns = {};
       draft.players.forEach(p => {
         const result = draft.results?.find(r => r.playerId === p.playerId);
-        const highBid = result ? Number(result.highBid) : 0;
+        const contractPoints = result ? Number(result.contractPoints) : 0;
         const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
-        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, highBid, draft.bidLog, p.playerId);
+        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId);
         let group = 'Ended';
         if (now < playerStartTime) group = 'Upcoming';
         else if (now >= playerStartTime && now < playerEndTime) group = 'Active';
@@ -203,20 +222,27 @@ export default function FreeAgentAuctionPage() {
       return;
     }
 
+    const salary = Number(bidSalary);
+    const years = Number(bidYears);
+
     if (
       !selectedPlayer ||
-      !bidAmount ||
-      isNaN(Number(bidAmount)) ||
-      !Number.isInteger(Number(bidAmount))
+      !bidSalary ||
+      !bidYears ||
+      isNaN(salary) ||
+      isNaN(years) ||
+      salary < 1 ||
+      salary > 200 ||
+      years < 1 ||
+      years > 4 ||
+      !/^\d+(\.\d{1})?$/.test(bidSalary) ||
+      (salary * 10) % 1 !== 0
     ) {
-      setError('Bid must be a whole number.');
+      setError('Salary must be $1.0-$200.0 in $0.1 increments. Years must be 1-4.');
       return;
     }
 
-    if (Number(bidAmount) > 200) {
-      setError('Maximum bid allowed is $200.');
-      return;
-    }
+    const contractPoints = calculateContractScore(salary, years);
 
     const res = await fetch('/api/admin/drafts');
     const drafts = await res.json();
@@ -228,9 +254,9 @@ export default function FreeAgentAuctionPage() {
       return;
     }
     const currentResult = latestDraft.results.find(r => r.playerId === selectedPlayer.playerId);
-    const currentHighBid = currentResult ? Number(currentResult.highBid) : 0;
+    const currentHighScore = currentResult ? Number(currentResult.contractPoints) : 0;
 
-    if (Number(bidAmount) >= currentHighBid + 5 && !showConfirm) {
+    if (contractPoints >= currentHighScore + 5 && !showConfirm) {
       setShowConfirm(true);
       return;
     }
@@ -241,8 +267,8 @@ export default function FreeAgentAuctionPage() {
     setShowConfirm(false);
 
     try {
-      if (Number(bidAmount) <= currentHighBid) {
-        setError('Bid must be higher than the current high bid.');
+      if (contractPoints <= currentHighScore) {
+        setError('Contract Score must be higher than the current high bid.');
         setPlacingBid(false);
         return;
       }
@@ -250,15 +276,20 @@ export default function FreeAgentAuctionPage() {
       const newResult = {
         username: session?.user?.name || 'Unknown',
         playerId: selectedPlayer.playerId,
-        highBid: Number(bidAmount),
+        salary: salary,
+        years: years,
+        contractPoints: contractPoints,
         state: 'ACTIVE',
         expiration: '',
       };
 
       const newBid = {
+        username: session?.user?.name || 'Unknown',
         playerId: selectedPlayer.playerId,
-        team: session?.user?.name || 'Unknown',
-        amount: Number(bidAmount),
+        salary: salary,
+        years: years,
+        contractPoints: contractPoints,
+        comments: '', // For future use
         timestamp: new Date().toISOString()
       };
 
@@ -279,7 +310,8 @@ export default function FreeAgentAuctionPage() {
 
       setSuccess('Bid placed!');
       setSelectedPlayer(null);
-      setBidAmount('');
+      setBidSalary('');
+      setBidYears('');
       await fetchDraft();
     } catch (err) {
       setError(err.message || 'Failed to place bid.');
@@ -288,9 +320,19 @@ export default function FreeAgentAuctionPage() {
     }
   };
 
-  const currentHighBid = selectedPlayer
+  const currentHighSalary = selectedPlayer
     ? Number(
-        draft?.results?.find(r => r.playerId === selectedPlayer.playerId)?.highBid ?? 0
+        draft?.results?.find(r => r.playerId === selectedPlayer.playerId)?.salary ?? 0
+      )
+    : 0;
+  const currentHighScore = selectedPlayer
+    ? Number(
+        draft?.results?.find(r => r.playerId === selectedPlayer.playerId)?.contractPoints ?? 0
+      )
+    : 0;
+  const currentHighYears = selectedPlayer
+    ? Number(
+        draft?.results?.find(r => r.playerId === selectedPlayer.playerId)?.years ?? 0
       )
     : 0;
 
@@ -377,14 +419,11 @@ export default function FreeAgentAuctionPage() {
           });
         });
 
-        // After setCapTeams(Object.values(teamCaps));
         if (draft && draft.results) {
           Object.values(teamCaps).forEach(team => {
             team.spend = draft.results
               .filter(r => r.username === team.team)
-              .reduce((sum, r) => sum + (Number(r.highBid) || 0), 0);
-            // Optionally, adjust remaining here if you want to subtract spend from cap
-            // team.curYear.remaining -= team.spend;
+              .reduce((sum, r) => sum + (Number(r.contractPoints) || 0), 0);
           });
         }
         setCapTeams(Object.values(teamCaps));
@@ -452,35 +491,36 @@ export default function FreeAgentAuctionPage() {
       let bValue = b[sortConfig.key];
 
       if (sortConfig.key === 'highBid') {
-        aValue = draft.results?.find(r => r.playerId === a.playerId)?.highBid ?? 0;
-        bValue = draft.results?.find(r => r.playerId === b.playerId)?.highBid ?? 0;
+        aValue = draft.results?.find(r => r.playerId === a.playerId)?.contractPoints ?? 0;
+        bValue = draft.results?.find(r => r.playerId === b.playerId)?.contractPoints ?? 0;
       }
       if (sortConfig.key === 'highBidder') {
         aValue = draft.results?.find(r => r.playerId === a.playerId)?.username ?? '';
         bValue = draft.results?.find(r => r.playerId === b.playerId)?.username ?? '';
       }
-      // Add sorting for startDate, endDate, countdown
       if (sortConfig.key === 'startDate') {
         aValue = getPlayerStartTime(draft.startDate, a.startDelay);
         bValue = getPlayerStartTime(draft.startDate, b.startDelay);
       }
       if (sortConfig.key === 'endDate') {
-        const aHighBid = draft.results?.find(r => r.playerId === a.playerId)?.highBid ?? 0;
-        const bHighBid = draft.results?.find(r => r.playerId === b.playerId)?.highBid ?? 0;
-        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aHighBid, draft.bidLog, a.playerId);
-        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bHighBid, draft.bidLog, b.playerId);
+        const aResult = draft.results?.find(r => r.playerId === a.playerId);
+        const bResult = draft.results?.find(r => r.playerId === b.playerId);
+        const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
+        const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
+        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId);
+        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId);
       }
       if (sortConfig.key === 'countdown') {
-        // Sort by time left until end (smaller = sooner)
         const now = getChicagoNow();
-        const aHighBid = draft.results?.find(r => r.playerId === a.playerId)?.highBid ?? 0;
-        const bHighBid = draft.results?.find(r => r.playerId === b.playerId)?.highBid ?? 0;
-        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aHighBid, draft.bidLog, a.playerId);
-        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bHighBid, draft.bidLog, b.playerId);
+        const aResult = draft.results?.find(r => r.playerId === a.playerId);
+        const bResult = draft.results?.find(r => r.playerId === b.playerId);
+        const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
+        const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
+        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId);
+        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId);
         aValue = aEnd - now;
         bValue = bEnd - now;
       }
-      // Fix: KTC should be sorted as a number
       if (sortConfig.key === 'ktc') {
         aValue = Number(a.ktc) || 0;
         bValue = Number(b.ktc) || 0;
@@ -502,18 +542,16 @@ export default function FreeAgentAuctionPage() {
     return playersCopy;
   }, [filteredPlayers, draft?.results, sortConfig, draft?.startDate, draft?.nomDuration, draft?.bidLog]);
 
-  // Chicago time grouping
   const groupedPlayers = React.useMemo(() => {
     if (!sortedPlayers) return { Active: [], Upcoming: [], Ended: [] };
     const now = getChicagoNow();
     const groups = { Active: [], Upcoming: [], Ended: [] };
     sortedPlayers.forEach(p => {
       const result = draft.results?.find(r => r.playerId === p.playerId);
-      const highBid = result ? Number(result.highBid) : 0;
+      const contractPoints = result ? Number(result.contractPoints) : 0;
       const start = getPlayerStartTime(draft.startDate, p.startDelay);
-      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, highBid, draft.bidLog, p.playerId);
+      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId);
 
-      // If start or end is invalid, treat as Ended
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         groups.Ended.push(p);
       } else if (now < start) {
@@ -538,9 +576,18 @@ export default function FreeAgentAuctionPage() {
 
   function renderPlayerRow(p, group) {
     const result = draft.results?.find(r => r.playerId === p.playerId);
-    const highBid = result ? Number(result.highBid) : 0;
+    const salary = result ? Number(result.salary) : 0;
+    const contractScore = result ? Number(result.contractPoints) : 0;
+    const years = result ? Number(result.years) : null;
     const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
-    const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, highBid, draft.bidLog, p.playerId);
+    const playerEndTime = getPlayerEndTime(
+      draft.startDate,
+      p.startDelay,
+      draft.nomDuration,
+      contractScore,
+      draft.bidLog,
+      p.playerId
+    );
     const now = getChicagoNow();
     const canBid =
       now > playerStartTime &&
@@ -566,8 +613,18 @@ export default function FreeAgentAuctionPage() {
         } hover:opacity-90`}
       >
         <td className="py-2 px-3 text-center align-middle"></td>
-        <td className="py-2 px-3 font-extrabold text-[#FFB800] text-base text-center align-middle">
-          {result ? `$${result.highBid}` : '-'}
+        <td className="py-2 px-3 font-extrabold text-[#FFB800] text-center align-middle">
+          {result
+            ? <>
+                <span className="font-mono font-extrabold text-4xl text-[#FFB800]">
+                  {contractScore}
+                </span>
+                <br />
+                <span className="text-xs text-blue-300 whitespace-nowrap">
+                  ${salary} / {years}y
+                </span>
+              </>
+            : '-'}
         </td>
         <td className="py-2 px-3 text-center align-middle">{p.playerName}</td>
         <td className="py-2 px-3 text-center align-middle">{p.position}</td>
@@ -590,8 +647,10 @@ export default function FreeAgentAuctionPage() {
           <span
             className="cursor-help"
             title={
-              `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
-              `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+              (playerStartTime instanceof Date && !isNaN(playerStartTime) && playerEndTime instanceof Date && !isNaN(playerEndTime))
+                ? `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
+                  `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+                : 'Invalid time'
             }
           >
             {playerCountdowns[p.playerId] ?? ''}
@@ -600,8 +659,8 @@ export default function FreeAgentAuctionPage() {
         <td className="py-2 px-3 flex gap-2 justify-center items-center align-middle">
           {canBid && (
             <button
-              className="px-12 py-2 bg-[#FF4B1F] border-2 border-[#001A2B] rounded text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
-              style={{ fontFamily: '"Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
+              className="px-2 py-1 bg-[#FF4B1F] border-2 border-[#001A2B] rounded-xl text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
+              style={{ fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
               onClick={() => setSelectedPlayer(p)}
             >
               Bid
@@ -610,7 +669,7 @@ export default function FreeAgentAuctionPage() {
           {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === p.playerId) && (
             <>
               <button
-                className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
+                className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
                 title="Reset Bid"
                 onClick={() => setResetConfirmId(p.playerId)}
               >
@@ -653,9 +712,16 @@ export default function FreeAgentAuctionPage() {
 
   function PlayerCard({ player, group, draft, playerCountdowns, session, setSelectedPlayer, setResetConfirmId, resetConfirmId, fetchDraft, countdown }) {
     const result = draft.results?.find(r => r.playerId === player.playerId);
-    const highBid = result ? Number(result.highBid) : 0;
+    const contractScore = result ? Number(result.contractPoints) : 0;
     const playerStartTime = getPlayerStartTime(draft.startDate, player.startDelay);
-    const playerEndTime = getPlayerEndTime(draft.startDate, player.startDelay, draft.nomDuration, highBid, draft.bidLog, player.playerId);
+    const playerEndTime = getPlayerEndTime(
+      draft.startDate,
+      player.startDelay,
+      draft.nomDuration,
+      contractScore,
+      draft.bidLog,
+      player.playerId
+    );
     const now = getChicagoNow();
     const canBid =
       now > playerStartTime &&
@@ -667,7 +733,6 @@ export default function FreeAgentAuctionPage() {
       result && session?.user?.name &&
       result.username === session.user.name;
 
-    // Card background color logic
     let cardBg = '';
     if (isUserHighBidder) {
       cardBg = 'bg-yellow-400/20';
@@ -677,6 +742,40 @@ export default function FreeAgentAuctionPage() {
       cardBg = 'bg-blue-900/10';
     } else {
       cardBg = 'bg-gray-800/10';
+    }
+
+    const getPlayerNameFontSize = (name) => {
+      if (!name) return 24;
+      if (name.length <= 10) return 30;
+      if (name.length <= 14) return 24;
+      if (name.length <= 18) return 20;
+      if (name.length <= 24) return 16;
+      return 12;
+    };
+    const playerNameFontSize = getPlayerNameFontSize(player.playerName);
+
+    const playerNameRef = useRef(null);
+    const fontSizeSet = useRef(false);
+
+    useEffect(() => {
+      if (fontSizeSet.current) return;
+      const container = playerNameRef.current?.parentElement;
+      const span = playerNameRef.current;
+      if (!container || !span) return;
+
+      let fontSize = 36;
+      span.style.fontSize = fontSize + 'px';
+
+      while (span.scrollWidth > container.offsetWidth - 40 && fontSize > 14) {
+        fontSize -= 1;
+        span.style.fontSize = fontSize + 'px';
+      }
+      fontSizeSet.current = true;
+    }, []);
+
+    function isCountdownOver24Hours(countdownValue) {
+      if (!countdownValue) return false;
+      return countdownValue.includes('Days');
     }
 
     return (
@@ -693,40 +792,59 @@ export default function FreeAgentAuctionPage() {
               : 'border-gray-400'
           }`}
       >
-        {/* Centered player name at the top */}
         <div className="w-full flex justify-center mb-2 relative">
           <span
-            className="text-3xl font-bold text-center pr-10"
-            style={{ fontFamily: '"Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '1px' }}
+            className="font-bold text-center pr-10"
+            style={{
+              fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
+              letterSpacing: '3px',
+              fontSize: playerNameFontSize,
+              display: 'inline-block',
+              maxWidth: '100%',
+              whiteSpace: 'normal',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              paddingLeft: '4px'
+            }}
           >
             {player.playerName}
           </span>
-          {/* Position and KTC badges in top-right, vertically aligned */}
-          <span className="absolute right-0 top-0 flex flex-col gap-1 items-end">
+          <span className="absolute right-0 top-0 flex flex-col items-end">
             <span className="text-xs px-2 py-1 rounded bg-[#222] text-[#FF4B1F]">
               {player.position}
             </span>
-            <span className="text-xs px-2 py-1 rounded bg-[#FF4B1F] text-[#222] font-mono">
-              {player.ktc ?? '-'}
-            </span>
           </span>
         </div>
-        <div className="mb-2">
+        <div className="w-full flex justify-center mb-4">
           <span
-            className="cursor-help"
+            className="cursor-help text-center w-full"
+            style={{
+              fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
+              letterSpacing: '1px',
+              display: 'block',
+              fontSize: isCountdownOver24Hours(
+                typeof playerCountdowns[player.playerId] === 'string'
+                  ? playerCountdowns[player.playerId]
+                  : (playerCountdowns[player.playerId]?.props?.children ?? '')
+              )
+                ? '1.5rem'
+                : '3rem'
+            }}
             title={
-              `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
-              `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+              (playerStartTime instanceof Date && !isNaN(playerStartTime) && playerEndTime instanceof Date && !isNaN(playerEndTime))
+                ? `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
+                  `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+                : 'Invalid time'
             }
           >
             {playerCountdowns[player.playerId] ?? ''}
           </span>
         </div>
-        <div className="flex flex-col gap-2 pr-24">
+        <div className="mb-2 flex flex-col gap-2 pr-16 w-full" style={{ maxWidth: 160 }}>
           {canBid && (
             <button
-              className="w-full max-w-[180px] self-start px-12 py-4 bg-[#FF4B1F] border-2 border-[#001A2B] rounded text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
-              style={{ fontFamily: '"Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
+              className="w-full px-4 py-3 bg-[#FF4B1F] border-2 border-[#001A2B] rounded-xl text-white hover:bg-[#ff6a3c] text-lg font flex justify-center items-center text-center"
+              style={{ fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
               onClick={() => setSelectedPlayer(player)}
             >
               PLACE BID
@@ -735,9 +853,10 @@ export default function FreeAgentAuctionPage() {
           {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === player.playerId) && (
             <>
               <button
-                className="w-full max-w-[180px] self-start px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs mt-1"
+                className="w-full px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs mt-1"
                 title="Reset Bid"
                 onClick={() => setResetConfirmId(player.playerId)}
+                style={{ maxWidth: 160 }}
               >
                 Reset
               </button>
@@ -772,10 +891,9 @@ export default function FreeAgentAuctionPage() {
             </>
           )}
         </div>
-        {/* High Bid and Bidder in bottom-right */}
         <div className="absolute bottom-4 right-4 flex flex-col items-end">
           <span className="font-mono font-extrabold text-3xl text-[#FFB800]">
-            {result?.highBid ? `$${result.highBid}` : '-'}
+            {result ? contractScore : '-'}
           </span>
           <div className="flex items-center gap-1 mt-1">
             {result?.username && teamAvatars[result.username] ? (
@@ -832,19 +950,17 @@ export default function FreeAgentAuctionPage() {
     }
   }, [status, router]);
 
-  // Move this up here, before any return!
   const filteredBidLog = React.useMemo(() => {
     if (!draft?.bidLog) return [];
     return draft.bidLog.filter(bid => {
       const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
       const playerName = player ? player.playerName : '';
       const matchesName = !bidLogSearch || playerName.toLowerCase().includes(bidLogSearch.toLowerCase());
-      const matchesBidder = bidLogBidder === 'ALL' || bid.team === bidLogBidder;
+      const matchesBidder = bidLogBidder === 'ALL' || bid.username === bidLogBidder;
       return matchesName && matchesBidder;
     });
   }, [draft?.bidLog, draft?.players, bidLogSearch, bidLogBidder]);
 
-  // Optionally, show nothing while loading session
   if (status === 'loading') return null;
 
   if (loading) {
@@ -870,6 +986,21 @@ export default function FreeAgentAuctionPage() {
               Auction Starts In: <span className="font-mono">{countdown}</span>
             </div>
           )}
+          {/* Move Cap Space and Bid Log buttons here */}
+          <div className="flex justify-end mt-4 w-full max-w-2xl mx-auto">
+            <button
+              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors mr-2"
+              onClick={() => setShowCapModal(true)}
+            >
+              View Cap Space
+            </button>
+            <button
+              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
+              onClick={() => setShowBidLogModal(true)}
+            >
+              View Bid Log
+            </button>
+          </div>
         </div>
       </div>
 
@@ -886,15 +1017,7 @@ export default function FreeAgentAuctionPage() {
       <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Auction Table */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Cap Space Button moved here */}
-          <div className="flex justify-end mb-4">
-            <button
-              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
-              onClick={() => setShowCapModal(true)}
-            >
-              View Cap Space
-            </button>
-          </div>
+          {/* REMOVE the Cap Space and Bid Log buttons from here */}
           {/* Subtle error message at the top of the table */}
           {error && (
             <div className="mb-4 px-4 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
@@ -1081,23 +1204,130 @@ export default function FreeAgentAuctionPage() {
                 <h3 className="text-lg font-bold mb-2 text-[#FF4B1F]">
                   Bid on {selectedPlayer.playerName}
                 </h3>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
-                  placeholder="Enter bid amount"
-                  value={bidAmount}
-                  onChange={e => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    setBidAmount(val);
-                  }}
-                />
+                <div className="mb-2">
+                  <label className="block mb-1">Salary ($):</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    step={0.1}
+                    className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
+                    placeholder="Enter salary"
+                    value={bidSalary}
+                    onChange={e => {
+                      // Allow numbers with up to one decimal place
+                      const val = e.target.value.replace(/[^0-9.]/g, '');
+                      setBidSalary(val);
+                    }}
+                  />
+                </div>
+                <div className="mb-2">
+                  <label className="block mb-1">Years (1-4):</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={4}
+                    step={1}
+                    className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
+                    placeholder="Enter years"
+                    value={bidYears}
+                    onChange={e => {
+                      // Only allow 1, 2, 3, or 4
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      if (['1', '2', '3', '4'].includes(val)) {
+                        setBidYears(val);
+                      } else if (val === '') {
+                        setBidYears('');
+                      }
+                    }}
+                  />
+                </div>
+                <div className="mb-2">
+                  <strong>Contract Score:</strong>{' '}
+                  {bidSalary && bidYears
+                    ? calculateContractScore(bidSalary, bidYears)
+                    : '-'}
+                </div>
+                <div className="mb-2 text-xs text-blue-200">
+                  <div>
+                    <strong>How it's calculated:</strong>
+                  </div>
+                  {bidSalary && bidYears ? (() => {
+                    let y1 = Number(bidSalary);
+                    let y2 = Math.ceil(y1 * 1.1 * 10) / 10;
+                    let y3 = Math.ceil(y2 * 1.1 * 10) / 10;
+                    let y4 = Math.ceil(y3 * 1.1 * 10) / 10;
+                    let rows = [];
+                    if (bidYears >= 1) rows.push({
+                      year: 1,
+                      salary: y1,
+                      percent: '100%',
+                      score: y1
+                    });
+                    if (bidYears >= 2) rows.push({
+                      year: 2,
+                      salary: y2,
+                      percent: '80%',
+                      score: y2 * 0.8
+                    });
+                    if (bidYears >= 3) rows.push({
+                      year: 3,
+                      salary: y3,
+                      percent: '60%',
+                      score: y3 * 0.6
+                    });
+                    if (bidYears >= 4) rows.push({
+                      year: 4,
+                      salary: y4,
+                      percent: '40%',
+                      score: y4 * 0.4
+                    });
+                    return (
+                      <div className="flex justify-center">
+                        <table className="text-sm mt-2 mb-1 border-separate" style={{ minWidth: 320 }}>
+                          <thead>
+                            <tr>
+                              <th className="pr-3 text-left">Year</th>
+                              <th className="pr-3 text-left">Salary</th>
+                              <th className="pr-3 text-left">Weight</th>
+                              <th className="pr-3 text-left">Score</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map(r => (
+                              <tr key={r.year}>
+                                <td className="pr-3">Year {r.year}</td>
+                                <td className="pr-3">${r.salary.toFixed(1)}</td>
+                                <td className="pr-3">{r.percent}</td>
+                                <td className="pr-3">{r.score.toFixed(1)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })() : (
+                    <div>
+                      Year 1: 100% salary<br />
+                      Year 2: 110% salary × 80%<br />
+                      Year 3: 110% of previous × 60%<br />
+                      Year 4: 110% of previous × 40%
+                    </div>
+                  )}
+                </div>
+                <div className="mb-2 text-xs text-yellow-200">
+                  {currentHighSalary > 0 && (
+                    <div>
+                      <strong>Current High Bid:</strong> ${currentHighSalary} / {currentHighYears}y<br />
+                      <strong>Current Contract Score:</strong> {currentHighScore}
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button
                     className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
                     onClick={handleBid}
-                    disabled={placingBid || !bidAmount}
+                    disabled={placingBid || !bidSalary || !bidYears}
                   >
                     {placingBid ? 'Placing Bid...' : 'Place Bid'}
                   </button>
@@ -1117,7 +1347,7 @@ export default function FreeAgentAuctionPage() {
                 )}
                 {showConfirm && (
                   <div className="mt-2 px-3 py-2 bg-yellow-900/80 text-yellow-200 rounded border border-yellow-700">
-                    Your bid is ${Number(bidAmount) - currentHighBid} above the current high bid. Are you sure?
+                    Your bid is {calculateContractScore(bidSalary, bidYears) - currentHighScore} above the current high contract score. Are you sure?
                     <div className="flex gap-2 mt-2">
                       <button
                         className="px-3 py-1 bg-yellow-600 rounded text-white hover:bg-yellow-700"
@@ -1139,83 +1369,20 @@ export default function FreeAgentAuctionPage() {
               </div>
             </div>
           )}
-          {/* Bid Log Table */}
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6 mt-8">
-            <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Bid Log</h2>
-            <div className="flex flex-wrap gap-4 mb-4 items-center">
-              <div>
-                <label htmlFor="bidLogSearch" className="mr-2 font-medium">Search Player:</label>
-                <input
-                  id="bidLogSearch"
-                  type="text"
-                  value={bidLogSearch}
-                  onChange={e => setBidLogSearch(e.target.value)}
-                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
-                  placeholder="Player name..."
-                />
-              </div>
-              <div>
-                <label htmlFor="bidLogBidder" className="mr-2 font-medium">Bidder:</label>
-                <select
-                  id="bidLogBidder"
-                  value={bidLogBidder}
-                  onChange={e => setBidLogBidder(e.target.value)}
-                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
-                >
-                  <option value="ALL">ALL</option>
-                  {Array.from(new Set(draft?.bidLog?.map(b => b.team) ?? []))
-                    .sort()
-                    .map(team => (
-                      <option key={team} value={team}>{team}</option>
-                    ))}
-                </select>
-              </div>
-            </div>
-            <div className="overflow-x-auto max-h-[40vh] border border-white/10 rounded bg-white/5">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-[#FF4B1F]/20 text-white/90">
-                    <th className="py-2 px-3 text-left">Player Name</th>
-                    <th className="py-2 px-3 text-left">Bidder</th>
-                    <th className="py-2 px-3 text-left">Bid</th>
-                    <th className="py-2 px-3 text-left">Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBidLog.length > 0 ? (
-                    [...filteredBidLog]
-                      .slice()
-                      .reverse()
-                      .map((bid, idx) => {
-                        const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
-                        return (
-                          <tr key={idx} className="hover:bg-white/10">
-                            <td className="py-2 px-3">{player ? player.playerName : 'Unknown'}</td>
-                            <td className="py-2 px-3 flex items-center gap-2">
-                              {teamAvatars[bid.team] ? (
-                                <img
-                                  src={`https://sleepercdn.com/avatars/${teamAvatars[bid.team]}`}
-                                  alt={bid.team}
-                                  className="w-5 h-5 rounded-full"
-                                />
-                              ) : (
-                                <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
-                              )}
-                              {bid.team}
-                            </td>
-                            <td className="py-2 px-3 font-mono">${bid.amount}</td>
-                            <td className="py-2 px-3 text-gray-400">{formatTimeAgo(bid.timestamp)}</td>
-                          </tr>
-                        );
-                      })
-                  ) : (
-                    <tr>
-                      <td colSpan={4} className="py-4 text-center text-white/60">No bids yet.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+          {/* Bid Log Table Button */}
+          <div className="flex justify-end mt-4">
+            <button
+              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors mr-2"
+              onClick={() => setShowCapModal(true)}
+            >
+              View Cap Space
+            </button>
+            <button
+              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
+              onClick={() => setShowBidLogModal(true)}
+            >
+              View Bid Log
+            </button>
           </div>
         </div>
         {/* Sidebar */}
@@ -1267,6 +1434,98 @@ export default function FreeAgentAuctionPage() {
                         </td>
                       </tr>
                     ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Bid Log Modal */}
+      {showBidLogModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-3xl w-full shadow-2xl relative">
+            <button
+              className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
+              onClick={() => setShowBidLogModal(false)}
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Bid Log</h2>
+            <div className="flex flex-wrap gap-4 mb-4 items-center">
+              <div>
+                <label htmlFor="bidLogSearch" className="mr-2 font-medium">Search Player:</label>
+                <input
+                  id="bidLogSearch"
+                  type="text"
+                  value={bidLogSearch}
+                  onChange={e => setBidLogSearch(e.target.value)}
+                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                  placeholder="Player name..."
+                />
+              </div>
+              <div>
+                <label htmlFor="bidLogBidder" className="mr-2 font-medium">Bidder:</label>
+                <select
+                  id="bidLogBidder"
+                  value={bidLogBidder}
+                  onChange={e => setBidLogBidder(e.target.value)}
+                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                >
+                  <option value="ALL">ALL</option>
+                  {Array.from(new Set(draft?.bidLog?.map(b => b.username || 'unknown') ?? []))
+                    .sort()
+                    .map((username, idx) => (
+                      <option key={username || `unknown-${idx}`} value={username}>{username}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-[40vh] border border-white/10 rounded bg-white/5">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-[#FF4B1F]/20 text-white/90">
+                    <th className="py-2 px-3 text-left">Player Name</th>
+                    <th className="py-2 px-3 text-left">Bidder</th>
+                    <th className="py-2 px-3 text-left">Bid</th>
+                    <th className="py-2 px-3 text-left">Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBidLog.length > 0 ? (
+                    [...filteredBidLog]
+                      .slice()
+                      .reverse()
+                      .map((bid, idx) => {
+                        const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
+                        return (
+                          <tr key={idx} className="hover:bg-white/10">
+                            <td className="py-2 px-3">{player ? player.playerName : 'Unknown'}</td>
+                            <td className="py-2 px-3 flex items-center gap-2">
+                              {teamAvatars[bid.username] ? (
+                                <img
+                                  src={`https://sleepercdn.com/avatars/${teamAvatars[bid.username]}`}
+                                  alt={bid.username}
+                                  className="w-5 h-5 rounded-full"
+                                />
+                              ) : (
+                                <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
+                              )}
+                              {bid.username}
+                            </td>
+                            <td className="py-2 px-3 font-mono">
+                              ${bid.salary} / {bid.years}y<br />
+                              <span className="text-blue-300">Score: {bid.contractPoints}</span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-400">{formatTimeAgo(bid.timestamp)}</td>
+                          </tr>
+                        );
+                      })
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="py-4 text-center text-white/60">No bids yet.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

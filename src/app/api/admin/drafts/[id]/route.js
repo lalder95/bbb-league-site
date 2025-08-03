@@ -20,14 +20,19 @@ const draftSchema = new mongoose.Schema({
   results: [{
     username: String,
     playerId: Number,
-    highBid: Number,
+    salary: Number,           // <-- NEW
+    years: Number,            // <-- NEW
+    contractPoints: Number,   // <-- NEW
     state: String,
     expiration: String
   }],
-  bidLog: [{ // Added bidLog field
+  bidLog: [{
     username: String,
     playerId: Number,
-    bidAmount: Number,
+    salary: Number,           // <-- NEW
+    years: Number,            // <-- NEW
+    contractPoints: Number,   // <-- NEW
+    comments: { type: String, default: '' }, // <-- NEW
     timestamp: { type: Date, default: Date.now }
   }]
 });
@@ -39,11 +44,34 @@ export async function PATCH(request, { params }) {
   const { id } = params;
   const body = await request.json();
 
-  // Allow updating state, results, and bidLog
   const updateFields = {};
   if (typeof body.state === 'string') updateFields.state = body.state;
-  if (Array.isArray(body.results)) updateFields.results = body.results;
-  if (Array.isArray(body.bidLog)) updateFields.bidLog = body.bidLog;
+
+  // Sanitize results
+  if (Array.isArray(body.results)) {
+    updateFields.results = body.results.map(r => ({
+      username: r.username,
+      playerId: r.playerId,
+      salary: r.salary ?? 0,
+      years: r.years ?? 1,
+      contractPoints: r.contractPoints ?? 0,
+      state: r.state ?? 'ACTIVE',
+      expiration: r.expiration ?? ''
+    }));
+  }
+
+  // Sanitize bidLog
+  if (Array.isArray(body.bidLog)) {
+    updateFields.bidLog = body.bidLog.map(b => ({
+      username: b.username,
+      playerId: b.playerId,
+      salary: b.salary ?? 0,
+      years: b.years ?? 1,
+      contractPoints: b.contractPoints ?? 0,
+      comments: b.comments ?? '',
+      timestamp: b.timestamp ? new Date(b.timestamp) : new Date()
+    }));
+  }
 
   if (Object.keys(updateFields).length === 0) {
     return new Response(JSON.stringify({ error: 'No valid fields to update.' }), {

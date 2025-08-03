@@ -14,27 +14,27 @@ const draftSchema = new mongoose.Schema({
   draftId: Number,
   startDate: String,
   state: String,
-  nomDuration: Number, // <-- must be present!
+  nomDuration: Number,
   users: [{ username: String }],
   players: [playerSchema],
   results: [{
     username: String,
     playerId: Number,
-    highBid: Number,
+    salary: Number,           // <-- NEW
+    years: Number,            // <-- NEW
+    contractPoints: Number,   // <-- NEW
     state: String,
     expiration: String
   }],
-  bidLog: {
-    type: [
-      {
-        playerId: Number,
-        team: String,
-        amount: Number,
-        timestamp: Date
-      }
-    ],
-    default: []
-  }
+  bidLog: [{
+    username: String,
+    playerId: Number,
+    salary: Number,           // <-- NEW
+    years: Number,            // <-- NEW
+    contractPoints: Number,   // <-- NEW
+    comments: { type: String, default: '' }, // <-- NEW
+    timestamp: { type: Date, default: Date.now }
+  }]
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -44,9 +44,6 @@ export async function POST(request) {
     await dbConnect();
     const body = await request.json();
 
-    // Debug: Log the incoming request body
-    console.log('Draft POST body:', JSON.stringify(body, null, 2));
-
     // Ensure each player has status and startDelay as a number
     const players = (body.players || []).map(p => ({
       ...p,
@@ -54,31 +51,47 @@ export async function POST(request) {
       startDelay: Number(p.startDelay ?? 504)
     }));
 
-    // Debug: Log the processed players array
-    console.log('Processed players:', JSON.stringify(players, null, 2));
+    // Sanitize results
+    const results = Array.isArray(body.results)
+      ? body.results.map(r => ({
+          username: r.username,
+          playerId: r.playerId,
+          salary: r.salary ?? 0,
+          years: r.years ?? 1,
+          contractPoints: r.contractPoints ?? 0,
+          state: r.state ?? 'ACTIVE',
+          expiration: r.expiration ?? ''
+        }))
+      : [];
 
-    // Ensure nomDuration is a number
+    // Sanitize bidLog
+    const bidLog = Array.isArray(body.bidLog)
+      ? body.bidLog.map(b => ({
+          username: b.username,
+          playerId: b.playerId,
+          salary: b.salary ?? 0,
+          years: b.years ?? 1,
+          contractPoints: b.contractPoints ?? 0,
+          comments: b.comments ?? '',
+          timestamp: b.timestamp ? new Date(b.timestamp) : new Date()
+        }))
+      : [];
+
     const draftData = { 
       ...body, 
       nomDuration: Number(body.nomDuration), 
       players,
-      bidLog: Array.isArray(body.bidLog) ? body.bidLog : [] // <-- Ensure bidLog is always present
+      results,
+      bidLog
     };
 
-    // Debug: Log the final draft object to be saved
-    console.log('Draft to be saved:', JSON.stringify(draftData, null, 2));
-
     const draft = await Draft.create(draftData);
-
-    // Debug: Log the saved draft from the database
-    console.log('Saved draft:', JSON.stringify(draft, null, 2));
 
     return new Response(JSON.stringify(draft), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (err) {
-    console.error('Draft creation error:', err);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }

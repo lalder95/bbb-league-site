@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Rock+Salt&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Saira+Stencil+One&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Saira+Stencil+One&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -160,4 +161,13 @@ select, option {
 
 .responsive-table {
   -webkit-overflow-scrolling: touch;
+}
+
+@keyframes pulse-countdown {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.pulse-countdown {
+  animation: pulse-countdown 0.5s;
 }
