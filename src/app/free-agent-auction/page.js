@@ -815,12 +815,13 @@ export default function FreeAgentAuctionPage() {
             </span>
           </span>
         </div>
+        {/* Countdown timer (in the card) */}
         <div className="w-full flex justify-center mb-4">
           <span
             className="cursor-help text-center w-full"
             style={{
-              fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
-              letterSpacing: '1px',
+              fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif', // <-- already matches player name
+              letterSpacing: '3px', // <-- match player name's letterSpacing
               display: 'block',
               fontSize: isCountdownOver24Hours(
                 typeof playerCountdowns[player.playerId] === 'string'
@@ -891,10 +892,29 @@ export default function FreeAgentAuctionPage() {
             </>
           )}
         </div>
+        {/* Bottom-right info (contract points, salary/years, bidder) */}
         <div className="absolute bottom-4 right-4 flex flex-col items-end">
-          <span className="font-mono font-extrabold text-3xl text-[#FFB800]">
+          <span
+            className="font-extrabold text-3xl text-[#FFB800]"
+            style={{
+              fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
+              letterSpacing: '3px'
+            }}
+          >
             {result ? contractScore : '-'}
           </span>
+          {result && (
+            <span
+              className="font-bold mb-1"
+              style={{
+                color: '#60a5fa', // Tailwind's text-blue-300
+                fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
+                fontSize: '1.15em'
+              }}
+            >
+              ${result.salary} / {result.years}y
+            </span>
+          )}
           <div className="flex items-center gap-1 mt-1">
             {result?.username && teamAvatars[result.username] ? (
               <img
@@ -905,7 +925,13 @@ export default function FreeAgentAuctionPage() {
             ) : (
               <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
             )}
-            <span className="font-mono">{result?.username ?? '-'}</span>
+            <span
+              style={{
+                fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif'
+              }}
+            >
+              {result?.username ?? '-'}
+            </span>
           </div>
         </div>
       </div>
