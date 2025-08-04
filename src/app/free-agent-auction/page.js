@@ -805,7 +805,7 @@ export default function FreeAgentAuctionPage() {
               ? 'border-blue-400'
               : 'border-gray-400'
           }`}
-        style={{ minHeight: 180 }} // <-- Add this line for minimum card height
+        style={{ minHeight: 200 }} // <-- Increased minimum card height
       >
         <div className="w-full flex justify-center mb-2 relative">
           <span
