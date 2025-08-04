@@ -160,7 +160,7 @@ export default function FreeAgentAuctionPage() {
 
         countdowns[p.playerId] =
           diff > 0
-            ? <span className={`${colorClass} font-mono`}>{formatCountdown(diff)}</span>
+            ? <span className={colorClass}>{formatCountdown(diff)}</span>
             : '';
       });
       setPlayerCountdowns(countdowns);
@@ -820,8 +820,8 @@ export default function FreeAgentAuctionPage() {
           <span
             className="cursor-help text-center w-full"
             style={{
-              fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif', // <-- already matches player name
-              letterSpacing: '3px', // <-- match player name's letterSpacing
+              fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
+              letterSpacing: '1px',
               display: 'block',
               fontSize: isCountdownOver24Hours(
                 typeof playerCountdowns[player.playerId] === 'string'
