@@ -122,6 +122,7 @@ export default function FreeAgentAuctionPage() {
   const [bidLogSearch, setBidLogSearch] = useState('');
   const [bidLogBidder, setBidLogBidder] = useState('ALL');
   const [showBidLogModal, setShowBidLogModal] = useState(false);
+  const [showResetButtons, setShowResetButtons] = useState(false); // <-- Add this line
   const initialLoadDone = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -666,7 +667,7 @@ export default function FreeAgentAuctionPage() {
               Bid
             </button>
           )}
-          {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === p.playerId) && (
+          {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === p.playerId) && (
             <>
               <button
                 className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
@@ -775,7 +776,20 @@ export default function FreeAgentAuctionPage() {
 
     function isCountdownOver24Hours(countdownValue) {
       if (!countdownValue) return false;
-      return countdownValue.includes('Days');
+      // If it's a string, check for 'Days'
+      if (typeof countdownValue === 'string') {
+        return countdownValue.includes('Days');
+      }
+      // If it's a React fragment/element, check its children for 'Days'
+      if (typeof countdownValue === 'object' && countdownValue !== null && countdownValue.props && countdownValue.props.children) {
+        // children can be an array or a single value
+        const children = countdownValue.props.children;
+        if (Array.isArray(children)) {
+          return children.some(child => typeof child === 'string' && child.includes('Days'));
+        }
+        return typeof children === 'string' && children.includes('Days');
+      }
+      return false;
     }
 
     return (
@@ -791,6 +805,7 @@ export default function FreeAgentAuctionPage() {
               ? 'border-blue-400'
               : 'border-gray-400'
           }`}
+        style={{ minHeight: 180 }} // <-- Add this line for minimum card height
       >
         <div className="w-full flex justify-center mb-2 relative">
           <span
@@ -816,13 +831,15 @@ export default function FreeAgentAuctionPage() {
           </span>
         </div>
         {/* Countdown timer (in the card) */}
-        <div className="w-full flex justify-center mb-4">
+        <div className="w-full flex justify-center mb-4" style={{ minHeight: 32, maxHeight: 40 }}>
           <span
-            className="cursor-help text-center w-full"
+            className="cursor-help text-center flex justify-center items-center"
             style={{
               fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
               letterSpacing: '1px',
-              display: 'block',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
               fontSize: isCountdownOver24Hours(
                 typeof playerCountdowns[player.playerId] === 'string'
                   ? playerCountdowns[player.playerId]
@@ -851,7 +868,7 @@ export default function FreeAgentAuctionPage() {
               PLACE BID
             </button>
           )}
-          {session?.user?.role === 'admin' && draft.results?.some(r => r.playerId === player.playerId) && (
+          {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === player.playerId) && (
             <>
               <button
                 className="w-full px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs mt-1"
@@ -938,6 +955,20 @@ export default function FreeAgentAuctionPage() {
     );
   }
 
+  // Prefill bidSalary and bidYears when a player is selected
+  useEffect(() => {
+    if (selectedPlayer && draft?.results) {
+      const result = draft.results.find(r => r.playerId === selectedPlayer.playerId);
+      if (result) {
+        setBidSalary(String(result.salary ?? ''));
+        setBidYears(String(result.years ?? ''));
+      } else {
+        setBidSalary('');
+        setBidYears('');
+      }
+    }
+  }, [selectedPlayer, draft?.results]);
+
   function formatCountdown(ms) {
     if (ms <= 0) return '';
     const totalSeconds = Math.floor(ms / 1000);
@@ -948,7 +979,13 @@ export default function FreeAgentAuctionPage() {
     const timeStr = `${hours.toString().padStart(2, '0')}:` +
       `${minutes.toString().padStart(2, '0')}:` +
       `${seconds.toString().padStart(2, '0')}`;
-    return days > 0 ? `${days} Days ${timeStr}` : timeStr;
+    return days > 0
+      ? (
+          <>
+            {days} Days<br />{timeStr}
+          </>
+        )
+      : timeStr;
   }
 
   function formatTimeAgo(dateString) {
@@ -1014,6 +1051,15 @@ export default function FreeAgentAuctionPage() {
           )}
           {/* Move Cap Space and Bid Log buttons here */}
           <div className="flex justify-end mt-4 w-full max-w-2xl mx-auto">
+            {/* Admin-only Toggle Reset Buttons */}
+            {session?.user?.role === 'admin' && (
+              <button
+                className={`px-4 py-2 rounded text-white transition-colors mr-2 ${showResetButtons ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-gray-700 hover:bg-gray-800'}`}
+                onClick={() => setShowResetButtons(v => !v)}
+              >
+                {showResetButtons ? 'Hide Reset Buttons' : 'Show Reset Buttons'}
+              </button>
+            )}
             <button
               className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors mr-2"
               onClick={() => setShowCapModal(true)}
@@ -1439,7 +1485,7 @@ export default function FreeAgentAuctionPage() {
                   {capTeams
                     .sort((a, b) => a.team.localeCompare(b.team))
                     .map((team, idx) => (
-                      <tr key={team.team || idx} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                      <tr key={team.team || idx} className="hover:bg-white/10 transition-colors border-b border-white/5 last:border-0">
                         <td className="p-3 font-medium flex items-center gap-2">
                           {teamAvatars[team.team] ? (
                             <img
@@ -1513,40 +1559,37 @@ export default function FreeAgentAuctionPage() {
                   <tr className="bg-[#FF4B1F]/20 text-white/90">
                     <th className="py-2 px-3 text-left">Player Name</th>
                     <th className="py-2 px-3 text-left">Bidder</th>
-                    <th className="py-2 px-3 text-left">Bid</th>
+                    <th className="py-2 px-3 text-left">Salary/Years</th>
                     <th className="py-2 px-3 text-left">Time</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBidLog.length > 0 ? (
-                    [...filteredBidLog]
-                      .slice()
-                      .reverse()
-                      .map((bid, idx) => {
-                        const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
-                        return (
-                          <tr key={idx} className="hover:bg-white/10">
-                            <td className="py-2 px-3">{player ? player.playerName : 'Unknown'}</td>
-                            <td className="py-2 px-3 flex items-center gap-2">
-                              {teamAvatars[bid.username] ? (
-                                <img
-                                  src={`https://sleepercdn.com/avatars/${teamAvatars[bid.username]}`}
-                                  alt={bid.username}
-                                  className="w-5 h-5 rounded-full"
-                                />
-                              ) : (
-                                <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
-                              )}
-                              {bid.username}
-                            </td>
-                            <td className="py-2 px-3 font-mono">
-                              ${bid.salary} / {bid.years}y<br />
-                              <span className="text-blue-300">Score: {bid.contractPoints}</span>
-                            </td>
-                            <td className="py-2 px-3 text-gray-400">{formatTimeAgo(bid.timestamp)}</td>
-                          </tr>
-                        );
-                      })
+                    filteredBidLog.map((bid, idx) => {
+                      const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
+                      return (
+                        <tr key={idx} className="hover:bg-white/10">
+                          <td className="py-2 px-3">{player ? player.playerName : 'Unknown'}</td>
+                          <td className="py-2 px-3 flex items-center gap-2">
+                            {teamAvatars[bid.username] ? (
+                              <img
+                                src={`https://sleepercdn.com/avatars/${teamAvatars[bid.username]}`}
+                                alt={bid.username}
+                                className="w-5 h-5 rounded-full"
+                              />
+                            ) : (
+                              <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
+                            )}
+                            {bid.username}
+                          </td>
+                          <td className="py-2 px-3 font-mono">
+                            ${bid.salary} / {bid.years}y<br />
+                            <span className="text-blue-300">Score: {bid.contractPoints}</span>
+                          </td>
+                          <td className="py-2 px-3 text-gray-400">{formatTimeAgo(bid.timestamp)}</td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={4} className="py-4 text-center text-white/60">No bids yet.</td>
