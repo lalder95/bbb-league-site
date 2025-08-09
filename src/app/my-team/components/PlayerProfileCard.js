@@ -32,7 +32,8 @@ export default function PlayerProfileCard({
   }
   const [contract, setContract] = useState(null);
   const [imgSrc, setImgSrc] = useState(null);
-  const [flipped, setFlipped] = useState(false);
+  const [flippedContainer, setFlippedContainer] = useState(false);
+  const [flippedCard, setFlippedCard] = useState(false);
   const [allContracts, setAllContracts] = useState([]);
   // No internal expanded state; rely on prop only
 
@@ -239,207 +240,260 @@ export default function PlayerProfileCard({
     );
   };
 
+  // When the main "flipped" state changes, update both in sequence
+  const handleFlip = () => {
+    if (!flippedContainer && !flippedCard) {
+      // Flip: container first, then card
+      setFlippedContainer(true);
+      setTimeout(() => setFlippedCard(true), 400); // adjust delay as needed
+    } else if (flippedContainer && flippedCard) {
+      // Unflip: card first, then container
+      setFlippedCard(false);
+      setTimeout(() => setFlippedContainer(false), 400);
+    }
+  };
+
   return (
-    <div
-      className={
-        expanded
-          ? "flex flex-col items-center justify-center min-h-screen w-full py-8"
-          : "flex flex-col items-center justify-center"
-      }
-      style={expanded ? { overflowX: 'auto' } : {}}
-      onClick={onClick}
-    >
+    <>
       <div
-        className={`relative ${
-          expanded
-            ? (className || "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem]")
-            : (className && className.match(/w-\d+/) ? className : 'w-36 h-36 sm:w-40 sm:h-40')
-        } rounded-lg shadow-lg bg-gray-900 overflow-hidden transition-transform duration-300 ease-in-out ${flipped ? "scale-90" : "scale-100"}`}
+        className={
+          (expanded
+            ? "flex flex-col items-center justify-center min-h-screen w-full py-8"
+            : "flex flex-col items-center justify-center"
+          ) + " pointer-events-none"
+        }
+        style={{
+          ...(expanded ? { overflowX: 'auto' } : {}),
+          transition: "transform 1.1s cubic-bezier(.68,-0.55,.27,1.55)", // <-- bounce effect for container
+          transform: flippedContainer ? "rotate(-90deg)" : "rotate(0deg)",
+          transformOrigin: "center center",
+        }}
+        onClick={onClick}
       >
         <div
-          className="relative w-full h-full"
-          style={{
-            perspective: "1200px",
-          }}
+          className={`relative ${
+            expanded
+              ? (className || "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem]")
+              : (className && className.match(/w-\d+/) ? className : 'w-36 h-36 sm:w-40 sm:h-40')
+          } rounded-lg shadow-lg overflow-hidden transition-transform duration-300 ease-in-out ${flippedContainer ? "scale-90" : "scale-100"}`}
+          // Removed bg-gray-900 to make the card container transparent
         >
           <div
-            className={`transition-transform duration-[1500ms] ease-in-out w-full h-full absolute top-0 left-0`}
+            className="relative w-full h-full"
             style={{
-              transformStyle: "preserve-3d",
-              // Diagonal flip: rotateY(180deg) rotateZ(90deg)
-              transform: flipped ? "rotateY(180deg) rotateZ(90deg)" : "rotateY(0deg) rotateZ(0deg)",
-              width: "100%",
-              height: "100%",
+              perspective: "1200px",
             }}
           >
-            {/* Front Side */}
             <div
-              className="absolute w-full h-full backface-hidden"
-              style={{ backfaceVisibility: "hidden" }}
-            >
-              <img
-                src={imgSrc}
-                alt={contract?.playerName}
-                className="object-contain w-full h-full"
-                onError={handleImgError}
-              />
-              {onExpandClick && (
-                <button
-                  onClick={onExpandClick}
-                  className="absolute top-2 right-2 z-20 bg-[#FF4B1F] text-white rounded-full p-3 hover:bg-orange-600 shadow-lg border-2 border-white/80 transition-all duration-200"
-                  style={{ fontSize: 32, lineHeight: 1, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  aria-label={expanded ? "Hide details" : "Show details"}
-                >
-                  {expanded ? "✕" : "i"}
-                </button>
-              )}
-              {expanded && !flipped && contract && typeof contract === 'object' && !Array.isArray(contract) && (
-                <div className="w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent mt-2 absolute bottom-0 left-0 z-10">
-                  {safeDisplay(contract.playerName) !== '-' && <Bubble className="bg-[#FF4B1F] bg-opacity-50">{String(safeDisplay(contract.playerName))}</Bubble>}
-                  {safeDisplay(contract.position) !== '-' && <Bubble className="bg-blue-700 bg-opacity-50">{String(safeDisplay(contract.position))}</Bubble>}
-                  <Bubble className="bg-green-700 bg-opacity-50">
-                    {typeof contract.curYear === 'number' ? `$${contract.curYear.toFixed(1)}` : "-"}
-                  </Bubble>
-                  {safeDisplay(contract.contractType) !== '-' && <Bubble className="bg-indigo-700 bg-opacity-50">{String(safeDisplay(contract.contractType))}</Bubble>}
-                  {safeDisplay(contract.team) !== '-' && <Bubble className="bg-purple-700 bg-opacity-50">{String(safeDisplay(contract.team))}</Bubble>}
-                  {safeDisplay(contract.age) !== '-' && (
-                    <Bubble
-                      className={
-                        "bg-yellow-700 bg-opacity-50 " +
-                        (Number(contract.age) >= 30 ? "animate-pulse" : "")
-                      }
-                    >
-                      {`Age: ${String(safeDisplay(contract.age))}`}
-                    </Bubble>
-                  )}
-                  <Bubble
-                    className={
-                      "bg-cyan-700 bg-opacity-50 " +
-                      (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")
-                    }
-                  >
-                    {`RFA: ${String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
-                  </Bubble>
-                  <Bubble
-                    className={
-                      "bg-pink-700 bg-opacity-50 " +
-                      (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")
-                    }
-                  >
-                    {`Tag: ${String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
-                  </Bubble>
-                  <Bubble className="bg-teal-700 bg-opacity-50">
-                    {`KTC: ${String(safeDisplay(contract.ktcValue))}`}
-                  </Bubble>
-                  <Bubble
-                    className={
-                      "bg-orange-700 bg-opacity-50 " +
-                      (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")
-                    }
-                  >
-                    {`Final Year: ${String(safeDisplay(contract.contractFinalYear))}`}
-                  </Bubble>
-                </div>
-              )}
-            </div>
-            {/* Back Side */}
-            <div
-              className="absolute w-full h-full flex items-center justify-center bg-gray-800 text-white text-xl rounded-lg"
+              className={`transition-transform w-full h-full absolute top-0 left-0`}
               style={{
-                transform: "rotateY(180deg)",
-                backfaceVisibility: "hidden",
+                transition: "transform 1.1s cubic-bezier(.68,-0.55,.27,1.55)", // <-- bounce effect
+                transformStyle: "preserve-3d",
+                transform: flippedCard ? "rotateY(180deg)" : "rotateY(0deg)",
+                width: "100%",
+                height: "100%",
               }}
             >
-            <div className="flex flex-col items-center justify-center w-full h-full box-border bg-gradient-to-br from-[#001A2B] via-gray-900 to-[#22223b] rounded-lg border border-white/10 shadow-xl relative overflow-x-auto">
-            {/* Player image background, 5% opacity, behind overlays */}
-            {imgSrc && (
-              <img
-                src={imgSrc}
-                alt={contract?.playerName}
-                className="absolute w-full h-full object-contain pointer-events-none select-none"
-                style={{
-                  opacity: 0.05,
-                  top: 0,
-                  left: 0,
-                  zIndex: 1,
-                  filter: 'grayscale(0.2) blur(0.5px)',
-                  transform: 'scaleX(-1)',
-                }}
-              />
-            )}
-            {/* Player card image as a low-opacity background */}
-            {imgSrc && (
-              <img
-                src={imgSrc}
-                alt={contract?.playerName}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  opacity: 0.05,
-                  zIndex: 0,
-                  pointerEvents: 'none',
-                  transform: 'scaleX(-1)',
-                }}
-              />
-            )}
-            {/* Player age bottom-left, rotated 90deg */}
-            {/* Position and age bubbles removed from back of card as requested */}
-            {/* Team avatar and KTC score removed from back of card */}
-            {/* Contract Table */}
-            {allContracts.filter(c => c.status === "Active" || c.status === "Future").length > 0 ? (
-              <div className="w-full h-full flex flex-col items-center justify-center" style={{height: '100%', minHeight: 0}}>
-                <div className="flex flex-col h-full w-full justify-center items-center" style={{height: '100%', minHeight: 0}}>
-                  <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%'}}>
-                    <table className="w-auto text-sm border border-white/10 rounded bg-black/30 mx-auto rotate-90 origin-center shadow-lg" style={{margin: '0 auto', maxWidth: '95%', transform: 'scale(0.925) rotate(90deg)'}}>
-                    <thead>
-                      <tr className="bg-black/60 text-[#FF4B1F] text-base">
-                        <th className="p-2 border-b border-white/10 font-semibold">Type</th>
-                        <th className="p-2 border-b border-white/10 font-semibold">Start Year</th>
-                        <th className="p-2 border-b border-white/10 font-semibold">Year 1</th>
-                        <th className="p-2 border-b border-white/10 font-semibold">Year 2</th>
-                        <th className="p-2 border-b border-white/10 font-semibold">Year 3</th>
-                        <th className="p-2 border-b border-white/10 font-semibold">Year 4</th>
-                        <th className="p-2 border-b border-white/10 font-semibold">Final Year</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allContracts.filter(c => c.status === "Active" || c.status === "Future").map((c, idx) => {
-                        // Debug: Log each contract row before rendering
-                        console.log(`[PlayerProfileCard] Rendering contract row idx=${idx}:`, c, '| type:', typeof c);
-                        return (
-                          <tr key={idx} className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
-                            <td className="p-2 text-white/90">{safeDisplay(c.contractType)}</td>
-                            <td className="p-2 text-white/80">{safeDisplay(c.contractStartYear)}</td>
-                            <td className="p-2 text-green-400">{typeof c.curYear === 'number' ? `$${c.curYear.toFixed(1)}` : safeDisplay(c.curYear)}</td>
-                            <td className="p-2 text-green-400">{typeof c.year2 === 'number' ? `$${c.year2.toFixed(1)}` : safeDisplay(c.year2)}</td>
-                            <td className="p-2 text-green-400">{typeof c.year3 === 'number' ? `$${c.year3.toFixed(1)}` : safeDisplay(c.year3)}</td>
-                            <td className="p-2 text-green-400">{typeof c.year4 === 'number' ? `$${c.year4.toFixed(1)}` : safeDisplay(c.year4)}</td>
-                            <td className="p-2 text-white/80">{safeDisplay(c.contractFinalYear)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    </table>
+              {/* Front Side */}
+              <div
+                className="absolute w-full h-full backface-hidden"
+                style={{ backfaceVisibility: "hidden" }}
+              >
+                <img
+                  src={imgSrc}
+                  alt={contract?.playerName}
+                  className="object-contain w-full h-full"
+                  onError={handleImgError}
+                />
+                {onExpandClick && (
+                  <button
+                    onClick={onExpandClick}
+                    className="absolute top-1 right-2 z-20 bg-[#FF4B1F] text-white rounded-full p-3 hover:bg-orange-600 shadow-lg border-2 border-white/80 transition-all duration-200"
+                    style={{ fontSize: 32, lineHeight: 1, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    aria-label={expanded ? "Hide details" : "Show details"}
+                  >
+                    {expanded ? "✕" : "i"}
+                  </button>
+                )}
+                {expanded && !flippedCard && contract && typeof contract === 'object' && !Array.isArray(contract) && (
+                  <div className="w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent mt-2 absolute bottom-0 left-0 z-10">
+                    {safeDisplay(contract.playerName) !== '-' && <Bubble className="bg-[#FF4B1F] bg-opacity-50">{String(safeDisplay(contract.playerName))}</Bubble>}
+                    {safeDisplay(contract.position) !== '-' && <Bubble className="bg-blue-700 bg-opacity-50">{String(safeDisplay(contract.position))}</Bubble>}
+                    <Bubble className="bg-green-700 bg-opacity-50">
+                      {typeof contract.curYear === 'number' ? `$${contract.curYear.toFixed(1)}` : "-"}
+                    </Bubble>
+                    {safeDisplay(contract.contractType) !== '-' && <Bubble className="bg-indigo-700 bg-opacity-50">{String(safeDisplay(contract.contractType))}</Bubble>}
+                    {safeDisplay(contract.team) !== '-' && <Bubble className="bg-purple-700 bg-opacity-50">{String(safeDisplay(contract.team))}</Bubble>}
+                    {safeDisplay(contract.age) !== '-' && (
+                      <Bubble
+                        className={
+                          "bg-yellow-700 bg-opacity-50 " +
+                          (Number(contract.age) >= 30 ? "animate-pulse" : "")
+                        }
+                      >
+                        {`Age: ${String(safeDisplay(contract.age))}`}
+                      </Bubble>
+                    )}
+                    <Bubble
+                      className={
+                        "bg-cyan-700 bg-opacity-50 " +
+                        (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")
+                      }
+                    >
+                      {`RFA: ${String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
+                    </Bubble>
+                    <Bubble
+                      className={
+                        "bg-pink-700 bg-opacity-50 " +
+                        (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")
+                      }
+                    >
+                      {`Tag: ${String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
+                    </Bubble>
+                    <Bubble className="bg-teal-700 bg-opacity-50">
+                      {`KTC: ${String(safeDisplay(contract.ktcValue))}`}
+                    </Bubble>
+                    <Bubble
+                      className={
+                        "bg-orange-700 bg-opacity-50 " +
+                        (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")
+                      }
+                    >
+                      {`Final Year: ${String(safeDisplay(contract.contractFinalYear))}`}
+                    </Bubble>
                   </div>
+                )}
+              </div>
+              {/* Back Side */}
+              <div
+                className="absolute w-full h-full flex items-center justify-center bg-gray-800 text-white text-xl rounded-lg border-2 border-[#FF4B1F]"
+                style={{
+                  transform: "rotateY(180deg)",
+                  backfaceVisibility: "hidden",
+                }}
+              >
+                <div className="flex flex-col items-center justify-center w-full h-full box-border bg-gradient-to-br from-[#001A2B] via-gray-900 to-[#22223b] rounded-lg border border-white/10 shadow-xl relative overflow-x-auto">
+                  {/* Player Name vertically on the right, rotated 90deg */}
+                  <div
+                    className="absolute right-6 top-1/2 -translate-y-1/2 z-20"
+                    style={{
+                      transform: "translateY(-50%) rotate(0deg)", // <-- rotate(0deg) for top-to-bottom vertical text
+                      transformOrigin: "right center",
+                      writingMode: "vertical-lr",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span className="text-2xl font-bold text-[#FF4B1F] drop-shadow">
+                      {safeDisplay(contract.playerName)}
+                    </span>
+                  </div>
+                  {/* Player image background, 5% opacity, behind overlays */}
+                  {imgSrc && (
+                    <img
+                      src={imgSrc}
+                      alt={contract?.playerName}
+                      className="absolute w-full h-full object-contain pointer-events-none select-none"
+                      style={{
+                        opacity: 0.05,
+                        top: 0,
+                        left: 0,
+                        zIndex: 1,
+                        filter: 'grayscale(0.2) blur(0.5px)',
+                        transform: 'scaleX(-1)',
+                      }}
+                    />
+                  )}
+                  {/* Player card image as a low-opacity background */}
+                  {imgSrc && (
+                    <img
+                      src={imgSrc}
+                      alt={contract?.playerName}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                        opacity: 0.05,
+                        zIndex: 0,
+                        pointerEvents: 'none',
+                        transform: 'scaleX(-1)',
+                      }}
+                    />
+                  )}
+                  {/* Player age bottom-left, rotated 90deg */}
+                  {/* Position and age bubbles removed from back of card as requested */}
+                  {/* Team avatar and KTC score removed from back of card */}
+                  {/* Contract Table */}
+                  {allContracts.filter(c => c.status === "Active" || c.status === "Future").length > 0 ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center" style={{height: '100%', minHeight: 0}}>
+                      <div className="flex flex-col h-full w-full justify-center items-center" style={{height: '100%', minHeight: 0}}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '100%',
+                            width: '100%',
+                          }}
+                        >
+                          <div className="w-full flex justify-center items-center">
+                            <table
+                              className="w-auto text-sm border border-white/10 rounded bg-black/30 mx-auto rotate-90 origin-center shadow-lg"
+                              style={{
+                                margin: '0 auto',
+                                maxWidth: '90%', // was 95%, now 90% for a slightly smaller table
+                                transform: 'scale(0.85) rotate(90deg)', // was 0.925, now 0.88 for a slightly smaller table
+                              }}
+                            >
+                              <thead>
+                                <tr className="bg-black/60 text-[#FF4B1F] text-base">
+                                  <th className="p-2 border-b border-white/10 font-semibold">Type</th>
+                                  <th className="p-2 border-b border-white/10 font-semibold">Start Year</th>
+                                  <th className="p-2 border-b border-white/10 font-semibold">Year 1</th>
+                                  <th className="p-2 border-b border-white/10 font-semibold">Year 2</th>
+                                  <th className="p-2 border-b border-white/10 font-semibold">Year 3</th>
+                                  <th className="p-2 border-b border-white/10 font-semibold">Year 4</th>
+                                  <th className="p-2 border-b border-white/10 font-semibold">Final Year</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {allContracts.filter(c => c.status === "Active" || c.status === "Future").map((c, idx) => {
+                                  // Debug: Log each contract row before rendering
+                                  console.log(`[PlayerProfileCard] Rendering contract row idx=${idx}:`, c, '| type:', typeof c);
+                                  return (
+                                    <tr key={idx} className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
+                                      <td className="p-2 text-white/90">{safeDisplay(c.contractType)}</td>
+                                      <td className="p-2 text-white/80">{safeDisplay(c.contractStartYear)}</td>
+                                      <td className="p-2 text-green-400">{typeof c.curYear === 'number' ? `$${c.curYear.toFixed(1)}` : safeDisplay(c.curYear)}</td>
+                                      <td className="p-2 text-green-400">{typeof c.year2 === 'number' ? `$${c.year2.toFixed(1)}` : safeDisplay(c.year2)}</td>
+                                      <td className="p-2 text-green-400">{typeof c.year3 === 'number' ? `$${c.year3.toFixed(1)}` : safeDisplay(c.year3)}</td>
+                                      <td className="p-2 text-green-400">{typeof c.year4 === 'number' ? `$${c.year4.toFixed(1)}` : safeDisplay(c.year4)}</td>
+                                      <td className="p-2 text-white/80">{safeDisplay(c.contractFinalYear)}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-white/60">No active or future contracts found.</div>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="text-white/60">No active or future contracts found.</div>
-            )}
-            </div>
             </div>
           </div>
         </div>
       </div>
-      {/* Flip control below the card, only when expanded */}
       {expanded && (
-        <div className="flex flex-row gap-4 mt-4 w-full justify-center">
+        <div className="flex justify-center mt-[-120px] pointer-events-auto">
           <button
-            onClick={() => setFlipped(f => !f)}
+            onClick={handleFlip}
             className="bg-blue-700 text-white rounded px-4 py-2 text-base font-semibold shadow hover:bg-blue-800 transition-colors min-w-[90px]"
             aria-label="Flip card"
             type="button"
@@ -448,6 +502,6 @@ export default function PlayerProfileCard({
           </button>
         </div>
       )}
-    </div>
+    </>
   );
 }
