@@ -252,14 +252,9 @@ export default function PlayerProfileCard({
       <div
         className={`relative ${
           expanded
-            ? (
-                flipped
-                  ? "h-[95vh] max-h-[95vh] aspect-[3.5/2.5] min-w-[22rem] max-w-[95vw] md:h-[32rem] md:max-h-none md:aspect-[3.5/2.5] md:w-[32rem]"
-                  : "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem]"
-              )
-            // --- CHANGE: Use larger size for mobile list view, small for table avatar ---
-            : `${className} ${className.includes('w-8') ? '' : 'w-36 h-36 sm:w-40 sm:h-40'}`
-        } rounded-lg shadow-lg bg-gray-900 overflow-hidden`}
+            ? (className || "w-[95vw] max-w-[95vw] aspect-[2.5/3.5] min-h-[22rem] max-h-[95vh] md:w-96 md:max-w-none md:aspect-[2.5/3.5] md:h-[32rem]")
+            : (className && className.match(/w-\d+/) ? className : 'w-36 h-36 sm:w-40 sm:h-40')
+        } rounded-lg shadow-lg bg-gray-900 overflow-hidden transition-transform duration-300 ease-in-out ${flipped ? "scale-90" : "scale-100"}`}
       >
         <div
           className="relative w-full h-full"

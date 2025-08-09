@@ -87,7 +87,7 @@ function TeamSection({
                         {/* Card and info */}
                         <div className="flex flex-col items-center">
                           <div className="w-20 h-20 flex items-center justify-center relative">
-                            <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
+                            <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} className="w-12 h-12" />
                             <button
                               onClick={e => {
                                 e.stopPropagation();
@@ -158,11 +158,12 @@ function TeamSection({
                       className="cursor-pointer flex flex-col items-center"
                       onClick={() => handleAddPlayer(player)}
                     >
-                      <div className="w-24 h-24 flex items-center justify-center relative">
+                      <div className="w-16 h-16 flex items-center justify-center relative"> {/* changed from w-24 h-24 */}
                         <PlayerProfileCard
                           playerId={player.id}
                           imageExtension="png"
                           expanded={false}
+                          className="w-14 h-14"
                         />
                         <button
                           onClick={e => {
@@ -202,21 +203,27 @@ function TeamSection({
       </div>
 
       {popupPlayer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="relative bg-gray-900 rounded-lg shadow-lg p-4 max-w-xs w-full">
-            <button
-              onClick={() => setPopupPlayer(null)}
-              className="absolute top-2 right-2 text-white bg-black/60 rounded-full p-2 hover:bg-black/80 z-10"
-              aria-label="Close"
-            >
-              ✕
-            </button>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setPopupPlayer(null)}
+        >
+          <div
+            className="bg-transparent p-0 rounded-lg shadow-2xl relative"
+            onClick={e => e.stopPropagation()}
+          >
             <PlayerProfileCard
               playerId={popupPlayer.id}
               imageExtension="png"
               expanded={true}
+              className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
             />
-            <div className="mt-4 text-center text-lg font-bold text-white">
+            <button
+              className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
+              onClick={() => setPopupPlayer(null)}
+            >
+              ×
+            </button>
+            <div className="mt-2 text-center text-lg font-bold text-white">
               {popupPlayer.playerName}
             </div>
           </div>
