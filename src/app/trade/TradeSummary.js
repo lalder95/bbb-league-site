@@ -198,43 +198,50 @@ const TradeSummary = ({
               <div className="space-y-2 mb-4 md:mb-6 mt-6">
                 {selectedPlayersB.length > 0 ? (
                   selectedPlayersB.map((player, index) => (
-                    <div key={index} className="bg-black/20 rounded p-2 md:p-3 flex flex-col md:flex-row md:items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        {/* Player image */}
-                        <div className="w-16 h-16 flex items-center justify-center relative">
-                          <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
+                    <div
+                      key={index}
+                      className="bg-black/20 rounded p-2 md:p-3 flex flex-row items-center gap-4"
+                    >
+                      {/* Player image in a larger fixed-size container */}
+                      <div className="flex items-center justify-center" style={{ width: 72, height: 72, minWidth: 72, minHeight: 72 }}>
+                        <PlayerProfileCard
+                          playerId={player.id}
+                          imageExtension="png"
+                          expanded={false}
+                          className="w-20 h-20 object-contain"
+                        />
+                      </div>
+                      {/* Player info */}
+                      <div className="flex-1 min-w-0">
+                        {/* Line 1: Player Name */}
+                        <div className="font-semibold text-base text-white truncate">{player.playerName}</div>
+                        {/* Line 2: Position, Salary, Contract Type */}
+                        <div className="flex flex-row flex-wrap items-center gap-3 mt-1 text-sm">
+                          <span className="text-white/80 font-semibold">{player.position}</span>
+                          <span className="text-white/80 font-semibold">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
+                          <span className="text-white/80 font-semibold">{player.contractType}</span>
                         </div>
-                        {/* Player info and bubbles */}
-                        <div>
-                          <div className="font-semibold">{player.playerName}</div>
-                          <div className="flex flex-wrap items-center gap-1 mt-1">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-700/50 text-white">{player.position}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-700/50 text-white">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-700/50 text-white">{player.contractType}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-purple-700/50 text-white">
-                              {teamAvatars && teamAvatars[player.team] ? (
-                                <img
-                                  src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
-                                  alt={player.team}
-                                  className="w-4 h-4 rounded-full mr-1 inline-block"
-                                />
-                              ) : (
-                                <span className="w-4 h-4 rounded-full bg-white/10 mr-1 inline-block"></span>
-                              )}
-                              {player.team}
-                            </span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-700/50 text-white ${Number(player.age) >= 30 ? "animate-pulse" : ""}`}>Age: {player.age || "-"}</span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
-                          </div>
+                        {/* Line 3: Team */}
+                        <div className="flex flex-row items-center gap-2 mt-1 text-sm">
+                          {teamAvatars && teamAvatars[player.team] ? (
+                            <img
+                              src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                              alt={player.team}
+                              className="w-5 h-5 rounded-full mr-1 inline-block"
+                            />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-white/10 mr-1 inline-block"></span>
+                          )}
+                          <span className="text-white/80 font-semibold">{player.team}</span>
                         </div>
-                        {/* Divider */}
-                        <div className="hidden md:block h-12 border-l border-white/10 mx-4"></div>
+                        {/* Line 4: Age, KTC Score */}
+                        <div className="flex flex-row gap-6 mt-1 text-xs text-white/70">
+                          <span>Age: {player.age || "-"}</span>
+                          <span>KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                        </div>
                       </div>
                       {/* Salary */}
-                      <div className="text-green-400 font-bold mt-2 md:mt-0">${parseFloat(player.curYear).toFixed(1)}</div>
+                      <div className="text-green-400 font-bold ml-4 text-lg">${parseFloat(player.curYear).toFixed(1)}</div>
                     </div>
                   ))
                 ) : (
@@ -299,43 +306,50 @@ const TradeSummary = ({
               <div className="space-y-2 mb-4 md:mb-6 mt-6">
                 {selectedPlayersA.length > 0 ? (
                   selectedPlayersA.map((player, index) => (
-                    <div key={index} className="bg-black/20 rounded p-2 md:p-3 flex flex-col md:flex-row md:items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        {/* Player image */}
-                        <div className="w-16 h-16 flex items-center justify-center relative">
-                          <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} />
+                    <div
+                      key={index}
+                      className="bg-black/20 rounded p-2 md:p-3 flex flex-row items-center gap-4"
+                    >
+                      {/* Player image in a larger fixed-size container */}
+                      <div className="flex items-center justify-center" style={{ width: 72, height: 72, minWidth: 72, minHeight: 72 }}>
+                        <PlayerProfileCard
+                          playerId={player.id}
+                          imageExtension="png"
+                          expanded={false}
+                          className="w-20 h-20 object-contain"
+                        />
+                      </div>
+                      {/* Player info */}
+                      <div className="flex-1 min-w-0">
+                        {/* Line 1: Player Name */}
+                        <div className="font-semibold text-base text-white truncate">{player.playerName}</div>
+                        {/* Line 2: Position, Salary, Contract Type */}
+                        <div className="flex flex-row flex-wrap items-center gap-3 mt-1 text-sm">
+                          <span className="text-white/80 font-semibold">{player.position}</span>
+                          <span className="text-white/80 font-semibold">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
+                          <span className="text-white/80 font-semibold">{player.contractType}</span>
                         </div>
-                        {/* Player info and bubbles */}
-                        <div>
-                          <div className="font-semibold">{player.playerName}</div>
-                          <div className="flex flex-wrap items-center gap-1 mt-1">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-700/50 text-white">{player.position}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-700/50 text-white">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-700/50 text-white">{player.contractType}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-purple-700/50 text-white">
-                              {teamAvatars && teamAvatars[player.team] ? (
-                                <img
-                                  src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
-                                  alt={player.team}
-                                  className="w-4 h-4 rounded-full mr-1 inline-block"
-                                />
-                              ) : (
-                                <span className="w-4 h-4 rounded-full bg-white/10 mr-1 inline-block"></span>
-                              )}
-                              {player.team}
-                            </span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-700/50 text-white ${Number(player.age) >= 30 ? "animate-pulse" : ""}`}>Age: {player.age || "-"}</span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
-                          </div>
+                        {/* Line 3: Team */}
+                        <div className="flex flex-row items-center gap-2 mt-1 text-sm">
+                          {teamAvatars && teamAvatars[player.team] ? (
+                            <img
+                              src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                              alt={player.team}
+                              className="w-5 h-5 rounded-full mr-1 inline-block"
+                            />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-white/10 mr-1 inline-block"></span>
+                          )}
+                          <span className="text-white/80 font-semibold">{player.team}</span>
                         </div>
-                        {/* Divider */}
-                        <div className="hidden md:block h-12 border-l border-white/10 mx-4"></div>
+                        {/* Line 4: Age, KTC Score */}
+                        <div className="flex flex-row gap-6 mt-1 text-xs text-white/70">
+                          <span>Age: {player.age || "-"}</span>
+                          <span>KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                        </div>
                       </div>
                       {/* Salary */}
-                      <div className="text-green-400 font-bold mt-2 md:mt-0">${parseFloat(player.curYear).toFixed(1)}</div>
+                      <div className="text-green-400 font-bold ml-4 text-lg">${parseFloat(player.curYear).toFixed(1)}</div>
                     </div>
                   ))
                 ) : (
