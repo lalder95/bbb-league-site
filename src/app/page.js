@@ -160,6 +160,11 @@ export default function Home() {
         const seasonState = await seasonResponse.json();
         let week = seasonState.week;
 
+        // Force week 1 if season_type is "pre"
+        if (seasonState.season_type === "pre") {
+          week = 1;
+        }
+
         // Fetch league info
         const leagueResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`);
         if (!leagueResponse.ok) throw new Error('Failed to fetch league data');
