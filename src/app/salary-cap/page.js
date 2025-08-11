@@ -113,6 +113,18 @@ export default function SalaryCap() {
           });
         setContracts(parsedContracts);
 
+        // Log dead cap contracts
+        parsedContracts.forEach(contract => {
+          if (
+            contract.deadCurYear > 0 ||
+            contract.deadYear2 > 0 ||
+            contract.deadYear3 > 0 ||
+            contract.deadYear4 > 0
+          ) {
+            console.log('Dead cap contract:', contract);
+          }
+        });
+
         // Parse fines
         const finesRows = finesText.split('\n');
         const fines = finesRows.slice(1)
@@ -142,13 +154,17 @@ export default function SalaryCap() {
               year4: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 }
             };
           }
-          
-          // Add contract values (always include all contracts, regardless of status)
+
+          // Always sum both salary and dead cap for all contracts, regardless of status
           const capData = teamCaps[contract.team];
           capData.curYear.active += contract.curYear;
+          capData.curYear.dead += contract.deadCurYear;
           capData.year2.active += contract.year2;
+          capData.year2.dead += contract.deadYear2;
           capData.year3.active += contract.year3;
+          capData.year3.dead += contract.deadYear3;
           capData.year4.active += contract.year4;
+          capData.year4.dead += contract.deadYear4;
         });
 
         // Add fines and calculate remaining

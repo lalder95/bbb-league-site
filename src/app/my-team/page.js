@@ -149,6 +149,9 @@ export default function MyTeam() {
     'Contract Management', // <-- Add new tab here
   ];
 
+  // Add at the top of your component (inside MyTeam)
+  const [capModalInfo, setCapModalInfo] = useState(null);
+
   useEffect(() => {
     // Load player map and contracts from BBB_Contracts.csv (same logic as player-contracts page)
     async function fetchPlayerData() {
@@ -174,11 +177,11 @@ export default function MyTeam() {
             contractType: values[2],
             status: values[14],
             team: values[33],
-            curYear: values[14] === 'Active' ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
-            year2: values[14] === 'Active' ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
-            year3: values[14] === 'Active' ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
-            year4: values[14] === 'Active' ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
-            isDeadCap: values[14] !== 'Active',
+            curYear: (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
+            year2:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
+            year3:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
+            year4:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
+            isDeadCap: !(values[14] === 'Active' || values[14] === 'Future'),
             contractFinalYear: values[5],
             age: values[32],
             ktcValue: values[34] ? parseInt(values[34], 10) : null,
@@ -1510,8 +1513,6 @@ export default function MyTeam() {
                         <span>
                           <strong>Left</strong> = Most Important, <strong>Right</strong> = Least Important
                         </span>
-                      </div>
-                      <div className="flex gap-2">
                         {assetPriority.map((asset, idx) => {
                           // Color map for positions
                           const colorMap = {
@@ -1607,10 +1608,10 @@ export default function MyTeam() {
             const curYear = Number(leagueYear) || new Date().getFullYear();
             // Calculate cap space for years 1-4
             const CAP = 300;
-            // Only use contracts for user's team
-            const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
-            // Find user's team name
-            const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
+
+            // --- Use ALL contracts for user's team, regardless of status (to match Salary Cap page) ---
+            // Find all unique team names from all contracts
+            const allTeamNames = Array.from(new Set(playerContracts.filter(p => p.team).map(p => p.team.trim())));
             let myTeamName = '';
             if (session?.user?.name) {
               const nameLower = session.user.name.trim().toLowerCase();
@@ -1621,31 +1622,52 @@ export default function MyTeam() {
             }
             if (!myTeamName) {
               const teamCounts = {};
-              activeContracts.forEach(p => {
+              playerContracts.forEach(p => {
+                if (!p.team) return;
                 const t = p.team.trim();
                 teamCounts[t] = (teamCounts[t] || 0) + 1;
               });
               myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
             }
-            // User's contracts
-            let myContracts = activeContracts.filter(p => p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase());
-            // Deduplicate by playerId, keeping the contract with the highest salary (curYear)
-            const seen = new Set();
-            myContracts = myContracts
-              .sort((a, b) => (b.curYear || 0) - (a.curYear || 0))
-              .filter(player => {
-                if (seen.has(player.playerId)) return false;
-                seen.add(player.playerId);
-                return true;
-              });
 
-            // --- Find eligible players for extension ---
+            // All contracts for user's team (all statuses)
+            const myContractsAll = playerContracts.filter(
+              p => p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()
+            );
+
+            // Build cap numbers for years 1-4
+            const yearSalaries = [0, 0, 0, 0]; // index 0 = curYear, 1 = year2, etc.
+            const yearDead = [0, 0, 0, 0];     // dead cap for each year
+
+            // --- UPDATE: Include "Future" contracts in salary columns ---
+            myContractsAll.forEach(p => {
+              // Use salary columns for Active/Future, dead columns for all others
+              if (p.status === 'Active' || p.status === 'Future') {
+                yearSalaries[0] += parseFloat(p.curYear) || 0;
+                yearSalaries[1] += parseFloat(p.year2) || 0;
+                yearSalaries[2] += parseFloat(p.year3) || 0;
+                yearSalaries[3] += parseFloat(p.year4) || 0;
+              } else {
+                yearDead[0] += parseFloat(p.curYear) || 0;
+                yearDead[1] += parseFloat(p.year2) || 0;
+                yearDead[2] += parseFloat(p.year3) || 0;
+                yearDead[3] += parseFloat(p.year4) || 0;
+              }
+            });
+
+            // For display, total cap used = yearSalaries[i] + yearDead[i]
+
+            // --- Find eligible players for extension (same as before) ---
             // Filter out any player who has any contract with status "Future"
             const playerIdsWithFuture = new Set(
-              playerContracts.filter(p => p.status === 'Future' && p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()).map(p => p.playerId)
+              playerContracts.filter(
+                p => p.status === 'Future' && p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()
+              ).map(p => p.playerId)
             );
-            const eligiblePlayers = myContracts.filter(
+            // Only consider "Active" contracts for extension eligibility
+            const eligiblePlayers = myContractsAll.filter(
               p =>
+                p.status === 'Active' &&
                 String(p.contractType).toLowerCase() === 'base' &&
                 String(p.rfaEligible).toLowerCase() !== 'true' &&
                 String(p.contractFinalYear) === String(curYear) &&
@@ -1659,19 +1681,7 @@ export default function MyTeam() {
               extensionMap[p.playerId] = choice;
             });
 
-            // Build simulated contracts for years 1-4
-            const yearSalaries = [0, 0, 0, 0]; // index 0 = curYear, 1 = curYear+1, etc.
-            myContracts.forEach(p => {
-              const years = [
-                parseFloat(p.curYear) || 0,
-                parseFloat(p.year2) || 0,
-                parseFloat(p.year3) || 0,
-                parseFloat(p.year4) || 0,
-              ];
-              years.forEach((amt, i) => {
-                yearSalaries[i] += amt;
-              });
-            });
+            // Add extension costs to future years
             eligiblePlayers.forEach(p => {
               const ext = extensionMap[p.playerId] || { years: 0, deny: false };
               if (ext.deny || !ext.years) return;
@@ -1681,6 +1691,57 @@ export default function MyTeam() {
                 if (i < 4) yearSalaries[i] += base; // i=1: year2, i=2: year3, i=3: year4
               }
             });
+
+            // --- Modal openCapModal function ---
+            function openCapModal(yearIdx) {
+              // Map yearIdx to contract year keys
+              const yearMap = [
+                { salary: 'curYear', label: 'Current Year' },
+                { salary: 'year2', label: 'Year 2' },
+                { salary: 'year3', label: 'Year 3' },
+                { salary: 'year4', label: 'Year 4' },
+              ];
+              const { salary, label } = yearMap[yearIdx];
+
+              // Collect all contracts for this team for this year, using correct salary logic
+              const players = myContractsAll
+                .map(c => {
+                  let contractSalary = 0;
+                  let isDead = !(c.status === "Active" || c.status === "Future");
+                  contractSalary = parseFloat(c[salary]) || 0;
+                  return {
+                    playerName: c.playerName,
+                    contractType: c.contractType,
+                    salary: contractSalary,
+                    status: c.status,
+                    isDead,
+                  };
+                })
+                .filter(c => c.salary > 0)
+                .sort((a, b) => b.salary - a.salary);
+
+              // Group by status
+              const grouped = players.reduce((acc, p) => {
+                if (!acc[p.status]) acc[p.status] = [];
+                acc[p.status].push(p);
+                return acc;
+              }, {});
+
+              // Sort groups: Active, Future, Expired, Cut, etc.
+              const statusOrder = ["Active", "Future", "Expired", "Cut"];
+              const orderedGroups = Object.keys(grouped)
+                .sort((a, b) => {
+                  const ai = statusOrder.indexOf(a);
+                  const bi = statusOrder.indexOf(b);
+                  if (ai === -1 && bi === -1) return a.localeCompare(b);
+                  if (ai === -1) return 1;
+                  if (bi === -1) return -1;
+                  return ai - bi;
+                })
+                .map(status => ({ status, players: grouped[status] }));
+
+              setCapModalInfo({ yearIdx, label, groups: orderedGroups });
+            }
 
             // --- UI ---
             return (
@@ -1717,15 +1778,17 @@ export default function MyTeam() {
                               if (i === y) extensionCost += base;
                             }
                           });
+                          const capUsed = yearSalaries[i] + yearDead[i];
                           return (
-                            <tr key={i}>
+                            <tr key={i} className="cursor-pointer hover:bg-white/10"
+                              onClick={() => openCapModal(i)}>
                               <td className="p-2">{curYear + i}</td>
-                              <td className="p-2 border-l border-white/10">${yearSalaries[i].toFixed(1)}</td>
+                              <td className="p-2 border-l border-white/10">${capUsed.toFixed(1)}</td>
                               <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">
                                 {i === 0 ? '-' : `$${extensionCost.toFixed(1)}`}
                               </td>
-                              <td className={`p-2 border-l border-white/10 font-bold ${yearSalaries[i] > CAP ? 'text-red-400' : 'text-green-400'}`}>
-                                {(CAP - yearSalaries[i]).toFixed(1)}
+                              <td className={`p-2 border-l border-white/10 font-bold ${capUsed > CAP ? 'text-red-400' : 'text-green-400'}`}>
+                                {(CAP - capUsed).toFixed(1)}
                               </td>
                             </tr>
                           );
@@ -1874,6 +1937,64 @@ export default function MyTeam() {
                     )}
                   </div>
                 </div>
+                {/* Contract Details Modal (Cap Modal) */}
+                {capModalInfo && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                    <div
+                      className="bg-[#1a2233] rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-[90vh] overflow-y-auto"
+                      tabIndex={-1}
+                      role="dialog"
+                      aria-modal="true"
+                    >
+                      <button
+                        className="absolute top-2 right-2 text-white hover:text-[#FF4B1F] text-2xl font-bold focus:outline-none"
+                        onClick={() => setCapModalInfo(null)}
+                        aria-label="Close"
+                        tabIndex={0}
+                      >×</button>
+                      <h2 className="text-xl font-bold mb-2 text-[#FF4B1F]">
+                        {myTeamName} – {capModalInfo.label} Contracts
+                      </h2>
+                      {(!capModalInfo.groups || capModalInfo.groups.length === 0) ? (
+                        <div className="text-gray-300">No players under contract for this season.</div>
+                      ) : (
+                        capModalInfo.groups.map(group => (
+                          <div key={group.status} className="mb-4">
+                            <div className="font-semibold text-lg text-white mb-1">{group.status}</div>
+                            <table className="w-full text-sm mb-2">
+                              <thead>
+                                <tr>
+                                  <th className="text-left pb-1">Player</th>
+                                  <th className="text-left pb-1">Type</th>
+                                  <th className="text-right pb-1">Salary</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.players.map((p, i) => (
+                                  <tr key={i}>
+                                    <td className={(p.status === "Active" || p.status === "Future") ? "text-green-300" : "text-red-300"}>
+                                      {p.playerName}
+                                    </td>
+                                    <td>{p.contractType}</td>
+                                    <td className="text-right">${p.salary.toFixed(1)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ))
+                      )}
+                      <div className="flex justify-end mt-4">
+                        <button
+                          className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-[#ff6a3c] font-semibold"
+                          onClick={() => setCapModalInfo(null)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()
