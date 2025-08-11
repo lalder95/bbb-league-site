@@ -517,9 +517,10 @@ export default function Home() {
                     key={index}
                     className="bg-black/30 rounded-lg border border-white/10 p-4 flex flex-col"
                   >
-                    <div className="flex items-center justify-between gap-2 md:gap-6">
+                    {/* Responsive layout: vertical on mobile, horizontal on desktop */}
+                    <div className={`flex ${isMobile ? 'flex-col items-center gap-2' : 'items-center justify-between gap-2 md:gap-6'}`}>
                       {/* Team 1 */}
-                      <div className="flex items-center flex-1 min-w-0 gap-3">
+                      <div className={`flex items-center ${isMobile ? 'flex-col gap-1 mb-2' : 'flex-1 min-w-0 gap-3'}`}>
                         <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F]">
                           {matchup[0].avatar ? (
                             <img
@@ -533,9 +534,8 @@ export default function Home() {
                             </span>
                           )}
                         </div>
-                        {/* Responsive font size for long names */}
                         <span
-                          className="font-bold truncate min-w-0 max-w-[9rem] md:max-w-xs"
+                          className="font-bold truncate text-center"
                           style={{
                             fontSize: `clamp(1rem, ${Math.max(
                               2.2 - (matchup[0].teamName?.length || 0) * 0.07,
@@ -545,26 +545,34 @@ export default function Home() {
                         >
                           {matchup[0].teamName}
                         </span>
+                        {isMobile && (
+                          <div className={`font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
+                            {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
+                          </div>
+                        )}
                       </div>
-                      {/* Score 1 */}
-                      <div className={`font-extrabold text-2xl text-white text-center w-20 ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
-                        {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
-                      </div>
-                      {/* VS */}
-                      <div className="flex items-center justify-center">
-                        <div className="rounded-full bg-[#FF4B1F] text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md">
-                          VS
+                      {/* VS and scores */}
+                      <div className={`flex ${isMobile ? 'flex-col items-center w-full' : 'items-center'}`}>
+                        {!isMobile && (
+                          <div className={`font-extrabold text-2xl text-white text-center w-20 ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
+                            {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-center">
+                          <div className="rounded-full bg-[#FF4B1F] text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md">
+                            VS
+                          </div>
                         </div>
-                      </div>
-                      {/* Score 2 */}
-                      <div className={`font-extrabold text-2xl text-white text-center w-20 ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
-                        {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
+                        {!isMobile && (
+                          <div className={`font-extrabold text-2xl text-white text-center w-20 ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
+                            {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
+                          </div>
+                        )}
                       </div>
                       {/* Team 2 */}
-                      <div className="flex items-center flex-1 min-w-0 gap-3 justify-end">
-                        {/* Responsive font size for long names */}
+                      <div className={`flex items-center ${isMobile ? 'flex-col gap-1 mt-2' : 'flex-1 min-w-0 gap-3 justify-end'}`}>
                         <span
-                          className="font-bold truncate text-right min-w-0 max-w-[9rem] md:max-w-xs"
+                          className="font-bold truncate text-center"
                           style={{
                             fontSize: `clamp(1rem, ${Math.max(
                               2.2 - (matchup[1].teamName?.length || 0) * 0.07,
@@ -587,6 +595,11 @@ export default function Home() {
                             </span>
                           )}
                         </div>
+                        {isMobile && (
+                          <div className={`font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
+                            {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
