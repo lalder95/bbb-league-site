@@ -1,5 +1,6 @@
 import React from 'react';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
 
 const TradeSummary = ({
   teamA,
@@ -12,7 +13,9 @@ const TradeSummary = ({
 }) => {
   // Helper function to format salary value
   const formatSalary = (value) => {
-    return `$${value.toFixed(1)}`;
+    const num = Number(value);
+    if (isNaN(num)) return "$-";
+    return `$${num.toFixed(1)}`;
   };
 
   // Get validation colors for cap space
@@ -72,14 +75,15 @@ const TradeSummary = ({
     tradeValidation.impactB.after.year4,
   ];
 
-  const isInvalid = year1A < 0 || year1B < 0;
+  // FIX: Check .remaining property for each year!
+  const isInvalid = year1A.remaining < 0 || year1B.remaining < 0;
   const isWarning =
     !isInvalid &&
     (
-      otherYearsA.some((v) => v < 0) ||
-      otherYearsB.some((v) => v < 0) ||
-      year1A < 50 ||
-      year1B < 50
+      otherYearsA.some((v) => v.remaining < 0) ||
+      otherYearsB.some((v) => v.remaining < 0) ||
+      year1A.remaining < 50 ||
+      year1B.remaining < 50
     );
 
   // Helper for bar color
@@ -95,6 +99,24 @@ const TradeSummary = ({
     if (delta < 0) return `-$${Math.abs(delta).toFixed(1)}`;
     return "$0.0";
   };
+
+  // Helper to safely format cap numbers
+  const safeCap = (val) => (typeof val === "number" && !isNaN(val) ? val.toFixed(1) : "-");
+
+  // Only show Remaining in the summary
+  const CapBreakdown = ({ cap }) => (
+    <div className="text-xs text-white/70 mt-1">
+      <div className="font-bold">Remaining: ${safeCap(cap?.remaining)}</div>
+    </div>
+  );
+
+  // Helper to build chart data
+  const buildCapChartData = (impact) => [
+    { year: "Year 1", value: impact.after.curYear.remaining },
+    { year: "Year 2", value: impact.after.year2.remaining },
+    { year: "Year 3", value: impact.after.year3.remaining },
+    { year: "Year 4", value: impact.after.year4.remaining },
+  ];
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-2 md:px-4">
@@ -159,39 +181,49 @@ const TradeSummary = ({
               {/* Cap Space Impact - moved above players */}
               <div>
                 <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
-                <div className="grid grid-cols-4 gap-2 text-center">
-                  {["curYear", "year2", "year3", "year4"].map((yearKey, idx) => {
-                    const after = tradeValidation.impactA.after[yearKey];
-                    const before = tradeValidation.impactA.before[yearKey];
-                    const delta = after - before;
-                    const barHeight = Math.min(Math.abs(delta) * 2, 48);
-                    return (
-                      <div key={yearKey} className="flex flex-col items-center justify-end">
-                        {/* Cap value */}
-                        <div className={getCapSpaceColor(after)}>
-                          {formatSalary(after)}
-                        </div>
-                        {/* Bar */}
-                        <div className="flex flex-col items-center justify-end h-16 w-full">
-                          <div
-                            className={`w-6 ${getBarColor(delta)} rounded transition-all`}
-                            style={{
-                              height: `${barHeight}px`,
-                              marginTop: `${48 - barHeight}px`,
-                              transition: "height 0.3s"
-                            }}
-                            title={formatDelta(delta)}
-                          ></div>
-                          <div className="text-xs mt-1 text-white/70">{formatDelta(delta)}</div>
-                        </div>
-                        {/* Year label */}
-                        <div className="w-full text-xs text-center text-white/50 mt-1">
-                          {["Year 1", "Year 2", "Year 3", "Year 4"][idx]}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart
+                    data={buildCapChartData(tradeValidation.impactA)}
+                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="year" tick={{ fill: "#fff", fontSize: 12 }} />
+                    <YAxis 
+                      domain={[-100, 300]} // Show negative space for clarity
+                      tick={{ fill: "#fff", fontSize: 12 }} 
+                      ticks={[-100, -75, -50, -25, 0, 25, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300]} // Multiples of 25
+                      tickFormatter={v => Math.round(v)}
+                    />
+                    <Tooltip
+                      formatter={(value) => `$${Number(value).toFixed(1)}`}
+                      labelStyle={{ color: "#fff" }}
+                      contentStyle={{ background: "#001A2B", border: "1px solid #334155" }}
+                    />
+                    <ReferenceLine 
+                      y={0} 
+                      stroke="#FF4B1F" 
+                      strokeDasharray="4 2" 
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#38bdf8"
+                      strokeWidth={3}
+                      dot={(props) => (
+                        <circle
+                          {...props}
+                          key={props.key} // Add this line to ensure a unique key prop
+                          cx={props.cx}
+                          cy={props.cy}
+                          r={6}
+                          fill={props.payload.value < 0 ? "#ef4444" : "#38bdf8"}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        />
+                      )}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
 
               {/* Players received - moved below cap space */}
@@ -267,39 +299,49 @@ const TradeSummary = ({
               {/* Cap Space Impact - moved above players */}
               <div>
                 <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
-                <div className="grid grid-cols-4 gap-2 text-center">
-                  {["curYear", "year2", "year3", "year4"].map((yearKey, idx) => {
-                    const after = tradeValidation.impactB.after[yearKey];
-                    const before = tradeValidation.impactB.before[yearKey];
-                    const delta = after - before;
-                    const barHeight = Math.min(Math.abs(delta) * 2, 48);
-                    return (
-                      <div key={yearKey} className="flex flex-col items-center justify-end">
-                        {/* Cap value */}
-                        <div className={getCapSpaceColor(after)}>
-                          {formatSalary(after)}
-                        </div>
-                        {/* Bar */}
-                        <div className="flex flex-col items-center justify-end h-16 w-full">
-                          <div
-                            className={`w-6 ${getBarColor(delta)} rounded transition-all`}
-                            style={{
-                              height: `${barHeight}px`,
-                              marginTop: `${48 - barHeight}px`,
-                              transition: "height 0.3s"
-                            }}
-                            title={formatDelta(delta)}
-                          ></div>
-                          <div className="text-xs mt-1 text-white/70">{formatDelta(delta)}</div>
-                        </div>
-                        {/* Year label */}
-                        <div className="w-full text-xs text-center text-white/50 mt-1">
-                          {["Year 1", "Year 2", "Year 3", "Year 4"][idx]}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart
+                    data={buildCapChartData(tradeValidation.impactB)}
+                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="year" tick={{ fill: "#fff", fontSize: 12 }} />
+                    <YAxis 
+                      domain={[-100, 300]}
+                      tick={{ fill: "#fff", fontSize: 12 }} 
+                      ticks={[-100, -75, -50, -25, 0, 25, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300]}
+                      tickFormatter={v => Math.round(v)}
+                    />
+                    <Tooltip
+                      formatter={(value) => `$${Number(value).toFixed(1)}`}
+                      labelStyle={{ color: "#fff" }}
+                      contentStyle={{ background: "#001A2B", border: "1px solid #334155" }}
+                    />
+                    <ReferenceLine 
+                      y={0} 
+                      stroke="#FF4B1F" 
+                      strokeDasharray="4 2" 
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#38bdf8"
+                      strokeWidth={3}
+                      dot={(props) => (
+                        <circle
+                          {...props}
+                          key={props.key} // Add this line to ensure a unique key prop
+                          cx={props.cx}
+                          cy={props.cy}
+                          r={6}
+                          fill={props.payload.value < 0 ? "#ef4444" : "#38bdf8"}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        />
+                      )}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
 
               {/* Players received - moved below cap space */}

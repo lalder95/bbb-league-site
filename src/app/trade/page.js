@@ -246,7 +246,11 @@ const CapImpactDisplay = ({ impact, label }) => (
   </div>
 );
 
-const formatSalary = (value) => `$${value.toFixed(1)}`;
+const formatSalary = (value) => {
+  const num = Number(value);
+  if (isNaN(num)) return "$-";
+  return `$${num.toFixed(1)}`;
+};
 
 const getValidationColor = (value) => {
   if (value < 0) return 'text-red-400';
@@ -256,7 +260,8 @@ const getValidationColor = (value) => {
 };
 
 export default function Trade() {
-  const [players, setPlayers] = useState([]);
+  const [contracts, setContracts] = useState([]);
+  const [fines, setFines] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTermA, setSearchTermA] = useState('');
   const [searchTermB, setSearchTermB] = useState('');
@@ -267,6 +272,7 @@ export default function Trade() {
   const [showSummary, setShowSummary] = useState(false);
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
+  const [players, setPlayers] = useState([]);
 
   // Auto-detect league ID (copied from home page)
   useEffect(() => {
@@ -305,46 +311,72 @@ export default function Trade() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
-        const text = await response.text();
-        const rows = text.split('\n');
-        const parsedData = rows.slice(1)
+        // Fetch contracts data
+        const contractsResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+        const contractsText = await contractsResponse.text();
+
+        // Fetch fines data
+        const finesResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv');
+        const finesText = await finesResponse.text();
+
+        // Parse contracts
+        const contractRows = contractsText.split('\n');
+        const parsedContracts = contractRows.slice(1)
           .filter(row => row.trim())
           .map(row => {
             const values = row.split(',');
             const status = values[14];
-            const isActive = status === 'Active';
             return {
               id: values[0],
               playerName: values[1],
+              contractType: values[2],
               team: values[33],
+              status,
+              isActive: status === 'Active',
+              curYear: parseFloat(values[15]) || 0,
+              year2: parseFloat(values[16]) || 0,
+              year3: parseFloat(values[17]) || 0,
+              year4: parseFloat(values[18]) || 0,
+              deadCurYear: parseFloat(values[24]) || 0,
+              deadYear2: parseFloat(values[25]) || 0,
+              deadYear3: parseFloat(values[26]) || 0,
+              deadYear4: parseFloat(values[27]) || 0,
               position: values[21],
               nflTeam: values[22],
-              status: status,
-              contractType: values[2],
               contractFinalYear: values[5],
-              curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
-              year2: isActive ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
-              year3: isActive ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
-              year4: isActive ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
-              isActive: isActive,
               age: values[32],
               ktcValue: values[34],
               rfaEligible: values[37],
               franchiseTagEligible: values[38],
             };
-          })
-          .filter(player => player.status === 'Active');
+          });
+      setContracts(parsedContracts);
 
-        setPlayers(parsedData);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
+      // Parse fines
+      const finesRows = finesText.split('\n');
+      const finesObj = finesRows.slice(1)
+        .filter(row => row.trim())
+        .reduce((acc, row) => {
+          const [team, year1, year2, year3, year4] = row.split(',');
+          acc[team] = {
+            curYear: parseFloat(year1) || 0,
+            year2: parseFloat(year2) || 0,
+            year3: parseFloat(year3) || 0,
+            year4: parseFloat(year4) || 0,
+          };
+          return acc;
+        }, {});
+      setFines(finesObj);
+
+      // Only show active players for selection
+      setPlayers(parsedContracts.filter(player => player.isActive));
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
     }
-
-    fetchData();
+  }
+  fetchData();
   }, []);
 
   // Fetch avatars using detected leagueId
@@ -396,37 +428,84 @@ export default function Trade() {
     };
   };
 
-  const calculateTeamCapSpace = (teamName) => {
-    const teamPlayers = players.filter(player => player.team === teamName);
-    const capUsage = {
-      curYear: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
-      year2: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.year2) || 0), 0),
-      year3: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.year3) || 0), 0),
-      year4: teamPlayers.reduce((sum, player) => sum + (parseFloat(player.year4) || 0), 0),
+  // Calculate cap space for a team (match Salary Cap page)
+  const calculateTeamCapSpace = (teamName, excludeIds = []) => {
+    const teamContracts = contracts.filter(
+      c => c.team === teamName && !excludeIds.includes(c.id)
+    );
+    const cap = {
+      curYear: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+      year2: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+      year3: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+      year4: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 }
     };
-    
-    return {
-      curYear: 300 - capUsage.curYear,
-      year2: 300 - capUsage.year2,
-      year3: 300 - capUsage.year3,
-      year4: 300 - capUsage.year4,
-    };
+    teamContracts.forEach(c => {
+      cap.curYear.active += c.curYear;
+      cap.curYear.dead += c.deadCurYear;
+      cap.year2.active += c.year2;
+      cap.year2.dead += c.deadYear2;
+      cap.year3.active += c.year3;
+      cap.year3.dead += c.deadYear3;
+      cap.year4.active += c.year4;
+      cap.year4.dead += c.deadYear4;
+    });
+    const teamFines = fines[teamName] || { curYear: 0, year2: 0, year3: 0, year4: 0 };
+    cap.curYear.fines = teamFines.curYear;
+    cap.year2.fines = teamFines.year2;
+    cap.year3.fines = teamFines.year3;
+    cap.year4.fines = teamFines.year4;
+    ['curYear', 'year2', 'year3', 'year4'].forEach(year => {
+      cap[year].remaining = cap[year].total - cap[year].active - cap[year].dead - cap[year].fines;
+    });
+    return cap;
   };
 
+  // Calculate trade impact using new cap logic
   const calculateTradeImpact = (teamName, incomingPlayers, outgoingPlayers) => {
-    const currentSpace = calculateTeamCapSpace(teamName);
-    const incomingCap = calculateCapImpact(incomingPlayers);
-    const outgoingCap = calculateCapImpact(outgoingPlayers);
-    
+    // Exclude outgoing players from team, add incoming
+    const excludeIds = outgoingPlayers.map(p => p.id);
+    const before = calculateTeamCapSpace(teamName);
+    // Simulate after trade: remove outgoing, add incoming
+    const afterContracts = contracts
+      .filter(c => c.team === teamName && !excludeIds.includes(c.id))
+      .concat(incomingPlayers.map(p => contracts.find(c => c.id === p.id)).filter(Boolean));
+    // Calculate after cap
+    const afterCap = {
+      curYear: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+      year2: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+      year3: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+      year4: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 }
+    };
+    afterContracts.forEach(c => {
+      afterCap.curYear.active += c.curYear;
+      afterCap.curYear.dead += c.deadCurYear;
+      afterCap.year2.active += c.year2;
+      afterCap.year2.dead += c.deadYear2;
+      afterCap.year3.active += c.year3;
+      afterCap.year3.dead += c.deadYear3;
+      afterCap.year4.active += c.year4;
+      afterCap.year4.dead += c.deadYear4;
+    });
+    const teamFines = fines[teamName] || { curYear: 0, year2: 0, year3: 0, year4: 0 };
+    afterCap.curYear.fines = teamFines.curYear;
+    afterCap.year2.fines = teamFines.year2;
+    afterCap.year3.fines = teamFines.year3;
+    afterCap.year4.fines = teamFines.year4;
+    ['curYear', 'year2', 'year3', 'year4'].forEach(year => {
+      afterCap[year].remaining = afterCap[year].total - afterCap[year].active - afterCap[year].dead - afterCap[year].fines;
+    });
     return {
-      before: currentSpace,
-      incoming: incomingCap,
-      outgoing: outgoingCap,
+      before: {
+        curYear: before.curYear,
+        year2: before.year2,
+        year3: before.year3,
+        year4: before.year4,
+      },
       after: {
-        curYear: currentSpace.curYear - incomingCap.curYear + outgoingCap.curYear,
-        year2: currentSpace.year2 - incomingCap.year2 + outgoingCap.year2,
-        year3: currentSpace.year3 - incomingCap.year3 + outgoingCap.year3,
-        year4: currentSpace.year4 - incomingCap.year4 + outgoingCap.year4,
+        curYear: afterCap.curYear,
+        year2: afterCap.year2,
+        year3: afterCap.year3,
+        year4: afterCap.year4,
       }
     };
   };
@@ -435,14 +514,25 @@ export default function Trade() {
     const impactA = calculateTradeImpact(teamA, selectedPlayersB, selectedPlayersA);
     const impactB = calculateTradeImpact(teamB, selectedPlayersA, selectedPlayersB);
 
-    const isValid = Object.values(impactA.after).every(val => val >= 0) && 
-                   Object.values(impactB.after).every(val => val >= 0);
+    // Check .remaining for each year!
+    const isInvalidCurYear =
+      impactA.after.curYear.remaining < 0 || impactB.after.curYear.remaining < 0;
 
-    const isClose = Object.values(impactA.after).some(val => val >= 0 && val < 50) ||
-                   Object.values(impactB.after).some(val => val >= 0 && val < 50);
+    const isFutureYearOverCap =
+      impactA.after.year2.remaining < 0 || impactA.after.year3.remaining < 0 || impactA.after.year4.remaining < 0 ||
+      impactB.after.year2.remaining < 0 || impactB.after.year3.remaining < 0 || impactB.after.year4.remaining < 0;
+
+    const isClose = (
+      [
+        impactA.after.curYear.remaining, impactA.after.year2.remaining, impactA.after.year3.remaining, impactA.after.year4.remaining,
+        impactB.after.curYear.remaining, impactB.after.year2.remaining, impactB.after.year3.remaining, impactB.after.year4.remaining
+      ].some(val => val >= 0 && val < 50)
+    );
 
     return {
-      isValid,
+      isValid: !isInvalidCurYear && !isFutureYearOverCap,
+      isInvalidCurYear,
+      isFutureYearOverCap,
       isClose,
       impactA,
       impactB
@@ -494,14 +584,19 @@ export default function Trade() {
       <div className="max-w-7xl mx-auto p-6">
         {tradeValidation && (teamA && teamB) && (
           <div className={`mb-6 p-4 rounded-lg ${
-            !tradeValidation.isValid ? 'bg-red-500/20 border border-red-500/50' :
+            tradeValidation.isInvalidCurYear ? 'bg-red-500/20 border border-red-500/50' :
+            tradeValidation.isFutureYearOverCap ? 'bg-yellow-500/20 border border-yellow-500/50' :
             tradeValidation.isClose ? 'bg-yellow-500/20 border border-yellow-500/50' :
             'bg-green-500/20 border border-green-500/50'
           }`}>
             <div className="font-bold mb-2">
-              {!tradeValidation.isValid ? 'Invalid Trade: Insufficient cap space' :
-               tradeValidation.isClose ? 'Warning: Teams will be close to cap' :
-               'Valid Trade'}
+              {tradeValidation.isInvalidCurYear
+                ? 'Invalid Trade: Insufficient cap space in current year'
+                : tradeValidation.isFutureYearOverCap
+                ? 'Warning: One or both teams over the cap in a future year'
+                : tradeValidation.isClose
+                ? 'Warning: Teams will be close to cap'
+                : 'Valid Trade'}
             </div>
             <button
               onClick={() => setShowSummary(true)}
