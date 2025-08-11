@@ -3,9 +3,13 @@ import React, { useState } from 'react';
 import TeamPicksModal from './TeamPicksModal';
 import { estimateDraftPositions } from '@/utils/draftUtils';
 
-const RookieSalaries = ({ rosters, tradedPicks, draftInfo, draftOrder, getTeamName }) => {
+const RookieSalaries = ({ rosters, tradedPicks, draftInfo, draftOrder, getTeamName, draftYearToShow }) => {
   const [selectedTeam, setSelectedTeam] = useState(null);
-  
+
+  // If you use current year logic elsewhere, update it to use draftYearToShow as the base year
+  // For example, if you show years or filter picks by year, use:
+  // const baseYear = Number(draftYearToShow) || new Date().getFullYear() + 1;
+
   const teamPicks = estimateDraftPositions(rosters, tradedPicks, draftInfo, draftOrder, getTeamName);
   
   // Calculate total salary obligations

@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 
-const DraftHeader = ({ draftInfo }) => {
+const DraftHeader = ({ draftInfo, draftYear }) => {
   return (
     <>
       <div className="bg-black/30 p-6 border-b border-white/10">
@@ -17,7 +17,7 @@ const DraftHeader = ({ draftInfo }) => {
           
           <div className="hidden md:block">
             <div className="text-white/70">
-              Next Rookie Draft: <span className="font-bold text-white">May 1st, 2025</span>
+              Next Rookie Draft: <span className="font-bold text-white">May 1st, {draftYear}</span>
             </div>
           </div>
         </div>
@@ -28,7 +28,7 @@ const DraftHeader = ({ draftInfo }) => {
         <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent p-6 rounded-lg mb-8">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold">2025 Rookie Draft</h2>
+              <h2 className="text-2xl font-bold">{draftYear} Rookie Draft</h2>
               <p className="text-white/70">
                 The annual rookie draft is a critical opportunity to acquire young talent at rookie contract prices. 
                 Choose wisely as these players could be cornerstone pieces of your franchise.

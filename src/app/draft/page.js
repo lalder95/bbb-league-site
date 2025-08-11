@@ -28,6 +28,7 @@ export default function DraftPage() {
   const [activeTab, setActiveTab] = useState('draft-order');
   const [draftOrder, setDraftOrder] = useState([]); // For storing the actual draft order
   const [isMobile, setIsMobile] = useState(false);
+  const [draftYearToShow, setDraftYearToShow] = useState(null);
 
   // Sleeper User ID - this should be your league commissioner's Sleeper ID
   const USER_ID = '456973480269705216';
@@ -160,9 +161,7 @@ export default function DraftPage() {
         
         // Process past drafts
         const processedDrafts = [];
-        
         for (const draft of draftsData) {
-          // Fetch draft picks for each past draft
           try {
             const picksResponse = await fetch(`https://api.sleeper.app/v1/draft/${draft.draft_id}/picks`);
             if (picksResponse.ok) {
@@ -176,15 +175,24 @@ export default function DraftPage() {
             console.warn(`Error fetching picks for draft ${draft.draft_id}:`, picksError);
           }
         }
-        
         setPastDrafts(processedDrafts);
         
-        // If there's an upcoming draft, fetch detailed info
-        const upcomingDraft = draftsData.find(draft => draft.status === 'pre_draft');
+        // --- DRAFT YEAR LOGIC ---
+        const currentYear = new Date().getFullYear();
+        let draftYear = currentYear + 1; // fallback
+
+        console.log('All draft statuses:', draftsData.map(d => ({ draft_id: d.draft_id, status: d.status, start_time: d.start_time, season: d.season })));
+
+        const upcomingDraft = draftsData.find(draft => draft.status === 'upcoming');
+        console.log('Found upcomingDraft:', upcomingDraft);
+
         if (upcomingDraft) {
+          draftYear = upcomingDraft.start_time
+            ? new Date(Number(upcomingDraft.start_time)).getFullYear()
+            : currentYear;
+          console.log('Using upcoming draft year:', draftYear);
           setDraftInfo(upcomingDraft);
-          console.log('Upcoming draft found:', upcomingDraft.draft_id);
-          
+
           // For upcoming drafts, we might not have picks yet
           try {
             const picksResponse = await fetch(`https://api.sleeper.app/v1/draft/${upcomingDraft.draft_id}/picks`);
@@ -200,23 +208,27 @@ export default function DraftPage() {
 
           // Process the draft order
           if (upcomingDraft.draft_order) {
-            // Create an ordered array of draft slots
             const draftOrderArray = Object.entries(upcomingDraft.draft_order).map(([userId, slot]) => ({
               userId,
               slot,
               teamName: usersData.find(u => u.user_id === userId)?.display_name || `Unknown Team`,
               rosterId: rostersData.find(r => r.owner_id === userId)?.roster_id
             }));
-            
-            // Sort by slot
             const sortedDraftOrder = draftOrderArray.sort((a, b) => a.slot - b.slot);
             setDraftOrder(sortedDraftOrder);
             console.log('Draft order processed:', sortedDraftOrder);
           }
         } else {
-          console.log('No upcoming draft found');
+          console.log('No upcoming draft found, using fallback year:', draftYear);
+          setDraftInfo({
+            draft_year: draftYear,
+            // Optionally add other fallback info here
+          });
         }
         
+        setDraftYearToShow(draftYear);
+        console.log('Final draftYearToShow:', draftYear);
+
         // Fetch transactions to get trade history
         // Note: We'll need to iterate through weeks to get a complete history
         const tradeTransactions = [];
@@ -285,7 +297,7 @@ export default function DraftPage() {
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       {/* Header and banner */}
-      <DraftHeader draftInfo={draftInfo} />
+      <DraftHeader draftInfo={draftInfo} draftYear={draftYearToShow} />
       
       <div className={`max-w-7xl mx-auto ${isMobile ? 'p-2' : 'p-6'}`}>
         {/* Tab navigation */}
@@ -299,7 +311,15 @@ export default function DraftPage() {
             <DraftOrder draftInfo={draftInfo} draftOrder={draftOrder} isMobile={isMobile} />}
           
           {activeTab === 'traded-picks' && 
-            <TradedPicks tradedPicks={tradedPicks} tradeHistory={tradeHistory} users={users} rosters={rosters} isMobile={isMobile} />}
+            <TradedPicks 
+              tradedPicks={tradedPicks} 
+              tradeHistory={tradeHistory} 
+              users={users} 
+              rosters={rosters} 
+              isMobile={isMobile}
+              draftYearToShow={draftYearToShow}
+            />
+          }
           
           {activeTab === 'past-drafts' && 
             <PastDrafts pastDrafts={pastDrafts} getTeamName={getTeamNameWrapper} isMobile={isMobile} />}
@@ -312,6 +332,7 @@ export default function DraftPage() {
               draftOrder={draftOrder} 
               getTeamName={getTeamNameWrapper}
               isMobile={isMobile}
+              draftYearToShow={draftYearToShow}
             />}
           
           {activeTab === 'mock-draft' && 

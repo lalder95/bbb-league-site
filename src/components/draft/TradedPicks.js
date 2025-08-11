@@ -2,13 +2,13 @@
 import React, { useState } from 'react';
 import { getTeamName, findTradeForPick, formatTradeDate } from '@/utils/draftUtils';
 
-const TradedPicks = ({ tradedPicks, tradeHistory, users, rosters }) => {
+const TradedPicks = ({ tradedPicks, tradeHistory, users, rosters, draftYearToShow }) => {
   const [selectedTradePick, setSelectedTradePick] = useState(null);
-  
-  // Group by year and round, then sort by original owner
-  const currentYear = new Date().getFullYear();
-  const futureYears = [currentYear.toString(), (currentYear + 1).toString(), (currentYear + 2).toString()];
-  
+
+  // Use draftYearToShow for the first year, then +1, +2
+  const baseYear = Number(draftYearToShow) || new Date().getFullYear() + 1;
+  const futureYears = [baseYear, baseYear + 1, baseYear + 2].map(String);
+
   // Group picks by year and round
   const picksByYear = {};
   futureYears.forEach(year => {
