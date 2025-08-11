@@ -238,8 +238,8 @@ const CapImpactDisplay = ({ impact, label }) => (
     {Object.entries(impact).map(([year, value]) => (
       <div key={year} className="text-center">
         <div className="text-white/70">{year}</div>
-        <div className={getValidationColor(value)}>
-          {formatSalary(value)}
+        <div className={getValidationColor(value?.remaining)}>
+          {formatSalary(value?.remaining)}
         </div>
       </div>
     ))}
