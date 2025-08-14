@@ -668,15 +668,17 @@ export default function FreeAgentAuctionPage() {
     return (
       <tr
         key={p.playerId}
-        className={`${
-          highlightRow
+        className={`
+          ${highlightRow
             ? 'bg-yellow-400/20'
             : group === 'Active'
-            ? 'bg-green-900/10'
+            ? (p.__rowIndex % 2 === 0 ? 'bg-green-900/20' : 'bg-green-900/10')
             : group === 'Upcoming'
-            ? 'bg-blue-900/10'
-            : 'bg-gray-800/10'
-        } hover:opacity-90`}
+            ? (p.__rowIndex % 2 === 0 ? 'bg-blue-900/20' : 'bg-blue-900/10')
+            : (p.__rowIndex % 2 === 0 ? 'bg-gray-800/20' : 'bg-gray-800/10')
+          }
+          hover:opacity-90
+        `}
       >
         <td className="py-2 px-3 text-center align-middle"></td>
         {!draft?.blind && (
@@ -774,56 +776,64 @@ export default function FreeAgentAuctionPage() {
             {playerCountdowns[p.playerId] ?? ''}
           </span>
         </td>
-        <td className="py-2 px-3 flex gap-2 justify-center items-center align-middle">
-          {canBid && (
-            <button
-              className="px-2 py-1 bg-[#FF4B1F] border-2 border-[#001A2B] rounded-xl text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
-              style={{ fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
-              onClick={() => setSelectedPlayer(p)}
-            >
-              Bid
-            </button>
-          )}
-          {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === p.playerId) && (
-            <>
+        <td
+  className="py-0 px-3 align-middle"
+  style={{ height: '64px', minWidth: '80px', verticalAlign: 'middle' }}
+>
+  <div className="flex items-center justify-center h-full w-full">
+    {canBid && (
+      <button
+        className="px-2 py-1 bg-[#FF4B1F] border-2 border-[#001A2B] rounded-xl text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
+        style={{
+          fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
+          letterSpacing: '2px'
+        }}
+        onClick={() => setSelectedPlayer(p)}
+      >
+        Bid
+      </button>
+    )}
+    {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === p.playerId) && (
+      <>
+        <button
+          className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
+          title="Reset Bid"
+          onClick={() => setResetConfirmId(p.playerId)}
+        >
+          Reset
+        </button>
+        {resetConfirmId === p.playerId && (
+          <div className="absolute z-10 mt-2 bg-black border border-red-700 rounded p-3 text-sm text-red-200 shadow-lg">
+            <div>Are you sure you want to reset this player's bid?</div>
+            <div className="flex gap-2 mt-2">
               <button
-                className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
-                title="Reset Bid"
-                onClick={() => setResetConfirmId(p.playerId)}
+                className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
+                onClick={async () => {
+                  const updatedResults = draft.results.filter(r => r.playerId !== p.playerId);
+                  await fetch(`/api/admin/drafts/${draft._id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ results: updatedResults, bidLog: draft.bidLog }),
+                  });
+                  setResetConfirmId(null);
+                  await fetchDraft();
+                }}
               >
-                Reset
+                Yes, Reset
               </button>
-              {resetConfirmId === p.playerId && (
-                <div className="absolute z-10 mt-2 bg-black border border-red-700 rounded p-3 text-sm text-red-200 shadow-lg">
-                  <div>Are you sure you want to reset this player's bid?</div>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                      onClick={async () => {
-                        const updatedResults = draft.results.filter(r => r.playerId !== p.playerId);
-                        await fetch(`/api/admin/drafts/${draft._id}`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ results: updatedResults, bidLog: draft.bidLog }),
-                        });
-                        setResetConfirmId(null);
-                        await fetchDraft();
-                      }}
-                    >
-                      Yes, Reset
-                    </button>
-                    <button
-                      className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                      onClick={() => setResetConfirmId(null)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </td>
+              <button
+                className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
+                onClick={() => setResetConfirmId(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</td>
         </tr>
       );
     }
@@ -1448,7 +1458,7 @@ export default function FreeAgentAuctionPage() {
                             Active
                           </td>
                         </tr>
-                        {groupedPlayers.Active.map(p => renderPlayerRow(p, 'Active'))}
+                        {groupedPlayers.Active.map((p, idx) => renderPlayerRow({ ...p, __rowIndex: idx }, 'Active'))}
                       </>
                     )}
                     {/* Upcoming */}
@@ -1459,7 +1469,7 @@ export default function FreeAgentAuctionPage() {
                             Upcoming
                           </td>
                         </tr>
-                        {groupedPlayers.Upcoming.map(p => renderPlayerRow(p, 'Upcoming'))}
+                        {groupedPlayers.Upcoming.map((p, idx) => renderPlayerRow({ ...p, __rowIndex: idx }, 'Upcoming'))}
                       </>
                     )}
                     {/* Ended */}
@@ -1470,7 +1480,7 @@ export default function FreeAgentAuctionPage() {
                             Final
                           </td>
                         </tr>
-                        {groupedPlayers.Ended.map(p => renderPlayerRow(p, 'Ended'))}
+                        {groupedPlayers.Ended.map((p, idx) => renderPlayerRow({ ...p, __rowIndex: idx }, 'Ended'))}
                       </>
                     )}
                   </tbody>
