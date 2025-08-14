@@ -725,19 +725,20 @@ export default function FreeAgentAuctionPage() {
                 </span>
                 <br />
                 <span className="text-xs text-blue-300 whitespace-nowrap">
-                  ${userLastBid.salary} / {userLastBid.years}y
-                </span>
-                <br />
-                <span className="text-gray-400 text-xs">{formatTimeAgo(userLastBid.timestamp)}</span>
-                {/* Cancel Bid button for table view */}
-                {session?.user?.name && (
-                  <button
-                    className="mt-2 px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
-                    onClick={() => setRetractConfirmPlayerId(p.playerId)}
-                  >
-                    Cancel Bid
-                  </button>
-                )}
+  ${userLastBid.salary} / {userLastBid.years}y
+</span>
+<br />
+<span className="text-gray-400 text-xs">{formatTimeAgo(userLastBid.timestamp)}</span>
+<br /> {/* Add this line break before the button */}
+{/* Cancel Bid button for table view */}
+{session?.user?.name && (
+  <button
+    className="mt-2 px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
+    onClick={() => setRetractConfirmPlayerId(p.playerId)}
+  >
+    Cancel Bid
+  </button>
+)}
               </>
             ) : (
               <span className="text-gray-500 italic">No bids</span>
