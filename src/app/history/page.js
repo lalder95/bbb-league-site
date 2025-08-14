@@ -112,7 +112,13 @@ export default function LeagueHistory() {
   async function processLeagueData(leagues) {
     try {
       setLoadProgress({ stage: 'Processing league data', percentage: 30 });
-      
+
+      // Fetch current NFL state for filtering
+      const nflStateResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+      const nflState = await nflStateResponse.json();
+      const currentSeason = parseInt(nflState.season);
+      const currentWeek = parseInt(nflState.week);
+
       // Get all users across all leagues
       const allUsers = new Map();
       const allRosters = new Map();
@@ -168,6 +174,14 @@ export default function LeagueHistory() {
         const regularSeasonLength = league.settings?.playoff_week_start || 14;
         
         for (let week = 1; week < regularSeasonLength; week++) {
+          // Exclude current and future weeks in the current season
+          if (
+            parseInt(league.season) === currentSeason &&
+            week >= currentWeek
+          ) {
+            continue;
+          }
+          
           setLoadProgress({ 
             stage: `Processing ${league.season} Week ${week}`, 
             percentage: 50 + (i / leagues.length) * 30 + (week / regularSeasonLength) * (30 / leagues.length) 
@@ -197,15 +211,19 @@ export default function LeagueHistory() {
             if (matchupGroup.length === 2) {
               const team1 = matchupGroup[0];
               const team2 = matchupGroup[1];
-              
+
               // Get user IDs from roster IDs
               const team1Key = `${league.league_id}_${team1.roster_id}`;
               const team2Key = `${league.league_id}_${team2.roster_id}`;
-              
+
               const user1Id = allRosters.get(team1Key);
               const user2Id = allRosters.get(team2Key);
-              
-              if (user1Id && user2Id) {
+
+              // Exclude games where both scores are 0 (not played yet)
+              if (
+                user1Id && user2Id &&
+                !(team1.points === 0 && team2.points === 0)
+              ) {
                 matchupData.push({
                   season: league.season,
                   week: week,
@@ -214,7 +232,7 @@ export default function LeagueHistory() {
                   user2: user2Id,
                   score1: team1.points,
                   score2: team2.points,
-                  winner: team1.points > team2.points ? user1Id : 
+                  winner: team1.points > team2.points ? user1Id :
                           team2.points > team1.points ? user2Id : null
                 });
               }
