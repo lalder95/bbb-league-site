@@ -20,21 +20,22 @@ const draftSchema = new mongoose.Schema({
   results: [{
     username: String,
     playerId: Number,
-    salary: Number,           // <-- NEW
-    years: Number,            // <-- NEW
-    contractPoints: Number,   // <-- NEW
+    salary: Number,
+    years: Number,
+    contractPoints: Number,
     state: String,
     expiration: String
   }],
   bidLog: [{
     username: String,
     playerId: Number,
-    salary: Number,           // <-- NEW
-    years: Number,            // <-- NEW
-    contractPoints: Number,   // <-- NEW
-    comments: { type: String, default: '' }, // <-- NEW
+    salary: Number,
+    years: Number,
+    contractPoints: Number,
+    comments: { type: String, default: '' },
     timestamp: { type: Date, default: Date.now }
-  }]
+  }],
+  blind: { type: Boolean, default: false } // <-- ADD THIS LINE
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -46,6 +47,7 @@ export async function PATCH(request, { params }) {
 
   const updateFields = {};
   if (typeof body.state === 'string') updateFields.state = body.state;
+  if (typeof body.blind === 'boolean') updateFields.blind = body.blind;
 
   // Sanitize results
   if (Array.isArray(body.results)) {

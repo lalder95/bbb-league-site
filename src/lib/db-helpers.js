@@ -105,3 +105,33 @@ export async function addUser(newUser) {
     return { success: false, error: error.message };
   }
 }
+
+// Example: Add a new draft (add this if not present)
+export async function addDraft(draft) {
+  try {
+    const db = await getDatabase();
+    const drafts = db.collection('drafts');
+    // Ensure blind is set (default to false)
+    const draftWithBlind = { ...draft, blind: typeof draft.blind === 'boolean' ? draft.blind : false };
+    const result = await drafts.insertOne(draftWithBlind);
+    return { success: true, draft: draftWithBlind, insertedId: result.insertedId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Example: Update draft (add this if not present)
+export async function updateDraft(id, update) {
+  try {
+    const db = await getDatabase();
+    const drafts = db.collection('drafts');
+    // If blind is not set, don't overwrite it
+    if (!Object.prototype.hasOwnProperty.call(update, 'blind')) {
+      delete update.blind;
+    }
+    const result = await drafts.updateOne({ _id: id }, { $set: update });
+    return { success: true, modifiedCount: result.modifiedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}

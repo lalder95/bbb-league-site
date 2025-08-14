@@ -20,21 +20,22 @@ const draftSchema = new mongoose.Schema({
   results: [{
     username: String,
     playerId: Number,
-    salary: Number,           // <-- NEW
-    years: Number,            // <-- NEW
-    contractPoints: Number,   // <-- NEW
+    salary: Number,
+    years: Number,
+    contractPoints: Number,
     state: String,
     expiration: String
   }],
   bidLog: [{
     username: String,
     playerId: Number,
-    salary: Number,           // <-- NEW
-    years: Number,            // <-- NEW
-    contractPoints: Number,   // <-- NEW
-    comments: { type: String, default: '' }, // <-- NEW
+    salary: Number,
+    years: Number,
+    contractPoints: Number,
+    comments: { type: String, default: '' },
     timestamp: { type: Date, default: Date.now }
-  }]
+  }],
+  blind: { type: Boolean, default: false } // <-- Add this line
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -82,7 +83,8 @@ export async function POST(request) {
       nomDuration: Number(body.nomDuration), 
       players,
       results,
-      bidLog
+      bidLog,
+      blind: typeof body.blind === 'boolean' ? body.blind : false // <-- Ensure blind is set
     };
 
     const draft = await Draft.create(draftData);

@@ -27,6 +27,7 @@ export default function CreateDraftPage() {
   const [error, setError] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
   const [nomDuration, setNomDuration] = useState(43920); // Default to 43,920 minutes (30.5 days)
+  const [blind, setBlind] = useState(false); // <-- Add this line
 
   // Add state for player start times
   const [playerStartTimes, setPlayerStartTimes] = useState({});
@@ -167,11 +168,12 @@ export default function CreateDraftPage() {
           draftId,
           startDate,
           state: 'ACTIVE',
-          nomDuration, // <-- Make sure this is included!
+          nomDuration,
           users: selectedUserObjs,
           players: selectedPlayerObjs,
           results: [],
-          bidLog: [] // <-- Add this line to initialize the bid log
+          bidLog: [],
+          blind // <-- Add this line
         })
       });
       if (!res.ok) throw new Error(await res.text());
@@ -341,6 +343,18 @@ export default function CreateDraftPage() {
                 );
               })()}
             </div>
+          </div>
+          {/* Blind toggle */}
+          <div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={blind}
+                onChange={e => setBlind(e.target.checked)}
+                className="form-checkbox"
+              />
+              <span>If enabled, all bids and bidders will be hidden.</span>
+            </label>
           </div>
           <button
             type="submit"
