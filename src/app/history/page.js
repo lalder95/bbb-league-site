@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function LeagueHistory() {
@@ -19,7 +19,15 @@ export default function LeagueHistory() {
     highestSeasonTotal: { points: 0, team: '', season: '' },
     mostConsecutiveWins: { wins: 0, team: '', season: '' }
   });
-  
+  const [selectedMatchup, setSelectedMatchup] = useState(null); // { teamId, opponentId }
+  const [matchupList, setMatchupList] = useState([]); // Array of matchup objects
+
+  // Add toggles for regular season and playoffs
+  const [showRegular, setShowRegular] = useState(true);
+  const [showPlayoffs, setShowPlayoffs] = useState(true);
+  // Add a third toggle for Consolation
+  const [showConsolation, setShowConsolation] = useState(true);
+
   // Sleeper User ID
   const USER_ID = '456973480269705216';
 
@@ -169,11 +177,57 @@ export default function LeagueHistory() {
             allRosters.set(key, roster.owner_id);
           }
         });
-        
-        // Get all weeks for this league
-        const regularSeasonLength = league.settings?.playoff_week_start || 14;
-        
-        for (let week = 1; week < regularSeasonLength; week++) {
+
+        // Fetch brackets ONCE per league
+        let winnersBracket = [];
+        let losersBracket = [];
+        try {
+          const winnersBracketRes = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/winners_bracket`);
+          if (winnersBracketRes.ok) winnersBracket = await winnersBracketRes.json();
+        } catch {}
+        try {
+          const losersBracketRes = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/losers_bracket`);
+          if (losersBracketRes.ok) losersBracket = await losersBracketRes.json();
+        } catch {}
+
+        // After fetching winnersBracket and losersBracket
+        console.log('Winners Bracket:', winnersBracket);
+        console.log('Losers Bracket:', losersBracket);
+
+        // Helper for bracket type
+        function getBracketTypeForMatchup(roster1, roster2, week, playoffStartWeek) {
+          const r1 = Number(roster1);
+          const r2 = Number(roster2);
+          const w = Number(week);
+
+          // Map NFL week to bracket round
+          const round = playoffStartWeek ? w - Number(playoffStartWeek) + 1 : null;
+          if (!round || round < 1) return null;
+
+          // Check winners bracket
+          if (winnersBracket.some(m =>
+            (Number(m.t1) === r1 && Number(m.t2) === r2 && Number(m.r) === round) ||
+            (Number(m.t1) === r2 && Number(m.t2) === r1 && Number(m.r) === round)
+          )) {
+            console.log(`Winners bracket match: ${r1} vs ${r2} week ${w} (round ${round})`);
+            return 'winners';
+          }
+
+          // Check losers bracket
+          if (losersBracket.some(m =>
+            (Number(m.t1) === r1 && Number(m.t2) === r2 && Number(m.r) === round) ||
+            (Number(m.t1) === r2 && Number(m.t2) === r1 && Number(m.r) === round)
+          )) {
+            console.log(`Consolation bracket match: ${r1} vs ${r2} week ${w} (round ${round})`);
+            return 'consolation';
+          }
+
+          return null;
+        }
+
+        // We'll try up to week 18 (NFL max), but stop if no matchups are found
+        const MAX_WEEKS = 18;
+        for (let week = 1; week <= MAX_WEEKS; week++) {
           // Exclude current and future weeks in the current season
           if (
             parseInt(league.season) === currentSeason &&
@@ -181,21 +235,23 @@ export default function LeagueHistory() {
           ) {
             continue;
           }
-          
+
           setLoadProgress({ 
             stage: `Processing ${league.season} Week ${week}`, 
-            percentage: 50 + (i / leagues.length) * 30 + (week / regularSeasonLength) * (30 / leagues.length) 
+            percentage: 50 + (i / leagues.length) * 30 + (week / MAX_WEEKS) * (30 / leagues.length) 
           });
-          
-          console.log(`Fetching matchups for week ${week} of ${league.season} season...`);
-          
+
           const matchupsResponse = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/matchups/${week}`);
           if (!matchupsResponse.ok) {
             console.warn(`Failed to fetch matchups for week ${week} of league ${league.league_id}`);
             continue;
           }
-          
+
           const matchups = await matchupsResponse.json();
+          if (!matchups || matchups.length === 0) {
+            // No more matchups for this league/season
+            break;
+          }
           
           // Group matchups by matchup_id
           const matchupsByGroup = {};
@@ -224,17 +280,43 @@ export default function LeagueHistory() {
                 user1Id && user2Id &&
                 !(team1.points === 0 && team2.points === 0)
               ) {
+                const playoffStartWeek = league.settings?.playoff_week_start || 15;
+                const bracketType = getBracketTypeForMatchup(team1.roster_id, team2.roster_id, week, playoffStartWeek);
+
+                // Store roster IDs for accurate bracket matching in downstream use
                 matchupData.push({
                   season: league.season,
                   week: week,
                   league_id: league.league_id,
                   user1: user1Id,
                   user2: user2Id,
+                  roster1: team1.roster_id, // <-- add this
+                  roster2: team2.roster_id, // <-- add this
                   score1: team1.points,
                   score2: team2.points,
                   winner: team1.points > team2.points ? user1Id :
-                          team2.points > team1.points ? user2Id : null
+                          team2.points > team1.points ? user2Id : null,
+                  bracketType
                 });
+                matchupData.push({
+                  season: league.season,
+                  week: week,
+                  league_id: league.league_id,
+                  user1: user2Id,
+                  user2: user1Id,
+                  roster1: team2.roster_id, // <-- add this
+                  roster2: team1.roster_id, // <-- add this
+                  score1: team2.points,
+                  score2: team1.points,
+                  winner: team2.points > team1.points ? user2Id :
+                          team1.points > team2.points ? user1Id : null,
+                  bracketType
+                });
+
+                // Debug: log roster IDs and bracketType
+                console.log(
+                  `Matchup: week ${week}, rosters ${team1.roster_id} vs ${team2.roster_id}, bracketType: ${bracketType}`
+                );
               }
             }
           });
@@ -256,7 +338,8 @@ export default function LeagueHistory() {
             losses: 0,
             ties: 0,
             totalPoints: 0,
-            totalGames: 0
+            totalGames: 0,
+            matchups: [] // <-- Add this line
           };
         });
       });
@@ -285,6 +368,30 @@ export default function LeagueHistory() {
         // Update total games
         matrix[user1][user2].totalGames++;
         matrix[user2][user1].totalGames++;
+
+        // Store matchup details for both directions
+        matrix[user1][user2].matchups.push({
+          season: matchup.season,
+          week: matchup.week,
+          league_id: matchup.league_id,
+          user1: user1,
+          user2: user2,
+          score1: matchup.score1,
+          score2: matchup.score2,
+          winner: matchup.winner,
+          bracketType: matchup.bracketType // <-- add this
+        });
+        matrix[user2][user1].matchups.push({
+          season: matchup.season,
+          week: matchup.week,
+          league_id: matchup.league_id,
+          user1: user2,
+          user2: user1,
+          score1: matchup.score2,
+          score2: matchup.score1,
+          winner: matchup.winner,
+          bracketType: matchup.bracketType // <-- add this
+        });
       });
       
       setLoadProgress({ stage: 'Finalizing', percentage: 95 });
@@ -566,8 +673,73 @@ export default function LeagueHistory() {
     return 'text-yellow-400';
   };
 
+  // Helper for playoff/championship formatting
+  function getMatchupType(week, bracketType) {
+    if (bracketType === 'consolation') return 'consolation';
+    if (bracketType === 'winners') {
+      if (week === 17) return 'championship';
+      return 'playoff';
+    }
+    return 'regular';
+  }
+
   // Responsive padding
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  // Compute filtered head-to-head matrix based on toggles
+  const filteredHeadToHeadMatrix = useMemo(() => {
+    if (!teams.length || !Object.keys(headToHeadMatrix).length) return {};
+
+    const matrix = {};
+    teams.forEach(team => {
+      matrix[team.user_id] = {};
+      teams.forEach(opponent => {
+        const allMatchups = headToHeadMatrix[team.user_id]?.[opponent.user_id]?.matchups || [];
+        // Filter matchups by toggles
+        let filteredMatchups = allMatchups.filter(m => {
+          const type = getMatchupType(m.week, m.bracketType);
+          if (type === 'regular' && showRegular) return true;
+          if ((type === 'playoff' || type === 'championship') && showPlayoffs) return true;
+          if (type === 'consolation' && showConsolation) return true;
+          return false;
+        });
+
+        // Deduplicate: only keep one direction for each unique matchup
+        filteredMatchups = filteredMatchups.filter((m, idx, arr) =>
+          idx === arr.findIndex(
+            x =>
+              x.season === m.season &&
+              x.week === m.week &&
+              ((x.user1 === m.user1 && x.user2 === m.user2) ||
+               (x.user1 === m.user2 && x.user2 === m.user1)) &&
+              x.score1 === m.score1 &&
+              x.score2 === m.score2
+          )
+        );
+
+        // Calculate stats from filtered matchups
+        let wins = 0, losses = 0, ties = 0, totalPoints = 0, totalGames = 0;
+        filteredMatchups.forEach(m => {
+          if (m.winner === team.user_id) wins++;
+          else if (m.winner === opponent.user_id) losses++;
+          else ties++;
+          totalPoints += m.score1;
+          totalGames++;
+        });
+
+        matrix[team.user_id][opponent.user_id] = {
+          wins,
+          losses,
+          ties,
+          totalPoints,
+          totalGames,
+          matchups: filteredMatchups
+        };
+      });
+    });
+
+    return matrix;
+  }, [teams, headToHeadMatrix, showRegular, showPlayoffs, showConsolation]);
 
   if (loading) {
     return (
@@ -631,7 +803,7 @@ export default function LeagueHistory() {
       <div className={`max-w-7xl mx-auto ${isMobile ? 'p-2' : 'p-6'}`}>
         {/* 
         =============================================
-        === ADD FEATURE: NOTABLE RIVALRIES HERE ====
+        === ADD FEATURE: NOTABLE RIVALRIES HERE ==== 
         =============================================
         */}
 
@@ -641,6 +813,27 @@ export default function LeagueHistory() {
             See how each team has performed against every other team across all seasons.
             Click on a team row to highlight their records.
           </p>
+
+          <div className="mb-4 flex gap-4">
+            <button
+              className={`px-4 py-2 rounded ${showRegular ? 'bg-[#FF4B1F] text-white' : 'bg-black/30 text-white/70 hover:bg-black/40'}`}
+              onClick={() => setShowRegular(!showRegular)}
+            >
+              Regular Season
+            </button>
+            <button
+              className={`px-4 py-2 rounded ${showPlayoffs ? 'bg-[#FF4B1F] text-white' : 'bg-black/30 text-white/70 hover:bg-black/40'}`}
+              onClick={() => setShowPlayoffs(!showPlayoffs)}
+            >
+              Playoffs &amp; Championship
+            </button>
+            <button
+              className={`px-4 py-2 rounded ${showConsolation ? 'bg-[#FF4B1F] text-white' : 'bg-black/30 text-white/70 hover:bg-black/40'}`}
+              onClick={() => setShowConsolation(!showConsolation)}
+            >
+              Consolation
+            </button>
+          </div>
           
           {teams.length > 0 && (
             <div className="overflow-x-auto">
@@ -681,7 +874,7 @@ export default function LeagueHistory() {
                     // Calculate overall record
                     const overall = teams.reduce((acc, opponent) => {
                       if (team.user_id === opponent.user_id) return acc;
-                      const record = headToHeadMatrix[team.user_id][opponent.user_id];
+                      const record = filteredHeadToHeadMatrix[team.user_id][opponent.user_id];
                       return {
                         wins: acc.wins + record.wins,
                         losses: acc.losses + record.losses,
@@ -724,16 +917,22 @@ export default function LeagueHistory() {
                           const isSelf = team.user_id === opponent.user_id;
                           const record = isSelf ? 
                             { wins: 0, losses: 0, ties: 0, totalGames: 0 } : 
-                            headToHeadMatrix[team.user_id][opponent.user_id];
+                            filteredHeadToHeadMatrix[team.user_id][opponent.user_id];
                             
                           return (
                             <td 
                               key={opponent.user_id}
-                              className={`p-3 border border-white/10 text-center ${
+                              className={`p-3 border border-white/10 text-center cursor-pointer ${
                                 isSelf ? 'bg-black/20' : 
                                 currentTeamId === team.user_id || currentTeamId === opponent.user_id ? 
                                 'bg-white/5' : ''
                               }`}
+                              onClick={() => {
+                                if (!isSelf && record.totalGames > 0) {
+                                  setSelectedMatchup({ teamId: team.user_id, opponentId: opponent.user_id });
+                                  setMatchupList(record.matchups);
+                                }
+                              }}
                             >
                               {isSelf ? (
                                 <span className="text-white/30">-</span>
@@ -954,7 +1153,7 @@ export default function LeagueHistory() {
         {/* 
         ==============================================
         === ADD FEATURE: TEAM DYNASTY RANKINGS HERE =
-        ==============================================
+        ============================================== 
         */}
       
         <div className="mb-8">
@@ -984,16 +1183,95 @@ export default function LeagueHistory() {
         
         {/* 
         =============================================
-        === ADD FEATURE: MATCHUP DEEP-DIVE HERE ====
-        =============================================
+        === ADD FEATURE: MATCHUP DEEP-DIVE HERE ==== 
+        ============================================= 
         */}
         
         {/* 
         =============================================
-        == ADD FEATURE: STATISTICAL ANALYSIS HERE ==
-        =============================================
+        == ADD FEATURE: STATISTICAL ANALYSIS HERE == 
+        ============================================= 
         */}
       </div>
+
+      {selectedMatchup && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-[#001A2B] rounded-lg shadow-lg max-w-lg w-full p-6 relative">
+            <button
+              className="absolute top-2 right-2 text-white/70 hover:text-white text-2xl"
+              onClick={() => setSelectedMatchup(null)}
+            >
+              &times;
+            </button>
+            <h3 className="text-xl font-bold mb-4 text-[#FF4B1F]">
+              Matchups: {teams.find(t => t.user_id === selectedMatchup.teamId)?.display_name} vs. {teams.find(t => t.user_id === selectedMatchup.opponentId)?.display_name}
+            </h3>
+            <div className="max-h-96 overflow-y-auto">
+              {matchupList.length === 0 ? (
+                <div className="text-white/70">No matchups found.</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="p-2 text-left">Season</th>
+                      <th className="p-2 text-left">Week</th>
+                      <th className="p-2 text-left">Score</th>
+                      <th className="p-2 text-left">Winner</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matchupList
+                      // Only show one direction for each unique matchup
+                      .filter((m, idx, arr) =>
+                        idx === arr.findIndex(
+                          x =>
+                            x.season === m.season &&
+                            x.week === m.week &&
+                            ((x.user1 === m.user1 && x.user2 === m.user2) ||
+                             (x.user1 === m.user2 && x.user2 === m.user1)) &&
+                            x.score1 === m.score1 &&
+                            x.score2 === m.score2
+                        )
+                      )
+                      .filter(m => {
+                        const type = getMatchupType(m.week, m.bracketType);
+                        if (type === 'regular' && showRegular) return true;
+                        if ((type === 'playoff' || type === 'championship') && showPlayoffs) return true;
+                        if (type === 'consolation' && showConsolation) return true;
+                        return false;
+                      })
+                      .sort((a, b) => {
+                        // Sort by season, then week
+                        if (a.season !== b.season) return b.season - a.season;
+                        return b.week - a.week;
+                      })
+                      .map((m, idx) => {
+                        const type = getMatchupType(m.week, m.bracketType);
+                        let rowClass = '';
+                        if (type === 'championship') rowClass = 'bg-yellow-400/20 font-bold';
+                        else if (type === 'playoff') rowClass = 'bg-blue-400/10 font-semibold';
+                        else if (type === 'consolation') rowClass = 'bg-gray-400/10 italic';
+                        const winnerName = m.winner
+                          ? teams.find(t => t.user_id === m.winner)?.display_name || 'Unknown'
+                          : 'Tie';
+                        return (
+                          <tr key={idx} className={rowClass}>
+                            <td className="p-2">{m.season}</td>
+                            <td className="p-2">{m.week}</td>
+                            <td className="p-2">
+                              {teams.find(t => t.user_id === m.user1)?.display_name || 'Team 1'} {m.score1} - {m.score2} {teams.find(t => t.user_id === m.user2)?.display_name || 'Team 2'}
+                            </td>
+                            <td className="p-2">{winnerName}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
