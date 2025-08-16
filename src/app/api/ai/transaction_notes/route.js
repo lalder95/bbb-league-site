@@ -4,7 +4,7 @@ export async function POST(req) {
   try {
     const { contractChange } = await req.json();
 
-    const systemPrompt = `
+    let systemPrompt = `
 You are a fantasy football media simulator.
 
 Your job is to take a league event — such as a contract extension, trade, or cut — and generate in-character reactions from a fixed group of 20 fictional personas.
@@ -84,11 +84,18 @@ Characters must match the following list:
 
       const data = await response.json();
       if (!response.ok) {
-        error = data;
-        break;
+        error = { error: "API error", details: data };
+        // Retry on API error
+        continue;
       }
 
       ai_notes_raw = data.choices?.[0]?.message?.content || "AI summary unavailable.";
+
+      // Retry if model output is missing or fallback string
+      if (!ai_notes_raw || ai_notes_raw === "AI summary unavailable.") {
+        error = { error: "Empty or unavailable AI response", raw: ai_notes_raw };
+        continue;
+      }
 
       try {
         ai_notes = JSON.parse(ai_notes_raw);
@@ -96,9 +103,7 @@ Characters must match the following list:
         break; // Success!
       } catch (e) {
         error = { error: "Invalid JSON from model", raw: ai_notes_raw };
-        // On retry, prepend a system message to force valid JSON
         if (attempt < 3) {
-          // Add a system message to clarify
           systemPrompt += "\n\nIMPORTANT: Your previous response was not valid JSON. Return ONLY a valid JSON array as described. Do not include any extra text.";
         }
       }
