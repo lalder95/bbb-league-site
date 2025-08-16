@@ -1598,7 +1598,7 @@ export default function MyTeam() {
                         placeholder="Enter your strategy notes here..."
                       />
                     </div>
-                                                                                                                                                                                                                                                                                                                               {/* Save Button and Messages */}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                               {/* Save Button and Messages */}
                     <div className="flex flex-col items-center">
                       <button
                         className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
@@ -1984,7 +1984,7 @@ export default function MyTeam() {
                                                 user: session?.user?.name || '',
                                                 timestamp: new Date().toISOString(),
                                                 notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
-                                                ai_notes: '', // will be filled below
+                                                ai_notes: '',
                                                 playerId: player.playerId,
                                                 playerName: player.playerName,
                                                 years: pendingExtension.years,
@@ -2014,7 +2014,6 @@ export default function MyTeam() {
                                               const data = await res.json();
                                               if (!res.ok) throw new Error(data.error || 'Failed to save extension');
                                               setFinalizeMsg('Extension finalized and saved!');
-                                              setPendingExtension(null);
 
                                               // --- Refresh eligible players by refetching contract changes ---
                                               const refreshRes = await fetch('/api/admin/contract_changes');
@@ -2031,6 +2030,17 @@ export default function MyTeam() {
                                                 );
                                                 setRecentContractChanges(recent);
                                               }
+
+                                              // Clear extension choice for this player (so dropdown resets)
+                                              setExtensionChoices(prev => {
+                                                const updated = { ...prev };
+                                                delete updated[player.playerId];
+                                                return updated;
+                                              });
+
+                                              // Clear pending extension
+                                              setPendingExtension(null);
+
                                             } catch (err) {
                                               setFinalizeError(err.message);
                                             } finally {
@@ -2154,7 +2164,7 @@ export default function MyTeam() {
                                           user: session?.user?.name || '',
                                           timestamp: new Date().toISOString(),
                                           notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
-                                          ai_notes: '', // will be filled below
+                                          ai_notes: '',
                                           playerId: player.playerId,
                                           playerName: player.playerName,
                                           years: pendingExtension.years,
