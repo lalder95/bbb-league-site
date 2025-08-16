@@ -1598,7 +1598,7 @@ export default function MyTeam() {
                         placeholder="Enter your strategy notes here..."
                       />
                     </div>
-                                       {/* Save Button and Messages */}
+                                                                             {/* Save Button and Messages */}
                     <div className="flex flex-col items-center">
                       <button
                         className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
@@ -1994,20 +1994,14 @@ export default function MyTeam() {
 
                                               // --- Call your serverless API route for ai_notes ---
                                               try {
-                                                console.log('[AI DEBUG] Sending contractChange to /api/ai/transaction_notes:', contractChange);
                                                 const aiRes = await fetch('/api/ai/transaction_notes', {
                                                   method: 'POST',
                                                   headers: { 'Content-Type': 'application/json' },
                                                   body: JSON.stringify({ contractChange }),
                                                 });
                                                 const aiData = await aiRes.json();
-                                                console.log('[AI DEBUG] Response from /api/ai/transaction_notes:', aiData);
                                                 contractChange.ai_notes = aiData.ai_notes || "AI summary unavailable.";
-                                                if (aiData.error) {
-                                                  console.error('[AI DEBUG] Error from AI route:', aiData.error);
-                                                }
                                               } catch (err) {
-                                                console.error('[AI DEBUG] Exception calling AI route:', err);
                                                 contractChange.ai_notes = "AI summary unavailable.";
                                               }
 
@@ -2022,7 +2016,7 @@ export default function MyTeam() {
                                               setFinalizeMsg('Extension finalized and saved!');
                                               setPendingExtension(null);
 
-                                              // Refresh eligible players by refetching contract changes
+                                              // --- Refresh eligible players by refetching contract changes ---
                                               const refreshRes = await fetch('/api/admin/contract_changes');
                                               const refreshData = await refreshRes.json();
                                               if (Array.isArray(refreshData)) {
@@ -2170,20 +2164,14 @@ export default function MyTeam() {
 
                                         // --- Call your serverless API route for ai_notes ---
                                         try {
-                                          console.log('[AI DEBUG] Sending contractChange to /api/ai/transaction_notes:', contractChange);
                                           const aiRes = await fetch('/api/ai/transaction_notes', {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ contractChange }),
                                           });
                                           const aiData = await aiRes.json();
-                                          console.log('[AI DEBUG] Response from /api/ai/transaction_notes:', aiData);
                                           contractChange.ai_notes = aiData.ai_notes || "AI summary unavailable.";
-                                          if (aiData.error) {
-                                            console.error('[AI DEBUG] Error from AI route:', aiData.error);
-                                          }
                                         } catch (err) {
-                                          console.error('[AI DEBUG] Exception calling AI route:', err);
                                           contractChange.ai_notes = "AI summary unavailable.";
                                         }
 

@@ -78,7 +78,7 @@ Characters must match the following list:
             { role: "user", content: userMessage }
           ],
           max_tokens: 5000,
-          temperature: 0.7,
+          temperature: 1.5,
         }),
       });
 
