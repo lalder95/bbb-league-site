@@ -77,7 +77,7 @@ Characters must match the following list:
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage }
           ],
-          max_tokens: 1200,
+          max_tokens: 5000,
           temperature: 0.7,
         }),
       });
@@ -111,14 +111,14 @@ Characters must match the following list:
 
     // If we failed after 3 attempts, always return an object with error info
     if (error) {
-      // If ai_notes_raw is "AI summary unavailable.", include that in the error object
+      // Save the full error object, including details and raw response
       return Response.json({ ai_notes: { ...error, raw: ai_notes_raw } }, { status: 500 });
     }
 
     return Response.json({ ai_notes });
   } catch (err) {
     console.error('[AI ROUTE] Exception:', err);
-    // Always return an object for ai_notes, even on exception
+    // Save the error message in ai_notes
     return Response.json({ ai_notes: { error: "AI summary unavailable.", details: err.message } }, { status: 500 });
   }
 }
