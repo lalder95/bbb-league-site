@@ -77,14 +77,20 @@ Characters must match the following list:
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage }
           ],
-          max_tokens: 7000,
+          max_tokens: 5000,
           temperature: 1.5,
         }),
       });
 
       const data = await response.json();
       if (!response.ok) {
-        error = { error: "API error", details: data };
+        error = { 
+          error: "API error", 
+          status: response.status, 
+          statusText: response.statusText, 
+          details: data, 
+          raw: ai_notes_raw 
+        };
         // Retry on API error
         continue;
       }
@@ -112,7 +118,7 @@ Characters must match the following list:
     // If we failed after 3 attempts, always return an object with error info
     if (error) {
       // Save the full error object, including details and raw response
-      return Response.json({ ai_notes: { ...error, raw: ai_notes_raw } }, { status: 500 });
+      return Response.json({ ai_notes: { ...error } }, { status: 500 });
     }
 
     return Response.json({ ai_notes });
