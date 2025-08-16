@@ -118,6 +118,7 @@ Characters must match the following list:
     return Response.json({ ai_notes });
   } catch (err) {
     console.error('[AI ROUTE] Exception:', err);
-    return Response.json({ ai_notes: "AI summary unavailable.", error: err.message }, { status: 500 });
+    // Always return an object for ai_notes, even on exception
+    return Response.json({ ai_notes: { error: "AI summary unavailable.", details: err.message } }, { status: 500 });
   }
 }
