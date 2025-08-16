@@ -19,15 +19,20 @@ export default function PlayerProfileCard({
   imageExtension = "png",
   expanded = false,
   onExpandClick,
-  onClick, // <-- Add this line
+  onClick,
   className = "",
   teamAvatars = {},
   teamName = "",
 }) {
   // Debug: Log playerId and its type
+  /*
   console.log('[PlayerProfileCard] playerId:', playerId, '| type:', typeof playerId);
   if (typeof playerId !== 'string' && typeof playerId !== 'number') {
     console.warn('[PlayerProfileCard] Invalid playerId, not string/number:', playerId);
+    return null;
+  }
+  */
+  if (typeof playerId !== 'string' && typeof playerId !== 'number') {
     return null;
   }
   const [contract, setContract] = useState(null);
@@ -38,6 +43,7 @@ export default function PlayerProfileCard({
   // No internal expanded state; rely on prop only
 
   // Debug: Log contract and allContracts after they are set
+  /*
   useEffect(() => {
     console.log('[PlayerProfileCard] contract:', contract, '| type:', typeof contract);
     console.log('[PlayerProfileCard] allContracts:', allContracts, '| type:', typeof allContracts);
@@ -47,6 +53,7 @@ export default function PlayerProfileCard({
       });
     }
   }, [contract, allContracts]);
+  */
 
   useEffect(() => {
     async function fetchContract() {
@@ -216,9 +223,11 @@ export default function PlayerProfileCard({
 
   const Bubble = ({ children, className = "" }) => {
     // Debug: Log Bubble children and their type
+    /*
     if (typeof window !== 'undefined') {
       console.log('[Bubble] children:', children, '| type:', typeof children);
     }
+    */
     let display;
     if (children === null || children === undefined) {
       display = "-";
@@ -444,8 +453,8 @@ export default function PlayerProfileCard({
                               className="w-auto text-sm border border-white/10 rounded bg-black/30 mx-auto rotate-90 origin-center shadow-lg"
                               style={{
                                 margin: '0 auto',
-                                maxWidth: '90%', // was 95%, now 90% for a slightly smaller table
-                                transform: 'scale(0.85) rotate(90deg)', // was 0.925, now 0.88 for a slightly smaller table
+                                maxWidth: '90%',
+                                transform: 'scale(0.85) rotate(90deg)',
                               }}
                             >
                               <thead>
@@ -462,7 +471,7 @@ export default function PlayerProfileCard({
                               <tbody>
                                 {allContracts.filter(c => c.status === "Active" || c.status === "Future").map((c, idx) => {
                                   // Debug: Log each contract row before rendering
-                                  console.log(`[PlayerProfileCard] Rendering contract row idx=${idx}:`, c, '| type:', typeof c);
+                                  // console.log(`[PlayerProfileCard] Rendering contract row idx=${idx}:`, c, '| type:', typeof c);
                                   return (
                                     <tr key={idx} className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
                                       <td className="p-2 text-white/90">{safeDisplay(c.contractType)}</td>

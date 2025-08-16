@@ -90,6 +90,41 @@ export default function MyTeam() {
 
   // Contract Management Tab State (must be top-level for React hooks rules)
   const [extensionChoices, setExtensionChoices] = useState({});
+  const [pendingExtension, setPendingExtension] = useState(null);
+  const [finalizeLoading, setFinalizeLoading] = useState(false);
+  const [finalizeMsg, setFinalizeMsg] = useState('');
+  const [finalizeError, setFinalizeError] = useState('');
+  // Add state for contract changes
+  const [recentContractChanges, setRecentContractChanges] = useState([]);
+
+  // Fetch recent contract changes for all players (any team, last 1 year)
+  useEffect(() => {
+    async function fetchRecentContractChanges() {
+      try {
+        const res = await fetch('/api/admin/contract_changes');
+        const data = await res.json();
+        console.log('[CONTRACT MGMT] Raw API response:', data); // <-- Add this line
+        if (Array.isArray(data)) {
+          const oneYearAgo = new Date();
+          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+          const recent = data.filter(
+            c =>
+              c.change_type === 'extension' &&
+              c.playerId &&
+              c.timestamp &&
+              new Date(c.timestamp) > oneYearAgo
+          );
+          setRecentContractChanges(recent);
+        } else {
+          setRecentContractChanges([]);
+        }
+      } catch (err) {
+        console.error('[CONTRACT MGMT] Error fetching contract changes:', err); // <-- Add this line
+        setRecentContractChanges([]);
+      }
+    }
+    fetchRecentContractChanges();
+  }, [playerContracts]);
 
   // More robust fix: Only redirect if unauthenticated AND not loading
   useEffect(() => {
@@ -99,6 +134,7 @@ export default function MyTeam() {
   }, [status, router]);
 
   // Debug: print current username on every render
+  /*
   useEffect(() => {
     if (session?.user?.name) {
       console.log('[MY TEAM PAGE] Logged-in username:', session.user.name);
@@ -106,7 +142,8 @@ export default function MyTeam() {
       console.log('[MY TEAM PAGE] No user logged in');
     }
   }, [session?.user?.name]);
-  
+  */
+
   const [activity, setActivity] = useState({
     trades: 0,
     playersAdded: 0,
@@ -1555,6 +1592,7 @@ export default function MyTeam() {
                     {/* Save Button and Messages */}
                     <div className="flex flex-col items-center">
                       <button
+                        className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
                         onClick={async () => {
                           await handleSaveAssistantGM();
                           // Reset Assistant GM Chat after saving settings
@@ -1564,7 +1602,6 @@ export default function MyTeam() {
                           }
                         }}
                         disabled={saving}
-                        className="w-full px-4 py-2 rounded bg-[#FF4B1F] hover:bg-orange-600 text-white font-semibold transition-all duration-200 flex items-center justify-center gap-2 shadow disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {saving ? "Saving..." : "Save Assistant GM Settings"}
                       </button>
@@ -1582,7 +1619,7 @@ export default function MyTeam() {
                       assetPriority={assetPriority}
                       strategyNotes={strategyNotes}
                       myContracts={getMyContractsForAssistantGM()}
-                      playerContracts={playerContracts}
+                      playerContracts={ playerContracts}
                       session={session}
                       tradedPicks={leagueTradedPicks.tradedPicks || []}
                       rosters={leagueRosters[leagueId] || []}
@@ -1665,7 +1702,7 @@ export default function MyTeam() {
               ).map(p => p.playerId)
             );
             // Only consider "Active" contracts for extension eligibility
-            const eligiblePlayers = myContractsAll.filter(
+            let eligiblePlayers = myContractsAll.filter(
               p =>
                 p.status === 'Active' &&
                 String(p.contractType).toLowerCase() === 'base' &&
@@ -1673,6 +1710,42 @@ export default function MyTeam() {
                 String(p.contractFinalYear) === String(curYear) &&
                 !playerIdsWithFuture.has(p.playerId)
             );
+
+            // --- Remove players with a recent extension (within last year, ANY team) ---
+            if (recentContractChanges.length > 0) {
+              // Debug: Show which playerIds are being filtered
+              console.log('[CONTRACT MGMT] recentContractChanges:', recentContractChanges.map(c => ({
+                playerId: String(c.playerId).trim(),
+                playerName: c.playerName || '(no name)'
+              })));
+              const recentlyExtendedIds = new Set(
+                recentContractChanges.map(c => String(c.playerId).trim())
+              );
+              eligiblePlayers = eligiblePlayers.filter(
+                p => {
+                  const isFiltered = recentlyExtendedIds.has(String(p.playerId).trim());
+                  if (isFiltered) {
+                    console.log(`[CONTRACT MGMT] Filtering out playerId: ${p.playerId} (${p.playerName})`);
+                  }
+                  return !isFiltered;
+                }
+              );
+            }
+
+            // Always log the full recentContractChanges array for inspection
+            console.log('[CONTRACT MGMT] recentContractChanges FULL:', recentContractChanges);
+
+            // Log just the playerId and playerName for comparison
+            console.log('[CONTRACT MGMT] recentContractChanges (playerId, playerName):', recentContractChanges.map(c => ({
+              playerId: String(c.playerId).trim(),
+              playerName: c.playerName || '(no name)'
+            })));
+
+            // Log the eligible players after filtering
+            console.log('[CONTRACT MGMT] Eligible players after filtering:', eligiblePlayers.map(p => ({
+              playerId: String(p.playerId).trim(),
+              playerName: p.playerName
+            })));
 
             // --- Simulate extensions ---
             const extensionMap = {};
@@ -1813,6 +1886,7 @@ export default function MyTeam() {
                                 <th className="p-2 text-white/80">Current Salary</th>
                                 <th className="p-2 text-white/80">Extension</th>
                                 <th className="p-2 text-white/80">Simulated Years</th>
+                                <th className="p-2 text-white/80"></th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1820,10 +1894,13 @@ export default function MyTeam() {
                                 const ext = extensionMap[player.playerId] || { years: 0, deny: false };
                                 let base = parseFloat(player.curYear) || 0;
                                 const simYears = [];
+                                let extensionSalaries = [];
                                 for (let i = 1; i <= ext.years; ++i) {
                                   base = roundUp1(base * 1.10);
                                   simYears.push(`Year ${i+1}: $${base}`);
+                                  extensionSalaries.push(base);
                                 }
+                                const showFinalize = !ext.deny && ext.years > 0;
                                 return (
                                   <tr key={player.playerId}>
                                     <td className="p-2 font-semibold text-white flex items-center gap-2">
@@ -1843,6 +1920,17 @@ export default function MyTeam() {
                                               ? { years: 0, deny: true }
                                               : { years: Number(val), deny: false }
                                           }));
+                                          // Show finalize button if extension selected
+                                          if (val !== '0' && val !== 'deny') {
+                                            setPendingExtension({
+                                              player,
+                                              years: Number(val),
+                                              baseSalary: parseFloat(player.curYear),
+                                              extensionSalaries,
+                                            });
+                                          } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
+                                            setPendingExtension(null);
+                                          }
                                         }}
                                       >
                                         <option value={0}>No Extension</option>
@@ -1862,6 +1950,95 @@ export default function MyTeam() {
                                         </div>
                                       )}
                                     </td>
+                                    <td className="p-2">
+                                      {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
+                                        <button
+                                          className="px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
+                                          disabled={finalizeLoading}
+                                          onClick={async () => {
+                                            const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName}? This cannot be undone or changed later.`;
+                                            if (!window.confirm(confirmMsg)) return;
+
+                                            setFinalizeLoading(true);
+                                            setFinalizeMsg('');
+                                            setFinalizeError('');
+                                            try {
+                                              // Prepare contract change object
+                                              let base = parseFloat(player.curYear);
+                                              const extensionSalaries = [];
+                                              for (let i = 1; i <= pendingExtension.years; ++i) {
+                                                base = Math.ceil(base * 1.10 * 10) / 10;
+                                                extensionSalaries.push(base);
+                                              }
+                                              const contractChange = {
+                                                change_type: 'extension',
+                                                user: session?.user?.name || '',
+                                                timestamp: new Date().toISOString(),
+                                                notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
+                                                ai_notes: '', // will be filled below
+                                                playerId: player.playerId,
+                                                playerName: player.playerName,
+                                                years: pendingExtension.years,
+                                                extensionSalaries,
+                                                team: myTeamName,
+                                              };
+
+                                              // --- Call your serverless API route for ai_notes ---
+                                              try {
+                                                console.log('[AI DEBUG] Sending contractChange to /api/ai/transaction_notes:', contractChange);
+                                                const aiRes = await fetch('/api/ai/transaction_notes', {
+                                                  method: 'POST',
+                                                  headers: { 'Content-Type': 'application/json' },
+                                                  body: JSON.stringify({ contractChange }),
+                                                });
+                                                const aiData = await aiRes.json();
+                                                console.log('[AI DEBUG] Response from /api/ai/transaction_notes:', aiData);
+                                                contractChange.ai_notes = aiData.ai_notes || "AI summary unavailable.";
+                                                if (aiData.error) {
+                                                  console.error('[AI DEBUG] Error from AI route:', aiData.error);
+                                                }
+                                              } catch (err) {
+                                                console.error('[AI DEBUG] Exception calling AI route:', err);
+                                                contractChange.ai_notes = "AI summary unavailable.";
+                                              }
+
+                                              // Save to API
+                                              const res = await fetch('/api/admin/contract_changes', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(contractChange),
+                                              });
+                                              const data = await res.json();
+                                              if (!res.ok) throw new Error(data.error || 'Failed to save extension');
+                                              setFinalizeMsg('Extension finalized and saved!');
+                                              setPendingExtension(null);
+
+                                              // Refresh eligible players by refetching contract changes
+                                              const refreshRes = await fetch('/api/admin/contract_changes');
+                                              const refreshData = await refreshRes.json();
+                                              if (Array.isArray(refreshData)) {
+                                                const oneYearAgo = new Date();
+                                                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                                const recent = refreshData.filter(
+                                                  c =>
+                                                    c.change_type === 'extension' &&
+                                                    c.playerId &&
+                                                    c.timestamp &&
+                                                    new Date(c.timestamp) > oneYearAgo
+                                                );
+                                                setRecentContractChanges(recent);
+                                              }
+                                            } catch (err) {
+                                              setFinalizeError(err.message);
+                                            } finally {
+                                              setFinalizeLoading(false);
+                                            }
+                                          }}
+                                        >
+                                          {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
+                                        </button>
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -1874,10 +2051,13 @@ export default function MyTeam() {
                             const ext = extensionMap[player.playerId] || { years: 0, deny: false };
                             let base = parseFloat(player.curYear) || 0;
                             const simYears = [];
+                            let extensionSalaries = [];
                             for (let i = 1; i <= ext.years; ++i) {
                               base = roundUp1(base * 1.10);
                               simYears.push(`Year ${i+1}: $${base}`);
+                              extensionSalaries.push(base);
                             }
+                            const showFinalize = !ext.deny && ext.years > 0;
                             return (
                               <div
                                 key={player.playerId}
@@ -1907,6 +2087,16 @@ export default function MyTeam() {
                                             ? { years: 0, deny: true }
                                             : { years: Number(val), deny: false }
                                         }));
+                                        if (val !== '0' && val !== 'deny') {
+                                          setPendingExtension({
+                                            player,
+                                            years: Number(val),
+                                            baseSalary: parseFloat(player.curYear),
+                                            extensionSalaries,
+                                          });
+                                        } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
+                                          setPendingExtension(null);
+                                        }
                                       }}
                                     >
                                       <option value={0}>No Extension</option>
@@ -1929,10 +2119,86 @@ export default function MyTeam() {
                                     </div>
                                   )}
                                 </div>
+                                {/* Finalize Button */}
+                                {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
+                                  <button
+                                    className="m-4 px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
+                                    disabled={finalizeLoading}
+                                    onClick={async () => {
+                                      // 1. Confirmation dialog
+                                      const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName}? This cannot be undone or changed later.`;
+                                      if (!window.confirm(confirmMsg)) return;
+
+                                      setFinalizeLoading(true);
+                                      setFinalizeMsg('');
+                                      setFinalizeError('');
+                                      try {
+                                        // Prepare contract change object
+                                        let base = parseFloat(player.curYear);
+                                        const extensionSalaries = [];
+                                        for (let i = 1; i <= pendingExtension.years; ++i) {
+                                          base = Math.ceil(base * 1.10 * 10) / 10;
+                                          extensionSalaries.push(base);
+                                        }
+                                        const contractChange = {
+                                          change_type: 'extension',
+                                          user: session?.user?.name || '',
+                                          timestamp: new Date().toISOString(),
+                                          notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
+                                          ai_notes: '', // will be filled below
+                                          playerId: player.playerId,
+                                          playerName: player.playerName,
+                                          years: pendingExtension.years,
+                                          extensionSalaries,
+                                          team: myTeamName,
+                                        };
+
+                                        // --- Call your serverless API route for ai_notes ---
+                                        try {
+                                          console.log('[AI DEBUG] Sending contractChange to /api/ai/transaction_notes:', contractChange);
+                                          const aiRes = await fetch('/api/ai/transaction_notes', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ contractChange }),
+                                          });
+                                          const aiData = await aiRes.json();
+                                          console.log('[AI DEBUG] Response from /api/ai/transaction_notes:', aiData);
+                                          contractChange.ai_notes = aiData.ai_notes || "AI summary unavailable.";
+                                          if (aiData.error) {
+                                            console.error('[AI DEBUG] Error from AI route:', aiData.error);
+                                          }
+                                        } catch (err) {
+                                          console.error('[AI DEBUG] Exception calling AI route:', err);
+                                          contractChange.ai_notes = "AI summary unavailable.";
+                                        }
+
+                                        // Save to API
+                                        const res = await fetch('/api/admin/contract_changes', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify(contractChange),
+                                        });
+                                        const data = await res.json();
+                                        if (!res.ok) throw new Error(data.error || 'Failed to save extension');
+                                        setFinalizeMsg('Extension finalized and saved!');
+                                        setPendingExtension(null);
+                                      } catch (err) {
+                                        setFinalizeError(err.message);
+                                      } finally {
+                                        setFinalizeLoading(false);
+                                      }
+                                    }}
+                                  >
+                                    {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
+                                  </button>
+                                )}
                               </div>
                             );
                           })}
                         </div>
+                        {/* Success/Error Messages */}
+                        {finalizeMsg && <div className="mt-4 text-green-400">{finalizeMsg}</div>}
+                        {finalizeError && <div className="mt-4 text-red-400">{finalizeError}</div>}
                       </>
                     )}
                   </div>
@@ -1983,7 +2249,7 @@ export default function MyTeam() {
                             </table>
                           </div>
                         ))
-                      )}
+          )}
                       <div className="flex justify-end mt-4">
                         <button
                           className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-[#ff6a3c] font-semibold"

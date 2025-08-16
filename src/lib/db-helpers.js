@@ -135,3 +135,27 @@ export async function updateDraft(id, update) {
     return { success: false, error: error.message };
   }
 }
+
+// Add contract change
+export async function addContractChange(change) {
+  try {
+    const db = await getDatabase();
+    const changes = db.collection('contractChanges');
+    const result = await changes.insertOne(change);
+    return { success: true, change, insertedId: result.insertedId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get contract changes
+export async function getContractChanges() {
+  try {
+    const db = await getDatabase();
+    const changes = db.collection('contractChanges');
+    const allChanges = await changes.find({}).toArray();
+    return allChanges;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
