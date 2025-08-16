@@ -2044,6 +2044,12 @@ export default function MyTeam() {
                               })}
                             </tbody>
                           </table>
+                          {/* Add window closed message for desktop */}
+                          {!isExtensionWindowOpen() && (
+                            <div className="mt-2 text-yellow-400 text-sm">
+                              Extensions can only be finalized between May 1st and August 31st.
+                            </div>
+                          )}
                         </div>
                         {/* Mobile Cards */}
                         <div className="flex flex-col gap-4 md:hidden">
@@ -2123,7 +2129,7 @@ export default function MyTeam() {
                                 {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
                                   <button
                                     className="m-4 px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
-                                    disabled={finalizeLoading}
+                                    disabled={finalizeLoading || !isExtensionWindowOpen()}
                                     onClick={async () => {
                                       // 1. Confirmation dialog
                                       const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName}? This cannot be undone or changed later.`;
@@ -2192,6 +2198,12 @@ export default function MyTeam() {
                                     {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
                                   </button>
                                 )}
+                                {/* Add window closed message for mobile */}
+                                {!isExtensionWindowOpen() && (
+                                  <div className="mb-2 text-yellow-400 text-sm text-center">
+                                    Extensions can only be finalized between May 1st and August 31st.
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -2202,65 +2214,65 @@ export default function MyTeam() {
                       </>
                     )}
                   </div>
-                </div>
-                {/* Contract Details Modal (Cap Modal) */}
-                {capModalInfo && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-                    <div
-                      className="bg-[#1a2233] rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-[90vh] overflow-y-auto"
-                      tabIndex={-1}
-                      role="dialog"
-                      aria-modal="true"
-                    >
-                      <button
-                        className="absolute top-2 right-2 text-white hover:text-[#FF4B1F] text-2xl font-bold focus:outline-none"
-                        onClick={() => setCapModalInfo(null)}
-                        aria-label="Close"
-                        tabIndex={0}
-                      >×</button>
-                      <h2 className="text-xl font-bold mb-2 text-[#FF4B1F]">
-                        {myTeamName} – {capModalInfo.label} Contracts
-                      </h2>
-                      {(!capModalInfo.groups || capModalInfo.groups.length === 0) ? (
-                        <div className="text-gray-300">No players under contract for this season.</div>
-                      ) : (
-                        capModalInfo.groups.map(group => (
-                          <div key={group.status} className="mb-4">
-                            <div className="font-semibold text-lg text-white mb-1">{group.status}</div>
-                            <table className="w-full text-sm mb-2">
-                              <thead>
-                                <tr>
-                                  <th className="text-left pb-1">Player</th>
-                                  <th className="text-left pb-1">Type</th>
-                                  <th className="text-right pb-1">Salary</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {group.players.map((p, i) => (
-                                  <tr key={i}>
-                                    <td className={(p.status === "Active" || p.status === "Future") ? "text-green-300" : "text-red-300"}>
-                                      {p.playerName}
-                                    </td>
-                                    <td>{p.contractType}</td>
-                                    <td className="text-right">${p.salary.toFixed(1)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ))
-          )}
-                      <div className="flex justify-end mt-4">
+                  {/* Contract Details Modal (Cap Modal) */}
+                  {capModalInfo && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                      <div
+                        className="bg-[#1a2233] rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-[90vh] overflow-y-auto"
+                        tabIndex={-1}
+                        role="dialog"
+                        aria-modal="true"
+                      >
                         <button
-                          className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-[#ff6a3c] font-semibold"
+                          className="absolute top-2 right-2 text-white hover:text-[#FF4B1F] text-2xl font-bold focus:outline-none"
                           onClick={() => setCapModalInfo(null)}
-                        >
-                          Close
-                        </button>
+                          aria-label="Close"
+                          tabIndex={0}
+                        >×</button>
+                        <h2 className="text-xl font-bold mb-2 text-[#FF4B1F]">
+                          {myTeamName} – {capModalInfo.label} Contracts
+                        </h2>
+                        {(!capModalInfo.groups || capModalInfo.groups.length === 0) ? (
+                          <div className="text-gray-300">No players under contract for this season.</div>
+                        ) : (
+                          capModalInfo.groups.map(group => (
+                            <div key={group.status} className="mb-4">
+                              <div className="font-semibold text-lg text-white mb-1">{group.status}</div>
+                              <table className="w-full text-sm mb-2">
+                                <thead>
+                                  <tr>
+                                    <th className="text-left pb-1">Player</th>
+                                    <th className="text-left pb-1">Type</th>
+                                    <th className="text-right pb-1">Salary</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.players.map((p, i) => (
+                                    <tr key={i}>
+                                      <td className={(p.status === "Active" || p.status === "Future") ? "text-green-300" : "text-red-300"}>
+                                        {p.playerName}
+                                      </td>
+                                      <td>{p.contractType}</td>
+                                      <td className="text-right">${p.salary.toFixed(1)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ))
+          )}
+                        <div className="flex justify-end mt-4">
+                          <button
+                            className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-[#ff6a3c] font-semibold"
+                            onClick={() => setCapModalInfo(null)}
+                          >
+                            Close
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             );
           })()
