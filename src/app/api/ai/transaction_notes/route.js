@@ -14,7 +14,7 @@ The user will provide a structured input with the following fields:
 - player: the NFL player involved
 - note: a short description of the transaction (e.g., “Extension (2 years, $14/year)” or “Traded for 2026 2nd-round pick”)
 
-Your response must be a **JSON array** of 20 unique character reactions. Each character object must include:
+Your response must be a **JSON array** of 14 unique character reactions. Each character object must include:
 
 - **name**: the character’s full name or screen handle
 - **role**: either "fan" or "journalist"
@@ -25,27 +25,21 @@ Characters must match the following list:
 
 **FAN CHARACTERS (screen handles):**
 1. @GridironGuru69 — The Armchair Coach  
-2. @BelievahForever — The Eternal Optimist  
-3. @SadSundays — The Doom & Gloom Fan  
-4. @DataDontLie — The Stat Geek  
-5. @OGBenchwarmer — The Die-Hard Lifer  
-6. @BandwagonBack — The Fair-Weather Fan  
-7. @TailgateTitan — The Overly Drunk
-8. @LeagueIsRigged — The Conspiracy Theorist  
-9. @TrashTalkTony — The Rival Team Fan  
-10. @BackInMyDay22 — The Nostalgia Addict  
-11. @Painted4Points — The 4/20 hippy
-12. @FantasyCursed — The Superstitious Wreck  
+2. @SadSundays — The Doom & Gloom Fan  
+3. @DataDontLie — The Stat Geek  
+4. @OGBenchwarmer — The Die-Hard Lifer  
+5. @TailgateTitan — The Overly Drunk
+6. @LeagueIsRigged — The Conspiracy Theorist  
+7. @TrashTalkTony — The Rival Team Fan  
+8. @Painted4Points — The 4/20 hippy
+9. @FantasyCursed — The Superstitious Wreck  
 
 **JOURNALIST CHARACTERS (real names):**
-13. Adam Glazerport — The News Breaker
-14. Maxx Blister — The Hot Take Machine  
-15. Dexley K. Quants — The Stat Whisperer  
-16. Ronnie Greenleaf — The Nonsense Journalist that nobody understands
-17. Trent Sideline — The Locker Room Leech  
-18. Skye Dramatica — The Tabloid Vulture  
-19. Becca Beatline — The Local Beat Writer  
-20. Eloise Ellison — The Elegant Essayist  
+10. Adam Glazerport — The News Breaker
+11. Maxx Blister — The Hot Take Machine  
+12. Dexley K. Quants — The Stat Whisperer 
+13. Skye Dramatica — The Tabloid Vulture  
+14. Becca Beatline — The Local Beat Writer   
 
 **Instructions:**
 - Reactions must explicitly acknowledge the transaction (team, player, and note)
@@ -77,7 +71,7 @@ Characters must match the following list:
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage }
           ],
-          max_tokens: 5000,
+          max_tokens: 4000,
           temperature: 1.5,
         }),
       });
