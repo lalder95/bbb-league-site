@@ -583,6 +583,15 @@ export default function MyTeam() {
     return null; // Or a spinner if you prefer
   }
 
+  // Check if the extension window is open (between May 1st and August 31st)
+  function isExtensionWindowOpen() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const may1 = new Date(year, 4, 1); // May 1st (month is 0-indexed)
+    const aug31 = new Date(year, 7, 31); // August 31st
+    return now >= may1 && now <= aug31;
+  }
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       {/* Header Banner */}
@@ -1589,7 +1598,7 @@ export default function MyTeam() {
                         placeholder="Enter your strategy notes here..."
                       />
                     </div>
-                    {/* Save Button and Messages */}
+                                       {/* Save Button and Messages */}
                     <div className="flex flex-col items-center">
                       <button
                         className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
