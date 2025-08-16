@@ -4,7 +4,6 @@ export async function POST(req) {
   try {
     const { contractChange } = await req.json();
 
-    // Compose the system prompt
     const systemPrompt = `
 You are a fantasy football media simulator.
 
@@ -58,41 +57,55 @@ Characters must match the following list:
 - Return **only valid JSON** — no extra text, markdown, or explanation
     `.trim();
 
-    // Compose the user message
     const userMessage = `team: ${contractChange.team}\nplayer: ${contractChange.playerName}\nnote: ${contractChange.notes}`;
 
-    // Call OpenAI API
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1-nano",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage }
-        ],
-        max_tokens: 1200,
-        temperature: 0.7,
-      }),
-    });
+    let ai_notes = null;
+    let ai_notes_raw = null;
+    let error = null;
 
-    const data = await response.json();
-    if (!response.ok) {
-      return Response.json({ ai_notes: "AI summary unavailable.", error: data }, { status: 500 });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      // Call OpenAI API
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-nano",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage }
+          ],
+          max_tokens: 1200,
+          temperature: 0.7,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        error = data;
+        break;
+      }
+
+      ai_notes_raw = data.choices?.[0]?.message?.content || "AI summary unavailable.";
+
+      try {
+        ai_notes = JSON.parse(ai_notes_raw);
+        error = null;
+        break; // Success!
+      } catch (e) {
+        error = { error: "Invalid JSON from model", raw: ai_notes_raw };
+        // On retry, prepend a system message to force valid JSON
+        if (attempt < 3) {
+          // Add a system message to clarify
+          systemPrompt += "\n\nIMPORTANT: Your previous response was not valid JSON. Return ONLY a valid JSON array as described. Do not include any extra text.";
+        }
+      }
     }
 
-    // The response should be only the JSON array
-    const ai_notes_raw = data.choices?.[0]?.message?.content || "AI summary unavailable.";
-
-    let ai_notes;
-    try {
-      ai_notes = JSON.parse(ai_notes_raw);
-    } catch (e) {
-      // If parsing fails, store the raw string and an error
-      ai_notes = { error: "Invalid JSON from model", raw: ai_notes_raw };
+    if (error) {
+      return Response.json({ ai_notes: error }, { status: 500 });
     }
 
     return Response.json({ ai_notes });
