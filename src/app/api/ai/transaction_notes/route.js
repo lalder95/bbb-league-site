@@ -109,8 +109,10 @@ Characters must match the following list:
       }
     }
 
+    // If we failed after 3 attempts, always return an object with error info
     if (error) {
-      return Response.json({ ai_notes: error }, { status: 500 });
+      // If ai_notes_raw is "AI summary unavailable.", include that in the error object
+      return Response.json({ ai_notes: { ...error, raw: ai_notes_raw } }, { status: 500 });
     }
 
     return Response.json({ ai_notes });
