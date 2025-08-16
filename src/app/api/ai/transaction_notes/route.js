@@ -63,7 +63,7 @@ Characters must match the following list:
     let ai_notes_raw = null;
     let error = null;
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 10; attempt++) {
       // Call OpenAI API
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -77,7 +77,7 @@ Characters must match the following list:
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage }
           ],
-          max_tokens: 5000,
+          max_tokens: 7000,
           temperature: 1.5,
         }),
       });

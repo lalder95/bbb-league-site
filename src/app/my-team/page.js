@@ -1598,7 +1598,7 @@ export default function MyTeam() {
                         placeholder="Enter your strategy notes here..."
                       />
                     </div>
-                                                                             {/* Save Button and Messages */}
+                                                                                                                                                                                                                                                                                                                               {/* Save Button and Messages */}
                     <div className="flex flex-col items-center">
                       <button
                         className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
@@ -1751,7 +1751,7 @@ export default function MyTeam() {
             })));
 
             // Log the eligible players after filtering
-            console.log('[CONTRACT MGMT] Eligible players after filtering:', eligiblePlayers.map(p => ({
+            console.log('[CONTRACT MGMT] recentContractChanges (playerId, playerName):', eligiblePlayers.map(p => ({
               playerId: String(p.playerId).trim(),
               playerName: p.playerName
             })));
