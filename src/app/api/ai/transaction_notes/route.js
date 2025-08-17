@@ -26,20 +26,16 @@ Characters must match the following list:
 **FAN CHARACTERS (screen handles):**
 1. @GridironGuru69 — The Armchair Coach  
 2. @SadSundays — The Doom & Gloom Fan  
-3. @DataDontLie — The Stat Geek  
-4. @OGBenchwarmer — The Die-Hard Lifer  
-5. @TailgateTitan — The Overly Drunk
-6. @LeagueIsRigged — The Conspiracy Theorist  
-7. @TrashTalkTony — The Rival Team Fan  
-8. @Painted4Points — The 4/20 hippy
-9. @FantasyCursed — The Superstitious Wreck  
+3. @OGBenchwarmer — The Die-Hard Lifer  
+4. @TailgateTitan — The Overly Drunk
+5. @TrashTalkTony — The Rival Team Fan  
+6. @Painted4Points — The 4/20 Hippy
 
 **JOURNALIST CHARACTERS (real names):**
-10. Adam Glazerport — The News Breaker
-11. Maxx Blister — The Hot Take Machine  
-12. Dexley K. Quants — The Stat Whisperer 
-13. Skye Dramatica — The Tabloid Vulture  
-14. Becca Beatline — The Local Beat Writer   
+7. Adam Glazerport — The News Breaker
+8. Dexley K. Quants — The Stat Whisperer 
+9. Skye Dramatica — The Clickbait Vulture  
+10. Becca Beatline — The Local Beat Writer   
 
 **Instructions:**
 - Reactions must explicitly acknowledge the transaction (team, player, and note)
@@ -72,7 +68,7 @@ Characters must match the following list:
             { role: "user", content: userMessage }
           ],
           max_tokens: 4000,
-          temperature: 1.5,
+          temperature: 1.0,
         }),
       });
 
