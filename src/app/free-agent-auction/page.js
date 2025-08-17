@@ -1232,13 +1232,15 @@ export default function FreeAgentAuctionPage() {
 
   const filteredBidLog = React.useMemo(() => {
     if (!draft?.bidLog) return [];
-    return draft.bidLog.filter(bid => {
+    const filtered = draft.bidLog.filter(bid => {
       const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
       const playerName = player ? player.playerName : '';
       const matchesName = !bidLogSearch || playerName.toLowerCase().includes(bidLogSearch.toLowerCase());
       const matchesBidder = bidLogBidder === 'ALL' || bid.username === bidLogBidder;
       return matchesName && matchesBidder;
     });
+    // Sort newest -> oldest by timestamp
+    return filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   }, [draft?.bidLog, draft?.players, bidLogSearch, bidLogBidder]);
 
   if (status === 'loading') return null;
