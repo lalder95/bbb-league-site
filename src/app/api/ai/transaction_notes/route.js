@@ -43,6 +43,8 @@ Characters must match the following list:
 - **Never change, autocorrect, or re-interpret the provided team or player names** (e.g., do not change "lalder" to "ladder")
 - **Do not reference real NFL teams, real team affiliations, divisions, or cities** — respond only in the context of the fantasy league
 - Avoid referencing real-world contracts, news, or league mechanics
+- It is **Extremely Important* that each message contains both the team name, and the plyer name.
+- Don't menthion the user name **ever**. Only use the team name.
 - Responses should be concise (1–2 sentences)
 - Return **only valid JSON** — no extra text, markdown, or explanation
     `.trim();
