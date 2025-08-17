@@ -38,7 +38,7 @@ Characters must match the following list:
 10. Becca Beatline — The Local Beat Writer   
 
 **Instructions:**
-- Reactions must explicitly acknowledge the transaction (team, player, and note)
+- Reactions must explicitly acknowledge the transaction (**team**, player, and note)
 - Each reaction must reflect the character’s unique voice and personality
 - **Never change, autocorrect, or re-interpret the provided team or player names** (e.g., do not change "lalder" to "ladder")
 - **Do not reference real NFL teams, real team affiliations, divisions, or cities** — respond only in the context of the fantasy league

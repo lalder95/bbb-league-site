@@ -189,6 +189,15 @@ export default function MyTeam() {
   // Add at the top of your component (inside MyTeam)
   const [capModalInfo, setCapModalInfo] = useState(null);
 
+  // NEW: Admin mode state and team selection for Contract Management
+  const isAdmin = Boolean(
+    session?.user?.isAdmin ||
+    session?.user?.role === 'admin' ||
+    (process.env.NEXT_PUBLIC_ADMIN_EMAIL && session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL)
+  );
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [selectedTeamName, setSelectedTeamName] = useState('');
+
   useEffect(() => {
     // Load player map and contracts from BBB_Contracts.csv (same logic as player-contracts page)
     async function fetchPlayerData() {
@@ -1658,6 +1667,8 @@ export default function MyTeam() {
             // --- Use ALL contracts for user's team, regardless of status (to match Salary Cap page) ---
             // Find all unique team names from all contracts
             const allTeamNames = Array.from(new Set(playerContracts.filter(p => p.team).map(p => p.team.trim())));
+
+            // Derive user's default team name
             let myTeamName = '';
             if (session?.user?.name) {
               const nameLower = session.user.name.trim().toLowerCase();
@@ -1676,18 +1687,22 @@ export default function MyTeam() {
               myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
             }
 
-            // All contracts for user's team (all statuses)
+            // NEW: Team acting-on-behalf (admin selectable)
+            const teamNameForUI = (isAdmin && isAdminMode && (selectedTeamName || myTeamName))
+              ? (selectedTeamName || myTeamName)
+              : myTeamName;
+
+            // All contracts for selected team (all statuses)
             const myContractsAll = playerContracts.filter(
-              p => p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()
+              p => p.team && p.team.trim().toLowerCase() === teamNameForUI.trim().toLowerCase()
             );
 
             // Build cap numbers for years 1-4
             const yearSalaries = [0, 0, 0, 0]; // index 0 = curYear, 1 = year2, etc.
             const yearDead = [0, 0, 0, 0];     // dead cap for each year
 
-            // --- UPDATE: Include "Future" contracts in salary columns ---
+            // Include "Active" and "Future" in salaries, everything else is dead
             myContractsAll.forEach(p => {
-              // Use salary columns for Active/Future, dead columns for all others
               if (p.status === 'Active' || p.status === 'Future') {
                 yearSalaries[0] += parseFloat(p.curYear) || 0;
                 yearSalaries[1] += parseFloat(p.year2) || 0;
@@ -1701,16 +1716,15 @@ export default function MyTeam() {
               }
             });
 
-            // For display, total cap used = yearSalaries[i] + yearDead[i]
-
             // --- Find eligible players for extension (same as before) ---
-            // Filter out any player who has any contract with status "Future"
+            // Filter out any player who has any contract with status "Future" on the selected team
             const playerIdsWithFuture = new Set(
               playerContracts.filter(
-                p => p.status === 'Future' && p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()
+                p => p.status === 'Future' && p.team && p.team.trim().toLowerCase() === teamNameForUI.trim().toLowerCase()
               ).map(p => p.playerId)
             );
-            // Only consider "Active" contracts for extension eligibility
+
+            // Only consider "Active" base contracts expiring this year, not RFA, on the selected team, and no "Future" already
             let eligiblePlayers = myContractsAll.filter(
               p =>
                 p.status === 'Active' &&
@@ -1722,39 +1736,13 @@ export default function MyTeam() {
 
             // --- Remove players with a recent extension (within last year, ANY team) ---
             if (recentContractChanges.length > 0) {
-              // Debug: Show which playerIds are being filtered
-              console.log('[CONTRACT MGMT] recentContractChanges:', recentContractChanges.map(c => ({
-                playerId: String(c.playerId).trim(),
-                playerName: c.playerName || '(no name)'
-              })));
               const recentlyExtendedIds = new Set(
                 recentContractChanges.map(c => String(c.playerId).trim())
               );
               eligiblePlayers = eligiblePlayers.filter(
-                p => {
-                  const isFiltered = recentlyExtendedIds.has(String(p.playerId).trim());
-                  if (isFiltered) {
-                    console.log(`[CONTRACT MGMT] Filtering out playerId: ${p.playerId} (${p.playerName})`);
-                  }
-                  return !isFiltered;
-                }
+                p => !recentlyExtendedIds.has(String(p.playerId).trim())
               );
             }
-
-            // Always log the full recentContractChanges array for inspection
-            console.log('[CONTRACT MGMT] recentContractChanges FULL:', recentContractChanges);
-
-            // Log just the playerId and playerName for comparison
-            console.log('[CONTRACT MGMT] recentContractChanges (playerId, playerName):', recentContractChanges.map(c => ({
-              playerId: String(c.playerId).trim(),
-              playerName: c.playerName || '(no name)'
-            })));
-
-            // Log the eligible players after filtering
-            console.log('[CONTRACT MGMT] recentContractChanges (playerId, playerName):', eligiblePlayers.map(p => ({
-              playerId: String(p.playerId).trim(),
-              playerName: p.playerName
-            })));
 
             // --- Simulate extensions ---
             const extensionMap = {};
@@ -1788,9 +1776,8 @@ export default function MyTeam() {
               // Collect all contracts for this team for this year, using correct salary logic
               const players = myContractsAll
                 .map(c => {
-                  let contractSalary = 0;
+                  let contractSalary = parseFloat(c[salary]) || 0;
                   let isDead = !(c.status === "Active" || c.status === "Future");
-                  contractSalary = parseFloat(c[salary]) || 0;
                   return {
                     playerName: c.playerName,
                     contractType: c.contractType,
@@ -1822,18 +1809,55 @@ export default function MyTeam() {
                 })
                 .map(status => ({ status, players: grouped[status] }));
 
-              setCapModalInfo({ yearIdx, label, groups: orderedGroups });
+              setCapModalInfo({ yearIdx, label, groups: orderedGroups, teamNameForUI });
             }
 
             // --- UI ---
             return (
               <div className="w-full flex flex-col items-center">
                 <h2 className="text-2xl font-bold mb-6 text-white text-center">Contract Management</h2>
+
+                {/* NEW: Admin Controls */}
+                {isAdmin && (
+                  <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 p-4 mb-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="flex items-center gap-2 text-white/80">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[#FF4B1F]"
+                          checked={isAdminMode}
+                          onChange={(e) => setIsAdminMode(e.target.checked)}
+                        />
+                        <span className="font-semibold">Admin Mode</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/60">Acting as team:</span>
+                        <select
+                          className="bg-white/10 text-white rounded px-2 py-1 min-w-[200px] disabled:opacity-50"
+                          disabled={!isAdminMode}
+                          value={(isAdminMode ? (selectedTeamName || myTeamName) : myTeamName)}
+                          onChange={(e) => setSelectedTeamName(e.target.value)}
+                        >
+                          {allTeamNames.map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-xs text-white/60">
+                      When Admin Mode is enabled, you can select any team and finalize extensions on their behalf.
+                    </div>
+                  </div>
+                )}
+
                 {/* --- Contract Extensions Section --- */}
                 <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg mb-10">
-                  <h3 className="text-xl font-bold text-[#FF4B1F] mb-4">Contract Extensions</h3>
+                  <h3 className="text-xl font-bold text-[#FF4B1F] mb-1">Contract Extensions</h3>
                   <div className="mb-6 text-white/80 text-base">
                     Extend players on expiring base contracts (not entering RFA). Simulate different extension scenarios and see the impact on your cap space.
+                  </div>
+                  <div className="mb-4 text-white/70 font-semibold">
+                    Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
                   </div>
                   {/* Cap Space Table */}
                   <div className="mb-8">
@@ -1965,7 +1989,7 @@ export default function MyTeam() {
                                           className="px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
                                           disabled={finalizeLoading}
                                           onClick={async () => {
-                                            const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName}? This cannot be undone or changed later.`;
+                                            const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName} (Team: ${teamNameForUI})? This cannot be undone or changed later.`;
                                             if (!window.confirm(confirmMsg)) return;
 
                                             setFinalizeLoading(true);
@@ -1989,7 +2013,7 @@ export default function MyTeam() {
                                                 playerName: player.playerName,
                                                 years: pendingExtension.years,
                                                 extensionSalaries,
-                                                team: myTeamName,
+                                                team: teamNameForUI, // NOTE: use selected/admin team
                                               };
 
                                               // --- Call your serverless API route for ai_notes ---
@@ -2015,7 +2039,7 @@ export default function MyTeam() {
                                               if (!res.ok) throw new Error(data.error || 'Failed to save extension');
                                               setFinalizeMsg('Extension finalized and saved!');
 
-                                              // --- Refresh eligible players by refetching contract changes ---
+                                              // Refresh recent changes to update eligibility
                                               const refreshRes = await fetch('/api/admin/contract_changes');
                                               const refreshData = await refreshRes.json();
                                               if (Array.isArray(refreshData)) {
@@ -2031,16 +2055,14 @@ export default function MyTeam() {
                                                 setRecentContractChanges(recent);
                                               }
 
-                                              // Clear extension choice for this player (so dropdown resets)
+                                              // Clear selection for this player
                                               setExtensionChoices(prev => {
                                                 const updated = { ...prev };
                                                 delete updated[player.playerId];
                                                 return updated;
                                               });
 
-                                              // Clear pending extension
                                               setPendingExtension(null);
-
                                             } catch (err) {
                                               setFinalizeError(err.message);
                                             } finally {
@@ -2144,8 +2166,7 @@ export default function MyTeam() {
                                     className="m-4 px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
                                     disabled={finalizeLoading || !isExtensionWindowOpen()}
                                     onClick={async () => {
-                                      // 1. Confirmation dialog
-                                      const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName}? This cannot be undone or changed later.`;
+                                      const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName} (Team: ${teamNameForUI})? This cannot be undone or changed later.`;
                                       if (!window.confirm(confirmMsg)) return;
 
                                       setFinalizeLoading(true);
@@ -2169,7 +2190,7 @@ export default function MyTeam() {
                                           playerName: player.playerName,
                                           years: pendingExtension.years,
                                           extensionSalaries,
-                                          team: myTeamName,
+                                          team: teamNameForUI, // NOTE: use selected/admin team
                                         };
 
                                         // --- Call your serverless API route for ai_notes ---
@@ -2194,6 +2215,30 @@ export default function MyTeam() {
                                         const data = await res.json();
                                         if (!res.ok) throw new Error(data.error || 'Failed to save extension');
                                         setFinalizeMsg('Extension finalized and saved!');
+
+                                        // Refresh recent changes to update eligibility
+                                        const refreshRes = await fetch('/api/admin/contract_changes');
+                                        const refreshData = await refreshRes.json();
+                                        if (Array.isArray(refreshData)) {
+                                          const oneYearAgo = new Date();
+                                          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                          const recent = refreshData.filter(
+                                            c =>
+                                              c.change_type === 'extension' &&
+                                              c.playerId &&
+                                              c.timestamp &&
+                                              new Date(c.timestamp) > oneYearAgo
+                                          );
+                                          setRecentContractChanges(recent);
+                                        }
+
+                                        // Clear selection for this player
+                                        setExtensionChoices(prev => {
+                                          const updated = { ...prev };
+                                          delete updated[player.playerId];
+                                          return updated;
+                                        });
+
                                         setPendingExtension(null);
                                       } catch (err) {
                                         setFinalizeError(err.message);
@@ -2214,6 +2259,7 @@ export default function MyTeam() {
                               </div>
                             );
                           })}
+
                         </div>
                         {/* Success/Error Messages */}
                         {finalizeMsg && <div className="mt-4 text-green-400">{finalizeMsg}</div>}
@@ -2237,7 +2283,7 @@ export default function MyTeam() {
                           tabIndex={0}
                         >×</button>
                         <h2 className="text-xl font-bold mb-2 text-[#FF4B1F]">
-                          {myTeamName} – {capModalInfo.label} Contracts
+                          {(capModalInfo.teamNameForUI || teamNameForUI)} – {capModalInfo.label} Contracts
                         </h2>
                         {(!capModalInfo.groups || capModalInfo.groups.length === 0) ? (
                           <div className="text-gray-300">No players under contract for this season.</div>
