@@ -633,6 +633,7 @@ export default function Home() {
   }
 
   const [tweets, setTweets] = useState([]);
+  const [showAdamOnly, setShowAdamOnly] = useState(false); // <-- NEW: toggle state
 
   useEffect(() => {
     async function fetchTweets() {
@@ -663,6 +664,12 @@ export default function Home() {
     }
     fetchTweets();
   }, []);
+
+  // Helper to identify Adam Glazerport tweets
+  function isAdamTweet(t) {
+    const name = (t?.name || '').replace(/^@/, '').trim().toLowerCase();
+    return name === 'adam glazerport';
+  }
 
   // Add this helper at the top-level of your file (outside Home)
   function shuffleArray(array) {
@@ -842,10 +849,24 @@ export default function Home() {
           <div className="space-y-6 md:space-y-8">
             {/* News Section */}
             <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
-              <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
-                League bAnker Feed
-              </h2>
-              <BankerFeed tweets={tweets} />
+              <div className={`flex items-center justify-between ${isMobile ? 'mb-4' : 'mb-6'}`}>
+                <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-[#FF4B1F]`}>
+                  League bAnker Feed
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowAdamOnly(v => !v)}
+                  title={showAdamOnly ? 'Showing Adam Glazerport only' : 'Show only Adam Glazerport'}
+                  className={`text-xs px-2 py-1 rounded border transition-colors
+                    ${showAdamOnly
+                      ? 'bg-[#FF4B1F] text-black border-[#FF4B1F]'
+                      : 'bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F]'}
+                  `}
+                >
+                  AG Only
+                </button>
+              </div>
+              <BankerFeed tweets={showAdamOnly ? tweets.filter(isAdamTweet) : tweets} />
             </div>
             
             {/* Quick Links Section */}
