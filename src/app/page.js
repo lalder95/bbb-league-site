@@ -632,6 +632,49 @@ export default function Home() {
     }
   }
 
+  const [tweets, setTweets] = useState([]);
+
+  useEffect(() => {
+    async function fetchTweets() {
+      try {
+        const res = await fetch('/api/admin/contract_changes');
+        const data = await res.json();
+        // The API returns an array directly, not { data: [...] }
+        const allChanges = Array.isArray(data) ? data : [];
+        const allTweets = [];
+        allChanges.forEach(change => {
+          // Only process ai_notes if it's an array
+          if (Array.isArray(change.ai_notes)) {
+            // Shuffle the ai_notes array for this contract change
+            const shuffledNotes = shuffleArray(change.ai_notes);
+            // Attach a timestamp to each tweet for display
+            shuffledNotes.forEach(note => {
+              allTweets.push({
+                ...note,
+                _timestamp: change.timestamp // Use the contract change timestamp
+              });
+            });
+          }
+        });
+        setTweets(allTweets);
+      } catch (err) {
+        setTweets([]);
+      }
+    }
+    fetchTweets();
+  }, []);
+
+  // Add this helper at the top-level of your file (outside Home)
+  function shuffleArray(array) {
+    // Fisher-Yates shuffle
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#001A2B] flex items-center justify-center flex-col">
@@ -800,32 +843,9 @@ export default function Home() {
             {/* News Section */}
             <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
               <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
-                Latest News
+                League bAnker Feed
               </h2>
-              
-              {news.length > 0 ? (
-                <div className="space-y-3 md:space-y-4">
-                  {news.map((item, index) => (
-                    <a
-                      key={index}
-                      href={item.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block bg-black/20 rounded-lg p-3 md:p-4 hover:bg-black/30 transition-colors"
-                    >
-                      <h3 className="font-bold truncate">{item.title}</h3>
-                      <div className="flex text-xs text-white/50 mt-2 justify-between">
-                        <span>{item.category}</span>
-                        <span>{new Date(item.timestamp).toLocaleDateString()}</span>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center text-white/70 py-6 md:py-8">
-                  No news available
-                </div>
-              )}
+              <BankerFeed tweets={tweets} />
             </div>
             
             {/* Quick Links Section */}
@@ -880,4 +900,93 @@ function LinkCard({ title, description, href }) {
       <p className="text-sm text-white/70">{description}</p>
     </Link>
   );
+}
+
+// Add this helper at the top-level of your file (outside Home)
+function shuffleArray(array) {
+  // Fisher-Yates shuffle
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function BankerFeed({ tweets }) {
+  if (!tweets || tweets.length === 0) {
+    return (
+      <div className="text-center text-white/70 py-6 md:py-8">
+        No tweets available
+      </div>
+    );
+  }
+  return (
+    <div
+      className="space-y-2 overflow-y-auto"
+      style={{
+        maxHeight: '420px',
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#FF4B1F #1a232b'
+      }}
+    >
+      {tweets.map((tweet, idx) => (
+        <div
+          key={idx}
+          className="bg-black/20 rounded-xl px-4 py-3 border border-white/10 flex flex-col gap-2"
+        >
+          {/* Top: Avatar, Name, Handle */}
+          <div className="flex items-center gap-3">
+            {/* Avatar */}
+            <div className="flex-shrink-0">
+              {tweet.role === "journalist" ? (
+                <span
+                  title="Verified"
+                  className="inline-block w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-2xl border-2 border-blue-300"
+                >
+                  ✓
+                </span>
+              ) : (
+                <span className="inline-block w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold text-2xl border-2 border-gray-500">
+                  {tweet.name?.charAt(1) || "@"}
+                </span>
+              )}
+            </div>
+            {/* Name and handle */}
+            <div className="flex flex-col">
+              <span className="font-bold text-white leading-tight text-base">
+                {tweet.name?.replace(/^@/, '') || "Unknown"}
+              </span>
+              <span className="text-gray-400 text-sm leading-tight">
+                @{tweet.name?.replace(/^@/, '')}
+              </span>
+            </div>
+          </div>
+          {/* Body */}
+          <div className="text-white/90 text-lg leading-snug px-1 pt-1 pb-2">
+            {tweet.reaction}
+          </div>
+          {/* Timestamp */}
+          <div className="text-xs text-gray-400 pl-1 pt-1 flex items-center gap-2">
+            {tweet._timestamp ? formatTweetDate(tweet._timestamp) : ""}
+            <span>·</span>
+            <span className="text-blue-400 font-medium">bAnker for iPhone</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Helper to format the date like ... (e.g., "1:21 PM · 1/4/21")
+function formatTweetDate(dateString) {
+  const date = new Date(dateString);
+  if (isNaN(date)) return "";
+  const hours = date.getHours() % 12 || 12;
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const ampm = date.getHours() >= 12 ? "PM" : "AM";
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const year = date.getFullYear().toString().slice(-2);
+  return `${hours}:${minutes} ${ampm} · ${month}/${day}/${year}`;
 }
