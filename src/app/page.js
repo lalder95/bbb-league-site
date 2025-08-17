@@ -657,7 +657,18 @@ export default function Home() {
             });
           }
         });
-        setTweets(allTweets);
+
+        // NEW: sort newest -> oldest by timestamp
+        const sorted = allTweets.sort((a, b) => {
+          const at = new Date(a?._timestamp).getTime();
+          const bt = new Date(b?._timestamp).getTime();
+          if (isNaN(bt) && isNaN(at)) return 0;
+          if (isNaN(bt)) return -1; // put invalid/empty at the end
+          if (isNaN(at)) return 1;
+          return bt - at; // descending
+        });
+
+        setTweets(sorted);
       } catch (err) {
         setTweets([]);
       }
