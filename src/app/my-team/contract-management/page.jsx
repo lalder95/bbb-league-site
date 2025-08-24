@@ -221,7 +221,7 @@ export default function ContractManagementPage() {
   }
 
   return (
-    <div className="w-full flex flex-col items-center">
+    <div className="w-full flex flex-col items-center px-3 sm:px-0">
       <h2 className="text-2xl font-bold mb-6 text-white text-center">Contract Management</h2>
 
       {/* Admin Controls */}
@@ -313,173 +313,361 @@ export default function ContractManagementPage() {
           {eligiblePlayers.length === 0 ? (
             <div className="text-white/60 italic">No players eligible for extension this year.</div>
           ) : (
-            <div className="overflow-x-auto rounded">
-              <table className="min-w-[600px] w-full text-sm border border-white/10 rounded bg-white/5">
-                <thead>
-                  <tr>
-                    <th className="p-2 text-white/80">Player</th>
-                    <th className="p-2 text-white/80">Current Salary</th>
-                    <th className="p-2 text-white/80">Extension</th>
-                    <th className="p-2 text-white/80">Simulated Years</th>
-                    <th className="p-2 text-white/80"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {eligiblePlayers.map(player => {
-                    const ext = extensionMap[player.playerId] || { years: 0, deny: false };
-                    let base = parseFloat(player.curYear) || 0;
-                    const simYears = [];
-                    let extensionSalaries = [];
-                    for (let i = 1; i <= ext.years; ++i) {
-                      base = roundUp1(base * 1.10);
-                      simYears.push(`Year ${i + 1}: $${base}`);
-                      extensionSalaries.push(base);
-                    }
-                    const showFinalize = !ext.deny && ext.years > 0;
-                    return (
-                      <tr key={player.playerId}>
-                        <td className="p-2 font-semibold text-white flex items-center gap-2">
-                          <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
-                          {player.playerName}
-                        </td>
-                        <td className="p-2">${parseFloat(player.curYear).toFixed(1)}</td>
-                        <td className="p-2">
+            <>
+              {/* Mobile cards (no horizontal scroll) */}
+              <div className="sm:hidden space-y-3">
+                {eligiblePlayers.map(player => {
+                  const ext = extensionMap[player.playerId] || { years: 0, deny: false };
+                  let base = parseFloat(player.curYear) || 0;
+                  const simYears = [];
+                  let extensionSalaries = [];
+                  for (let i = 1; i <= ext.years; ++i) {
+                    base = roundUp1(base * 1.10);
+                    simYears.push(`Year ${i + 1}: $${base.toFixed(1)}`);
+                    extensionSalaries.push(base);
+                  }
+                  const showFinalize = !ext.deny && ext.years > 0;
+                  return (
+                    <div
+                      key={player.playerId}
+                      className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden"
+                    >
+                      {/* Header */}
+                      <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
+                        <PlayerProfileCard
+                          playerId={player.playerId}
+                          expanded={false}
+                          className="w-10 h-10 rounded-md overflow-hidden shadow"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-white font-bold text-2xl leading-7 truncate">
+                            {player.playerName}
+                          </div>
+                        </div>
+                      </div>
+ 
+                      {/* Salary + Extension row */}
+                      <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-white/70 text-sm">Current Salary</div>
+                          <div className="text-white font-semibold text-3xl mt-1">
+                            ${parseFloat(player.curYear).toFixed(1)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-white/70 text-sm">Extension</div>
                           <select
-                            className="bg-white/10 text-white rounded px-2 py-1"
-                            value={ext.deny ? 'deny' : ext.years}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setExtensionChoices(prev => ({
-                                ...prev,
-                                [player.playerId]: val === 'deny'
-                                  ? { years: 0, deny: true }
-                                  : { years: Number(val), deny: false }
-                              }));
-                              if (val !== '0' && val !== 'deny') {
-                                setPendingExtension({
-                                  player,
-                                  years: Number(val),
-                                  baseSalary: parseFloat(player.curYear),
-                                  extensionSalaries,
-                                });
-                              } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
-                                setPendingExtension(null);
-                              }
-                            }}
-                          >
-                            <option value={0}>No Extension</option>
-                            <option value={1}>1 Year</option>
-                            <option value={2}>2 Years</option>
-                            <option value={3}>3 Years</option>
-                            <option value="deny">Deny</option>
-                          </select>
-                        </td>
-                        <td className="p-2">
-                          {ext.deny || !ext.years ? (
-                            <span className="text-white/60 italic">No extension</span>
-                          ) : (
-                            <div className="flex flex-col items-start">
-                              {simYears.map((s, i) => (<span key={i}>{s}</span>))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-2">
-                          {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
-                            <button
-                              className="px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
+                            className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
+                             value={ext.deny ? 'deny' : ext.years}
+                             onChange={e => {
+                               const val = e.target.value;
+                               setExtensionChoices(prev => ({
+                                 ...prev,
+                                 [player.playerId]: val === 'deny'
+                                   ? { years: 0, deny: true }
+                                   : { years: Number(val), deny: false }
+                               }));
+                               if (val !== '0' && val !== 'deny') {
+                                 setPendingExtension({
+                                   player,
+                                   years: Number(val),
+                                   baseSalary: parseFloat(player.curYear),
+                                   extensionSalaries,
+                                 });
+                               } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
+                                 setPendingExtension(null);
+                               }
+                             }}
+                           >
+                             <option value={0}>No Extension</option>
+                             <option value={1}>1 Year</option>
+                             <option value={2}>2 Years</option>
+                             <option value={3}>3 Years</option>
+                             <option value="deny">Deny</option>
+                           </select>
+                         </div>
+                       </div>
+ 
+                       {/* Simulated Years */}
+                       <div className="px-5 py-4 bg-[#0C1B26]">
+                         <div className="text-white/70 text-sm">Simulated Years</div>
+                         <div className="mt-2 text-lg">
+                           {ext.deny || !ext.years ? (
+                             <span className="text-white/60 italic">No extension</span>
+                           ) : (
+                            <div className="flex flex-col items-start space-y-2">
+                               {simYears.map((s, i) => (<span key={i} className="text-white">{s}</span>))}
+                             </div>
+                           )}
+                         </div>
+                       </div>
+ 
+                       {/* Finalize button */}
+                       <div className="px-5 pb-5 bg-[#0C1B26]">
+                         {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
+                           <button
+                            className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
                               disabled={finalizeLoading || !isExtensionWindowOpen()}
                               onClick={async () => {
                                 const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName} (Team: ${teamNameForUI})? This cannot be undone or changed later.`;
                                 if (!window.confirm(confirmMsg)) return;
+ 
+                               setFinalizeLoading(true);
+                               setFinalizeMsg('');
+                               setFinalizeError('');
+                               try {
+                                 let base = parseFloat(player.curYear);
+                                 const extensionSalaries = [];
+                                 for (let i = 1; i <= pendingExtension.years; ++i) {
+                                   base = Math.ceil(base * 1.10 * 10) / 10;
+                                   extensionSalaries.push(base);
+                                 }
+                                 const contractChange = {
+                                   change_type: 'extension',
+                                   user: session?.user?.name || '',
+                                   timestamp: new Date().toISOString(),
+                                   notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
+                                   ai_notes: '',
+                                   playerId: player.playerId,
+                                   playerName: player.playerName,
+                                   years: pendingExtension.years,
+                                   extensionSalaries,
+                                   team: teamNameForUI,
+                                 };
+ 
+                                 try {
+                                   const aiRes = await fetch('/api/ai/transaction_notes', {
+                                     method: 'POST',
+                                     headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify({ contractChange }),
+                                   });
+                                   const aiData = await aiRes.json();
+                                   contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
+                                 } catch {
+                                   contractChange.ai_notes = 'AI summary unavailable.';
+                                 }
+ 
+                                 const res = await fetch('/api/admin/contract_changes', {
+                                   method: 'POST',
+                                   headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify(contractChange),
+                                 });
+                                 const data = await res.json();
+                                 if (!res.ok) throw new Error(data.error || 'Failed to save extension');
+                                 setFinalizeMsg('Extension finalized and saved!');
+ 
+                                 const refreshRes = await fetch('/api/admin/contract_changes');
+                                 const refreshData = await refreshRes.json();
+                                 if (Array.isArray(refreshData)) {
+                                   const oneYearAgo = new Date();
+                                   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                   const recent = refreshData.filter(
+                                     c =>
+                                       c.change_type === 'extension' &&
+                                       c.playerId &&
+                                       c.timestamp &&
+                                       new Date(c.timestamp) > oneYearAgo
+                                   );
+                                   setRecentContractChanges(recent);
+                                 }
+ 
+                                 setExtensionChoices(prev => {
+                                   const updated = { ...prev };
+                                   delete updated[player.playerId];
+                                   return updated;
+                                 });
+ 
+                                 setPendingExtension(null);
+                               } catch (err) {
+                                 setFinalizeError(err.message);
+                               } finally {
+                                 setFinalizeLoading(false);
+                               }
+                             }}
+                           >
+                             {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
+                           </button>
+                         )}
+                        {!isExtensionWindowOpen() && (
+                          <div className="mt-2 text-yellow-400 text-xs">
+                             Extensions can only be finalized between May 1st and August 31st.
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   );
+                 })}
+              </div>
 
-                                setFinalizeLoading(true);
-                                setFinalizeMsg('');
-                                setFinalizeError('');
-                                try {
-                                  let base = parseFloat(player.curYear);
-                                  const extensionSalaries = [];
-                                  for (let i = 1; i <= pendingExtension.years; ++i) {
-                                    base = Math.ceil(base * 1.10 * 10) / 10;
-                                    extensionSalaries.push(base);
-                                  }
-                                  const contractChange = {
-                                    change_type: 'extension',
-                                    user: session?.user?.name || '',
-                                    timestamp: new Date().toISOString(),
-                                    notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
-                                    ai_notes: '',
-                                    playerId: player.playerId,
-                                    playerName: player.playerName,
-                                    years: pendingExtension.years,
+              {/* Desktop table */}
+              <div className="hidden sm:block overflow-x-auto rounded">
+                <table className="min-w-[600px] w-full text-sm border border-white/10 rounded bg-white/5">
+                  <thead>
+                    <tr>
+                      <th className="p-2 text-white/80">Player</th>
+                      <th className="p-2 text-white/80">Current Salary</th>
+                      <th className="p-2 text-white/80">Extension</th>
+                      <th className="p-2 text-white/80">Simulated Years</th>
+                      <th className="p-2 text-white/80"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {eligiblePlayers.map(player => {
+                      const ext = extensionMap[player.playerId] || { years: 0, deny: false };
+                      let base = parseFloat(player.curYear) || 0;
+                      const simYears = [];
+                      let extensionSalaries = [];
+                      for (let i = 1; i <= ext.years; ++i) {
+                        base = roundUp1(base * 1.10);
+                        simYears.push(`Year ${i + 1}: $${base}`);
+                        extensionSalaries.push(base);
+                      }
+                      const showFinalize = !ext.deny && ext.years > 0;
+                      return (
+                        <tr key={player.playerId}>
+                          <td className="p-2 font-semibold text-white flex items-center gap-2">
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
+                            {player.playerName}
+                          </td>
+                          <td className="p-2">${parseFloat(player.curYear).toFixed(1)}</td>
+                          <td className="p-2">
+                            <select
+                              className="bg-white/10 text-white rounded px-2 py-1"
+                              value={ext.deny ? 'deny' : ext.years}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setExtensionChoices(prev => ({
+                                  ...prev,
+                                  [player.playerId]: val === 'deny'
+                                    ? { years: 0, deny: true }
+                                    : { years: Number(val), deny: false }
+                                }));
+                                if (val !== '0' && val !== 'deny') {
+                                  setPendingExtension({
+                                    player,
+                                    years: Number(val),
+                                    baseSalary: parseFloat(player.curYear),
                                     extensionSalaries,
-                                    team: teamNameForUI,
-                                  };
-
-                                  try {
-                                    const aiRes = await fetch('/api/ai/transaction_notes', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ contractChange }),
-                                    });
-                                    const aiData = await aiRes.json();
-                                    contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
-                                  } catch {
-                                    contractChange.ai_notes = 'AI summary unavailable.';
-                                  }
-
-                                  const res = await fetch('/api/admin/contract_changes', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify(contractChange),
                                   });
-                                  const data = await res.json();
-                                  if (!res.ok) throw new Error(data.error || 'Failed to save extension');
-                                  setFinalizeMsg('Extension finalized and saved!');
-
-                                  const refreshRes = await fetch('/api/admin/contract_changes');
-                                  const refreshData = await refreshRes.json();
-                                  if (Array.isArray(refreshData)) {
-                                    const oneYearAgo = new Date();
-                                    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                    const recent = refreshData.filter(
-                                      c =>
-                                        c.change_type === 'extension' &&
-                                        c.playerId &&
-                                        c.timestamp &&
-                                        new Date(c.timestamp) > oneYearAgo
-                                    );
-                                    setRecentContractChanges(recent);
-                                  }
-
-                                  setExtensionChoices(prev => {
-                                    const updated = { ...prev };
-                                    delete updated[player.playerId];
-                                    return updated;
-                                  });
-
+                                } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
                                   setPendingExtension(null);
-                                } catch (err) {
-                                  setFinalizeError(err.message);
-                                } finally {
-                                  setFinalizeLoading(false);
                                 }
                               }}
                             >
-                              {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
-                            </button>
-                          )}
-                          {!isExtensionWindowOpen() && (
-                            <div className="mt-2 text-yellow-400 text-sm">
-                              Extensions can only be finalized between May 1st and August 31st.
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              <option value={0}>No Extension</option>
+                              <option value={1}>1 Year</option>
+                              <option value={2}>2 Years</option>
+                              <option value={3}>3 Years</option>
+                              <option value="deny">Deny</option>
+                            </select>
+                          </td>
+                          <td className="p-2">
+                            {ext.deny || !ext.years ? (
+                              <span className="text-white/60 italic">No extension</span>
+                            ) : (
+                              <div className="flex flex-col items-start">
+                                {simYears.map((s, i) => (<span key={i}>{s}</span>))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-2">
+                            {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
+                              <button
+                                className="px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
+                                disabled={finalizeLoading || !isExtensionWindowOpen()}
+                                onClick={async () => {
+                                  const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName} (Team: ${teamNameForUI})? This cannot be undone or changed later.`;
+                                  if (!window.confirm(confirmMsg)) return;
+
+                                  setFinalizeLoading(true);
+                                  setFinalizeMsg('');
+                                  setFinalizeError('');
+                                  try {
+                                    let base = parseFloat(player.curYear);
+                                    const extensionSalaries = [];
+                                    for (let i = 1; i <= pendingExtension.years; ++i) {
+                                      base = Math.ceil(base * 1.10 * 10) / 10;
+                                      extensionSalaries.push(base);
+                                    }
+                                    const contractChange = {
+                                      change_type: 'extension',
+                                      user: session?.user?.name || '',
+                                      timestamp: new Date().toISOString(),
+                                      notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
+                                      ai_notes: '',
+                                      playerId: player.playerId,
+                                      playerName: player.playerName,
+                                      years: pendingExtension.years,
+                                      extensionSalaries,
+                                      team: teamNameForUI,
+                                    };
+
+                                    try {
+                                      const aiRes = await fetch('/api/ai/transaction_notes', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ contractChange }),
+                                      });
+                                      const aiData = await aiRes.json();
+                                      contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
+                                    } catch {
+                                      contractChange.ai_notes = 'AI summary unavailable.';
+                                    }
+
+                                    const res = await fetch('/api/admin/contract_changes', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify(contractChange),
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data.error || 'Failed to save extension');
+                                    setFinalizeMsg('Extension finalized and saved!');
+
+                                    const refreshRes = await fetch('/api/admin/contract_changes');
+                                    const refreshData = await refreshRes.json();
+                                    if (Array.isArray(refreshData)) {
+                                      const oneYearAgo = new Date();
+                                      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                      const recent = refreshData.filter(
+                                        c =>
+                                          c.change_type === 'extension' &&
+                                          c.playerId &&
+                                          c.timestamp &&
+                                          new Date(c.timestamp) > oneYearAgo
+                                      );
+                                      setRecentContractChanges(recent);
+                                    }
+
+                                    setExtensionChoices(prev => {
+                                      const updated = { ...prev };
+                                      delete updated[player.playerId];
+                                      return updated;
+                                    });
+
+                                    setPendingExtension(null);
+                                  } catch (err) {
+                                    setFinalizeError(err.message);
+                                  } finally {
+                                    setFinalizeLoading(false);
+                                  }
+                                }}
+                              >
+                                {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
+                              </button>
+                            )}
+                            {!isExtensionWindowOpen() && (
+                              <div className="mt-2 text-yellow-400 text-sm">
+                                Extensions can only be finalized between May 1st and August 31st.
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
