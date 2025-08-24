@@ -101,21 +101,45 @@ export default function ContractManagementPage() {
   const CAP = 300;
 
   const allTeamNames = Array.from(new Set(playerContracts.filter(p => p.team).map(p => p.team.trim())));
+
+  // Determine the viewer's team deterministically.
+  // Prefer explicit fields on the session; then optional email mapping; finally name match.
+  const EMAIL_TO_TEAM = Object.freeze({
+    // 'user@example.com': 'Your Team Name', // optional mapping if your session lacks team info
+  });
+  const normalize = (s) => (s || '').trim().toLowerCase();
   let myTeamName = '';
-  if (session?.user?.name) {
-    const nameLower = session.user.name.trim().toLowerCase();
-    myTeamName = allTeamNames.find(team => team.trim().toLowerCase() === nameLower) || '';
-    if (!myTeamName) myTeamName = allTeamNames.find(team => team.trim().toLowerCase().includes(nameLower)) || '';
+  const userTeamFromSession =
+    session?.user?.teamName ||
+    session?.user?.team ||
+    session?.user?.team_name ||
+    session?.user?.teamSlug ||
+    session?.user?.team_slug;
+  if (userTeamFromSession) {
+    const val = normalize(userTeamFromSession);
+    myTeamName =
+      allTeamNames.find(t => normalize(t) === val) ||
+      allTeamNames.find(t => normalize(t).includes(val)) ||
+      '';
   }
-  if (!myTeamName) {
-    const teamCounts = {};
-    playerContracts.forEach(p => {
-      if (!p.team) return;
-      const t = p.team.trim();
-      teamCounts[t] = (teamCounts[t] || 0) + 1;
-    });
-    myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  if (!myTeamName && session?.user?.email) {
+    const mapped = EMAIL_TO_TEAM[normalize(session.user.email)];
+    if (mapped) {
+      const val = normalize(mapped);
+      myTeamName =
+        allTeamNames.find(t => normalize(t) === val) ||
+        allTeamNames.find(t => normalize(t).includes(val)) ||
+        '';
+    }
   }
+  if (!myTeamName && session?.user?.name) {
+    const val = normalize(session.user.name);
+    myTeamName =
+      allTeamNames.find(t => normalize(t) === val) ||
+      allTeamNames.find(t => normalize(t).includes(val)) ||
+      '';
+  }
+  // Do NOT fall back to "most common team" — avoids showing the wrong team to users.
 
   const teamNameForUI = (isAdmin && isAdminMode && (selectedTeamName || myTeamName))
     ? (selectedTeamName || myTeamName)

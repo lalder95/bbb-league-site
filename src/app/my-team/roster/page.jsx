@@ -157,19 +157,42 @@ export default function RosterPage() {
   // Build roster view for the user's team
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
   const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team?.trim()).filter(Boolean)));
+
+  // Determine the viewer's team deterministically. No fallback to "most common".
+  const EMAIL_TO_TEAM = Object.freeze({
+    // 'user@example.com': 'Your Team Name',
+  });
+  const normalize = s => (s || '').trim().toLowerCase();
   let myTeamName = '';
-  if (session?.user?.name) {
-    const nameLower = session.user.name.trim().toLowerCase();
-    myTeamName = allTeamNames.find(t => t.toLowerCase() === nameLower) || '';
-    if (!myTeamName) myTeamName = allTeamNames.find(t => t.toLowerCase().includes(nameLower)) || '';
+  const userTeamFromSession =
+    session?.user?.teamName ||
+    session?.user?.team ||
+    session?.user?.team_name ||
+    session?.user?.teamSlug ||
+    session?.user?.team_slug;
+  if (userTeamFromSession) {
+    const val = normalize(userTeamFromSession);
+    myTeamName =
+      allTeamNames.find(t => normalize(t) === val) ||
+      allTeamNames.find(t => normalize(t).includes(val)) ||
+      '';
   }
-  if (!myTeamName) {
-    const teamCounts = {};
-    activeContracts.forEach(p => {
-      const t = p.team.trim();
-      teamCounts[t] = (teamCounts[t] || 0) + 1;
-    });
-    myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  if (!myTeamName && session?.user?.email) {
+    const mapped = EMAIL_TO_TEAM[normalize(session.user.email)];
+    if (mapped) {
+      const val = normalize(mapped);
+      myTeamName =
+        allTeamNames.find(t => normalize(t) === val) ||
+        allTeamNames.find(t => normalize(t).includes(val)) ||
+        '';
+    }
+  }
+  if (!myTeamName && session?.user?.name) {
+    const val = normalize(session?.user?.name);
+    myTeamName =
+      allTeamNames.find(t => normalize(t) === val) ||
+      allTeamNames.find(t => normalize(t).includes(val)) ||
+      '';
   }
 
   const seen = new Set();
@@ -207,9 +230,15 @@ export default function RosterPage() {
     { key: 'contractFinalYear', label: 'Final Year' }
   ];
 
+  const teamNotFound = !myTeamName;
   return (
     <div>
       <h2 className="text-2xl font-bold mb-6 text-white text-center">Roster Construction & Team Profile</h2>
+      {teamNotFound && (
+        <div className="bg-red-900/40 border border-red-600 text-red-200 px-4 py-3 rounded mb-6 text-center">
+          Unable to determine your team from your session. Please contact an admin.
+        </div>
+      )}
 
       {/* Player card modal */}
       {(typeof selectedPlayerId === 'string' || typeof selectedPlayerId === 'number') && (
@@ -231,7 +260,7 @@ export default function RosterPage() {
       <div className="bg-black/30 rounded-xl border border-white/10 p-6 mb-8 shadow-lg">
         <h3 className="text-xl font-bold text-[#FF4B1F] mb-4">Roster Overview</h3>
         <div className="text-white/80 mb-2">A summary of your current roster, including KTC values, positional breakdown, and age profile.</div>
-        {myContracts.length > 0 ? (
+        {!teamNotFound && myContracts.length > 0 ? (
           <>
             <div className="flex flex-wrap gap-6 mb-4">
               <div className="bg-white/10 rounded px-4 py-2 text-white/90 font-semibold">Total Players: {myContracts.length}</div>
@@ -289,9 +318,9 @@ export default function RosterPage() {
               </table>
             </div>
           </>
-        ) : (
+        ) : !teamNotFound ? (
           <div className="text-white/60 italic">No roster found for your account.</div>
-        )}
+        ) : null}
       </div>
 
       {/* Positional Strength & Balance */}

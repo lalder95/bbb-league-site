@@ -70,18 +70,65 @@ export default function FinancePage() {
 
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
   const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team?.trim()).filter(Boolean)));
+  // let myTeamName = '';
+  // if (session?.user?.name) {
+  //   const nameLower = session.user.name.trim().toLowerCase();
+  //   myTeamName = allTeamNames.find(t => t.toLowerCase() === nameLower) || '';
+  // }
+  // if (!myTeamName) {
+  //   const teamCounts = {};
+  //   activeContracts.forEach(p => {
+  //     const t = p.team.trim();
+  //     teamCounts[t] = (teamCounts[t] || 0) + 1;
+  //   });
+  //   myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  // }
+  // Determine team without defaulting to most common.
+  const EMAIL_TO_TEAM = Object.freeze({
+    // 'user@example.com': 'Your Team Name',
+  });
+  const normalize = s => (s || '').trim().toLowerCase();
   let myTeamName = '';
-  if (session?.user?.name) {
-    const nameLower = session.user.name.trim().toLowerCase();
-    myTeamName = allTeamNames.find(t => t.toLowerCase() === nameLower) || '';
+  const userTeamFromSession =
+    session?.user?.teamName ||
+    session?.user?.team ||
+    session?.user?.team_name ||
+    session?.user?.teamSlug ||
+    session?.user?.team_slug;
+  if (userTeamFromSession) {
+    const val = normalize(userTeamFromSession);
+    myTeamName =
+      allTeamNames.find(t => normalize(t) === val) ||
+      allTeamNames.find(t => normalize(t).includes(val)) ||
+      '';
   }
+  if (!myTeamName && session?.user?.email) {
+    const mapped = EMAIL_TO_TEAM[normalize(session.user.email)];
+    if (mapped) {
+      const val = normalize(mapped);
+      myTeamName =
+        allTeamNames.find(t => normalize(t) === val) ||
+        allTeamNames.find(t => normalize(t).includes(val)) ||
+        '';
+    }
+  }
+  if (!myTeamName && session?.user?.name) {
+    const val = normalize(session.user.name);
+    myTeamName =
+      allTeamNames.find(t => normalize(t) === val) ||
+      allTeamNames.find(t => normalize(t).includes(val)) ||
+      '';
+  }
+
   if (!myTeamName) {
-    const teamCounts = {};
-    activeContracts.forEach(p => {
-      const t = p.team.trim();
-      teamCounts[t] = (teamCounts[t] || 0) + 1;
-    });
-    myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    return (
+      <div>
+        <h2 className="text-2xl font-bold mb-6 text-white text-center">Finance & Salary Cap Management</h2>
+        <div className="bg-red-900/40 border border-red-600 text-red-200 px-4 py-3 rounded text-center">
+          Unable to determine your team from your session. Please contact an admin.
+        </div>
+      </div>
+    );
   }
 
   const seen = new Set();
