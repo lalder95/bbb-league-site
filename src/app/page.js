@@ -949,7 +949,7 @@ function BankerFeed({ tweets }) {
   if (!tweets || tweets.length === 0) {
     return (
       <div className="text-center text-white/70 py-6 md:py-8">
-        No tweets available
+        No posts available
       </div>
     );
   }

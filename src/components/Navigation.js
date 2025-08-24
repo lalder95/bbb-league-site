@@ -13,85 +13,40 @@ const NavDropdown = ({ title, links, isActive }) => {
   const timeoutRef = useRef(null);
 
   const handleMouseEnter = () => {
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    
-    // Open dropdown after a short delay
-    timeoutRef.current = setTimeout(() => {
-      setIsOpen(true);
-    }, 100);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setIsOpen(true), 100);
   };
-
   const handleMouseLeave = () => {
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    
-    // Close dropdown after a delay to allow mouse to move to dropdown
-    timeoutRef.current = setTimeout(() => {
-      setIsOpen(false);
-    }, 200);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setIsOpen(false), 200);
   };
-
-  // Prevent dropdown from closing immediately when mouse moves to dropdown content
   const handleDropdownMouseEnter = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setIsOpen(true);
   };
 
-  // Clean up timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
+  useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); }, []);
 
   return (
-    <div 
-      className="relative group"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <button 
+    <div className="relative group" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      <button
         className={`
           flex items-center px-3 py-2 rounded-full transition-all duration-300 ease-in-out
-          ${links.some(link => link.href === pathname) 
-            ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' 
-            : 'text-white/70 hover:text-[#FF4B1F] hover:bg-white/5'
-          }
+          ${links.some(link => link.href === pathname) ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F] hover:bg-white/5'}
         `}
       >
         {title}
-        <ChevronDown 
-          className="ml-1 h-4 w-4 transition-transform" 
-          style={{ 
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' 
-          }} 
-        />
+        <ChevronDown className="ml-1 h-4 w-4 transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
       </button>
       {isOpen && (
-        <div 
-          ref={dropdownRef}
-          onMouseEnter={handleDropdownMouseEnter}
-          className="absolute z-50 left-0 mt-2 w-56 bg-black/80 rounded-lg shadow-xl border border-white/10 py-2"
-        >
+        <div ref={dropdownRef} onMouseEnter={handleDropdownMouseEnter} className="absolute z-50 left-0 mt-2 w-56 bg-black/80 rounded-lg shadow-xl border border-white/10 py-2">
           {links.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
               className={`
                 block px-4 py-2 transition-colors 
-                ${pathname === href 
-                  ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' 
-                  : 'text-white/70 hover:bg-white/10 hover:text-[#FF4B1F]'
-                }
+                ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:bg-white/10 hover:text-[#FF4B1F]'}
               `}
             >
               {label}
@@ -107,35 +62,45 @@ export default function Navigation() {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: session } = useSession();
-  
+
   const navGroups = [
-    { 
-      type: 'single', 
+    {
+      type: 'single',
+      links: [{ href: '/', label: 'Home' }]
+    },
+    {
+      type: 'dropdown',
+      title: 'My Team',
       links: [
-        { href: '/', label: 'Home' },
-        { href: '/my-team', label: 'My Team' }
+        { href: '/my-team/roster', label: 'Roster' },
+        { href: '/my-team/finance', label: 'Finance' },
+        { href: '/my-team/draft', label: 'Draft' },
+        { href: '/my-team/free-agency', label: 'Free Agency' },
+        { href: '/my-team/assistant-gm', label: 'Assistant GM' },
+        { href: '/my-team/badges', label: 'Badges' },
+        { href: '/my-team/contract-management', label: 'Contract Management' },
       ]
     },
-    { 
-      type: 'dropdown', 
-      title: 'Contracts', 
+    {
+      type: 'dropdown',
+      title: 'Contracts',
       links: [
         { href: '/player-contracts', label: 'Player Contracts' },
         { href: '/salary-cap', label: 'Cap Space' }
       ]
     },
-    { 
-      type: 'dropdown', 
-      title: 'Team Building', 
+    {
+      type: 'dropdown',
+      title: 'Team Building',
       links: [
         { href: '/analytics', label: 'Analytics' },
         { href: '/draft', label: 'Draft' },
-        { href: '/free-agency', label: 'Free Agency' } // <-- Added Free Agency
+        { href: '/free-agency', label: 'Free Agency' }
       ]
     },
-    { 
-      type: 'dropdown', 
-      title: 'Rules & Tools', 
+    {
+      type: 'dropdown',
+      title: 'Rules & Tools',
       links: [
         { href: '/rules', label: 'Rules' },
         { href: '/media', label: 'Media' },
@@ -143,9 +108,9 @@ export default function Navigation() {
         { href: '/trade', label: 'Trade' }
       ]
     },
-    { 
-      type: 'dropdown', 
-      title: 'League History', 
+    {
+      type: 'dropdown',
+      title: 'League History',
       links: [
         { href: '/history', label: 'History' },
         { href: '/hall-of-fame', label: 'Hall of Fame' }
@@ -153,12 +118,8 @@ export default function Navigation() {
     }
   ];
 
-  // Add admin link if user is admin
   if (session?.user?.role === 'admin') {
-    navGroups.push({ 
-      type: 'single', 
-      links: [{ href: '/admin', label: 'Admin' }] 
-    });
+    navGroups.push({ type: 'single', links: [{ href: '/admin', label: 'Admin' }] });
   }
 
   return (
@@ -167,18 +128,9 @@ export default function Navigation() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <Link 
-              href="/" 
-              className="flex items-center group"
-            >
-              <img 
-                src="/logo.png" 
-                alt="BBB League" 
-                className="h-10 w-10 transition-transform group-hover:rotate-6 group-hover:scale-110"
-              />
-              <span className="ml-3 text-xl font-bold text-white/80 group-hover:text-[#FF4B1F] transition-colors">
-                BBB
-              </span>
+            <Link href="/" className="flex items-center group">
+              <img src="/logo.png" alt="BBB League" className="h-10 w-10 transition-transform group-hover:rotate-6 group-hover:scale-110" />
+              <span className="ml-3 text-xl font-bold text-white/80 group-hover:text-[#FF4B1F] transition-colors">BBB</span>
             </Link>
           </div>
 
@@ -192,10 +144,7 @@ export default function Navigation() {
                       key={href}
                       href={href}
                       className={`
-                        ${pathname === href 
-                          ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F] font-semibold' 
-                          : 'text-white/70 hover:text-[#FF4B1F] hover:bg-white/5'
-                        } 
+                        ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F] font-semibold' : 'text-white/70 hover:text-[#FF4B1F] hover:bg-white/5'} 
                         px-3 py-2 rounded-full text-sm transition-all duration-300 ease-in-out transform hover:scale-105 hover:shadow-md
                       `}
                     >
@@ -203,35 +152,28 @@ export default function Navigation() {
                     </Link>
                   ))
                 ) : (
-                  <NavDropdown 
-                    key={group.title} 
-                    title={group.title} 
-                    links={group.links} 
+                  <NavDropdown
+                    key={group.title}
+                    title={group.title}
+                    links={group.links}
                     isActive={group.links.some(link => link.href === pathname)}
                   />
                 )
               ))}
             </div>
           </div>
-          
+
           {/* Auth Links */}
           <div className="hidden md:flex items-center gap-4">
             {session ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => signOut({ callbackUrl: '/' })}
-                    className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-colors transform hover:scale-105 shadow-md hover:shadow-lg"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </>
-            ) : (
-              <Link
-                href="/login"
+              <button
+                onClick={() => signOut({ callbackUrl: '/' })}
                 className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-colors transform hover:scale-105 shadow-md hover:shadow-lg"
               >
+                Logout
+              </button>
+            ) : (
+              <Link href="/login" className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-colors transform hover:scale-105 shadow-md hover:shadow-lg">
                 Login
               </Link>
             )}
@@ -239,15 +181,8 @@ export default function Navigation() {
 
           {/* Mobile menu button */}
           <div className="md:hidden">
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-white hover:text-[#FF4B1F] transition-colors"
-            >
-              {isMenuOpen ? (
-                <X className="h-6 w-6 animate-rotate-in" />
-              ) : (
-                <Menu className="h-6 w-6 animate-rotate-out" />
-              )}
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-white hover:text-[#FF4B1F] transition-colors">
+              {isMenuOpen ? <X className="h-6 w-6 animate-rotate-in" /> : <Menu className="h-6 w-6 animate-rotate-out" />}
             </button>
           </div>
         </div>
@@ -264,10 +199,7 @@ export default function Navigation() {
                         key={href}
                         href={href}
                         className={`
-                          ${pathname === href 
-                            ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' 
-                            : 'text-white/70 hover:text-[#FF4B1F]'
-                          }
+                          ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
                           block px-3 py-2 rounded-md text-base transition-all duration-300 ease-in-out
                         `}
                         onClick={() => setIsMenuOpen(false)}
@@ -283,10 +215,7 @@ export default function Navigation() {
                           key={href}
                           href={href}
                           className={`
-                            ${pathname === href 
-                              ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' 
-                              : 'text-white/70 hover:text-[#FF4B1F]'
-                            }
+                            ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
                             block px-4 py-2 rounded-md text-base ml-2 transition-all duration-300 ease-in-out
                           `}
                           onClick={() => setIsMenuOpen(false)}
@@ -298,18 +227,16 @@ export default function Navigation() {
                   )}
                 </div>
               ))}
-              
+
               {/* Auth Links for Mobile */}
               <div className="border-t border-white/10 pt-2 mt-2">
                 {session ? (
-                  <>
-                    <button
-                      onClick={() => signOut({ callbackUrl: '/' })}
-                      className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20"
-                    >
-                      Logout
-                    </button>
-                  </>
+                  <button
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                    className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20"
+                  >
+                    Logout
+                  </button>
                 ) : (
                   <Link
                     href="/login"
