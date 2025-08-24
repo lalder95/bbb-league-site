@@ -175,6 +175,42 @@ export default function AssistantGMPage() {
     return myContracts;
   }
 
+  // Debug: log initial Assistant GM Settings state on mount
+  useEffect(() => {
+    console.log("[AssistantGMPage] Initial Assistant GM Settings", {
+      teamState,
+      assetPriority,
+      strategyNotes,
+    });
+  }, []);
+
+  // Debug: log whenever Assistant GM Settings change
+  useEffect(() => {
+    console.log("[AssistantGMPage] Updated Assistant GM Settings", {
+      teamState,
+      assetPriority,
+      strategyNotes,
+    });
+  }, [teamState, assetPriority, strategyNotes]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    async function fetchSettings() {
+      try {
+        const res = await fetch("/api/user/get-assistant-gm");
+        if (!res.ok) throw new Error("Failed to fetch Assistant GM settings");
+        const data = await res.json();
+        if (data.teamState) setTeamState(data.teamState);
+        if (data.assetPriority) setAssetPriority(data.assetPriority);
+        if (typeof data.strategyNotes === "string") setStrategyNotes(data.strategyNotes);
+        console.log("[AssistantGMPage] Loaded Assistant GM Settings from API", data);
+      } catch (err) {
+        console.error("[AssistantGMPage] Error loading Assistant GM Settings", err);
+      }
+    }
+    fetchSettings();
+  }, [status]);
+
   if (status === 'loading') return null;
 
   return (
@@ -260,6 +296,21 @@ export default function AssistantGMPage() {
             {/* Chat */}
             <div className="bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg w-full md:w-1/2 flex flex-col">
               <h2 className="text-xl font-bold mb-4 text-white text-center">Assistant GM Chat</h2>
+              {(() => {
+                // Debug: log the props that will be used to build the system prompt
+                const debugProps = {
+                  teamState,
+                  assetPriority,
+                  strategyNotes,
+                  myContracts: getMyContractsForAssistantGM(),
+                  playerContracts,
+                  session,
+                  leagueWeek,
+                  leagueYear,
+                };
+                console.log("[AssistantGMChat system prompt debug]", debugProps);
+                return null;
+              })()}
               <AssistantGMChat
                 ref={assistantGMChatRef}
                 id="assistant-gm-chat-frame"
