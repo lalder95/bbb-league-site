@@ -635,6 +635,13 @@ export default function Home() {
   const [tweets, setTweets] = useState([]);
   const [showAdamOnly, setShowAdamOnly] = useState(false); // <-- NEW: toggle state
 
+  // NEW: people/team filter state
+  const [peopleFilterOpen, setPeopleFilterOpen] = useState(false);
+  const [peopleOptions, setPeopleOptions] = useState([]);          // display names (no @)
+  const [peopleEnabled, setPeopleEnabled] = useState({});          // key: normalized name -> boolean
+  const [teamOptions, setTeamOptions] = useState(['All']);
+  const [selectedTeam, setSelectedTeam] = useState('All');
+
   useEffect(() => {
     async function fetchTweets() {
       try {
@@ -652,7 +659,9 @@ export default function Home() {
             shuffledNotes.forEach(note => {
               allTweets.push({
                 ...note,
-                _timestamp: change.timestamp // Use the contract change timestamp
+                _timestamp: change.timestamp,           // Use the contract change timestamp
+                _team: change.team || '',               // NEW: carry team to tweet
+                _parentNotes: change.notes || ''        // NEW: carry parent notes for small print
               });
             });
           }
@@ -668,7 +677,26 @@ export default function Home() {
           return bt - at; // descending
         });
 
+        // Build people and team options
+        const personMap = {}; // normalized -> display
+        const teamSet = new Set();
+        sorted.forEach(t => {
+          const display = (t?.name || '').replace(/^@/, '').trim();
+          const norm = display.toLowerCase();
+          if (display) personMap[norm] = display;
+          if (t?._team) teamSet.add(t._team);
+        });
+
         setTweets(sorted);
+        setPeopleOptions(Object.values(personMap).sort((a, b) => a.localeCompare(b)));
+        setPeopleEnabled(prev => {
+          // Initialize once; keep user choices on subsequent refreshes
+          if (Object.keys(prev).length) return prev;
+          const init = {};
+          Object.keys(personMap).forEach(k => (init[k] = true));
+          return init;
+        });
+        setTeamOptions(['All', ...Array.from(teamSet).sort()]);
       } catch (err) {
         setTweets([]);
       }
@@ -797,6 +825,14 @@ export default function Home() {
     );
   }
 
+  // NEW: apply combined filters before rendering feed
+  const visibleTweets = (showAdamOnly ? tweets.filter(isAdamTweet) : tweets)
+    .filter(t => {
+      const key = (t?.name || '').replace(/^@/, '').trim().toLowerCase();
+      return peopleEnabled[key] !== false; // default include if not explicitly false
+    })
+    .filter(t => selectedTeam === 'All' || (t._team || '') === selectedTeam);
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       {/* Header Banner - Just the title, no navigation */}
@@ -864,20 +900,70 @@ export default function Home() {
                 <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-[#FF4B1F]`}>
                   League bAnker Feed
                 </h2>
-                <button
-                  type="button"
-                  onClick={() => setShowAdamOnly(v => !v)}
-                  title={showAdamOnly ? 'Showing Adam Glazerport only' : 'Show only Adam Glazerport'}
-                  className={`text-xs px-2 py-1 rounded border transition-colors
-                    ${showAdamOnly
-                      ? 'bg-[#FF4B1F] text-black border-[#FF4B1F]'
-                      : 'bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F]'}
-                  `}
-                >
-                  AG Only
-                </button>
+                <div className="flex items-center gap-2 relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdamOnly(v => !v)}
+                    title={showAdamOnly ? 'Showing Adam Glazerport only' : 'Show only Adam Glazerport'}
+                    className={`text-xs px-2 py-1 rounded border transition-colors
+                      ${showAdamOnly
+                        ? 'bg-[#FF4B1F] text-black border-[#FF4B1F]'
+                        : 'bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F]'}`}
+                  >
+                    AG Only
+                  </button>
+
+                  {/* NEW: People filter toggle + panel */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setPeopleFilterOpen(o => !o)}
+                      className="text-xs px-2 py-1 rounded border bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F] transition-colors"
+                      title="Filter by person"
+                    >
+                      People
+                    </button>
+                    {peopleFilterOpen && (
+                      <div className="absolute right-0 mt-2 w-56 max-h-64 overflow-auto bg-[#0b1420] border border-white/10 rounded-md shadow-lg z-10 p-2 space-y-1">
+                        {peopleOptions.length === 0 ? (
+                          <div className="text-xs text-white/60 px-1 py-1">No people found</div>
+                        ) : (
+                          peopleOptions.map(displayName => {
+                            const key = displayName.toLowerCase();
+                            const checked = peopleEnabled[key] !== false;
+                            return (
+                              <label key={key} className="flex items-center gap-2 text-xs text-white/80 px-1 py-1 hover:bg-white/5 rounded">
+                                <input
+                                  type="checkbox"
+                                  className="accent-[#FF4B1F]"
+                                  checked={checked}
+                                  onChange={(e) =>
+                                    setPeopleEnabled(prev => ({ ...prev, [key]: e.target.checked }))
+                                  }
+                                />
+                                <span>@{displayName}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* NEW: Team filter */}
+                  <select
+                    value={selectedTeam}
+                    onChange={(e) => setSelectedTeam(e.target.value)}
+                    className="text-xs px-2 py-1 rounded border bg-black/20 text-white/80 border-white/20 hover:border-[#FF4B1F] focus:outline-none"
+                    title="Filter by team"
+                  >
+                    {teamOptions.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <BankerFeed tweets={showAdamOnly ? tweets.filter(isAdamTweet) : tweets} />
+              <BankerFeed tweets={visibleTweets} />
             </div>
             
             {/* Quick Links Section */}
@@ -1004,6 +1090,12 @@ function BankerFeed({ tweets }) {
             <span>·</span>
             <span className="text-blue-400 font-medium">bAnker for iPhone</span>
           </div>
+          {/* NEW: Small print from contract change notes */}
+          {tweet._parentNotes ? (
+            <div className="text-[11px] text-white/50 italic pl-1">
+              {tweet._parentNotes}
+            </div>
+          ) : null}
         </div>
       ))}
     </div>

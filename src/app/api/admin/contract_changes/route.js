@@ -18,12 +18,7 @@ export async function POST(request) {
       timestamp: new Date(body.timestamp),
       notes: body.notes,
       ai_notes: body.ai_notes,
-  playerId: body.playerId, // player identifier
-  // Persist extra context for admin-awarded extensions
-  team: body.team,
-  playerName: body.playerName,
-  years: body.years,
-  extensionSalaries: body.extensionSalaries,
+      playerId: body.playerId, // <-- add this line
     };
     const result = await addContractChange(change);
     if (result.success === false) {
