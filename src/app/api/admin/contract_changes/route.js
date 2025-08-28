@@ -18,7 +18,11 @@ export async function POST(request) {
       timestamp: new Date(body.timestamp),
       notes: body.notes,
       ai_notes: body.ai_notes,
-      playerId: body.playerId, // <-- add this line
+      playerId: body.playerId,
+      playerName: body.playerName,
+      team: body.team,
+      years: body.years,
+      extensionSalaries: body.extensionSalaries,
     };
     const result = await addContractChange(change);
     if (result.success === false) {
