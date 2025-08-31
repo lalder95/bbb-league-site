@@ -89,8 +89,8 @@ export default function ContractManagementPage() {
   function isExtensionWindowOpen() {
     const now = new Date();
     const year = now.getFullYear();
-    const may1 = new Date(year, 4, 1);
-    const aug31 = new Date(year, 7, 31);
+    const may1 = new Date(year, 4, 1, 0, 0, 0, 0);
+    const aug31 = new Date(year, 7, 31, 23, 59, 59, 999); // Inclusive end of Aug 31
     return now >= may1 && now <= aug31;
   }
   function roundUp1(num) { return Math.ceil(num * 10) / 10; }
@@ -382,33 +382,30 @@ export default function ContractManagementPage() {
                           <div className="text-white/70 text-sm">Extension</div>
                           <select
                             className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
-                             value={ext.deny ? 'deny' : ext.years}
-                             onChange={e => {
-                               const val = e.target.value;
-                               setExtensionChoices(prev => ({
-                                 ...prev,
-                                 [player.playerId]: val === 'deny'
-                                   ? { years: 0, deny: true }
-                                   : { years: Number(val), deny: false }
-                               }));
-                               if (val !== '0' && val !== 'deny') {
-                                 setPendingExtension({
-                                   player,
-                                   years: Number(val),
-                                   baseSalary: parseFloat(player.curYear),
-                                   extensionSalaries,
-                                 });
-                               } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
-                                 setPendingExtension(null);
-                               }
-                             }}
-                           >
-                             <option value={0}>No Extension</option>
-                             <option value={1}>1 Year</option>
-                             <option value={2}>2 Years</option>
-                             <option value={3}>3 Years</option>
-                             <option value="deny">Deny</option>
-                           </select>
+                            value={ext.years}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setExtensionChoices(prev => ({
+                                ...prev,
+                                [player.playerId]: { years: Number(val), deny: false }
+                              }));
+                              if (val !== '0') {
+                                setPendingExtension({
+                                  player,
+                                  years: Number(val),
+                                  baseSalary: parseFloat(player.curYear),
+                                  extensionSalaries,
+                                });
+                              } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
+                                setPendingExtension(null);
+                              }
+                            }}
+                          >
+                            <option value={0}>No Extension</option>
+                            <option value={1}>1 Year</option>
+                            <option value={2}>2 Years</option>
+                            <option value={3}>3 Years</option>
+                          </select>
                          </div>
                        </div>
  
@@ -557,16 +554,14 @@ export default function ContractManagementPage() {
                           <td className="p-2">
                             <select
                               className="bg-white/10 text-white rounded px-2 py-1"
-                              value={ext.deny ? 'deny' : ext.years}
+                              value={ext.years}
                               onChange={e => {
                                 const val = e.target.value;
                                 setExtensionChoices(prev => ({
                                   ...prev,
-                                  [player.playerId]: val === 'deny'
-                                    ? { years: 0, deny: true }
-                                    : { years: Number(val), deny: false }
+                                  [player.playerId]: { years: Number(val), deny: false }
                                 }));
-                                if (val !== '0' && val !== 'deny') {
+                                if (val !== '0') {
                                   setPendingExtension({
                                     player,
                                     years: Number(val),
@@ -582,7 +577,6 @@ export default function ContractManagementPage() {
                               <option value={1}>1 Year</option>
                               <option value={2}>2 Years</option>
                               <option value={3}>3 Years</option>
-                              <option value="deny">Deny</option>
                             </select>
                           </td>
                           <td className="p-2">
