@@ -49,8 +49,8 @@ export default function ContractManagementPage() {
             contractFinalYear: values[5],
             age: values[32],
             ktcValue: values[34] ? parseInt(values[34], 10) : null,
-            rfaEligible: values[37],
-            franchiseTagEligible: values[38],
+            rfaEligible: values[37], // Will Be RFA? (column 38, index 37)
+            franchiseTagEligible: values[38], // Franchise Tag Eligible? (column 39, index 38)
           });
         }
       });
@@ -589,7 +589,7 @@ export default function ContractManagementPage() {
                             )}
                           </td>
                           <td className="p-2">
-                            {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
+                            {showFinalize && pendingExtension && pendingExtension.playerId === player.playerId && (
                               <button
                                 className="px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
                                 disabled={finalizeLoading || !isExtensionWindowOpen()}
