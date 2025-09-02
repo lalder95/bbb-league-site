@@ -325,7 +325,8 @@ export default function PlayerProfileCard({
                   </button>
                 )}
                 {expanded && !flippedCard && contract && typeof contract === 'object' && !Array.isArray(contract) && (
-                  <div className="w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent mt-2 absolute bottom-0 left-0 z-10">
+                  <div className="w-full flex flex-wrap justify-center text-center px-2 py-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent mt-2 absolute bottom-0 left-0 z-10 hide-scrollbar"
+                       style={{ overflow: 'auto' }}>
                     {safeDisplay(contract.playerName) !== '-' && <Bubble className="bg-[#FF4B1F] bg-opacity-50">{String(safeDisplay(contract.playerName))}</Bubble>}
                     {safeDisplay(contract.position) !== '-' && <Bubble className="bg-blue-700 bg-opacity-50">{String(safeDisplay(contract.position))}</Bubble>}
                     <Bubble className="bg-green-700 bg-opacity-50">
@@ -437,13 +438,14 @@ export default function PlayerProfileCard({
                   {/* Team avatar and KTC score removed from back of card */}
                   {/* Contract Table */}
                   {allContracts.filter(c => c.status === "Active" || c.status === "Future").length > 0 ? (
-                    <div className="w-full h-full flex justify-center items-center overflow-y-auto p-3 mr-12"
+                    <div className="w-full h-full flex justify-center items-center overflow-y-auto p-3 mr-12 hide-scrollbar"
                       style={{
                         maxHeight: '100%',
                         maxWidth: '100%',
                         fontFamily: "'Black Ops One', 'Saira Stencil One', sans-serif",
-                      }}
-                    >
+                        overflowY: 'auto',
+                        overflowX: 'auto'
+                      }}>
                       <table
                         className="text-xs sm:text-sm md:text-base border border-white/10 rounded bg-black/30 mx-auto origin-center shadow-lg w-full"
                         style={{
@@ -527,6 +529,10 @@ export default function PlayerProfileCard({
             className="bg-blue-700 text-white rounded px-4 py-2 text-base font-semibold shadow hover:bg-blue-800 transition-colors min-w-[90px]"
             aria-label="Flip card"
             type="button"
+            style={{
+              position: 'relative',
+              zIndex: 50, // Ensures button is above the card
+            }}
           >
             Flip
           </button>
