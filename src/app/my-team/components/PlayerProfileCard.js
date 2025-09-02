@@ -384,12 +384,13 @@ export default function PlayerProfileCard({
                 <div className="flex flex-col items-center justify-center w-full h-full box-border bg-gradient-to-br from-[#001A2B] via-gray-900 to-[#22223b] rounded-lg border border-white/10 shadow-xl relative overflow-x-auto">
                   {/* Player Name vertically on the right, rotated 90deg */}
                   <div
-                    className="absolute right-6 top-1/2 -translate-y-1/2 z-20"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 z-20 font-[Black_Ops_One] font-bold"
                     style={{
                       transform: "translateY(-50%) rotate(0deg)", // <-- rotate(0deg) for top-to-bottom vertical text
                       transformOrigin: "right center",
                       writingMode: "vertical-lr",
                       whiteSpace: "nowrap",
+                      fontFamily: "'Black Ops One', 'Saira Stencil One', sans-serif",
                     }}
                   >
                     <span className="text-2xl font-bold text-[#FF4B1F] drop-shadow">
@@ -436,59 +437,79 @@ export default function PlayerProfileCard({
                   {/* Team avatar and KTC score removed from back of card */}
                   {/* Contract Table */}
                   {allContracts.filter(c => c.status === "Active" || c.status === "Future").length > 0 ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center" style={{height: '100%', minHeight: 0}}>
-                      <div className="flex flex-col h-full w-full justify-center items-center" style={{height: '100%', minHeight: 0}}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '100%',
-                            width: '100%',
-                          }}
-                        >
-                          <div className="w-full flex justify-center items-center">
-                            <table
-                              className="w-auto text-sm border border-white/10 rounded bg-black/30 mx-auto rotate-90 origin-center shadow-lg"
-                              style={{
-                                margin: '0 auto',
-                                maxWidth: '90%',
-                                transform: 'scale(0.85) rotate(90deg)',
-                              }}
-                            >
-                              <thead>
-                                <tr className="bg-black/60 text-[#FF4B1F] text-base">
-                                  <th className="p-2 border-b border-white/10 font-semibold">Type</th>
-                                  <th className="p-2 border-b border-white/10 font-semibold">Start Year</th>
-                                  <th className="p-2 border-b border-white/10 font-semibold">Year 1</th>
-                                  <th className="p-2 border-b border-white/10 font-semibold">Year 2</th>
-                                  <th className="p-2 border-b border-white/10 font-semibold">Year 3</th>
-                                  <th className="p-2 border-b border-white/10 font-semibold">Year 4</th>
-                                  <th className="p-2 border-b border-white/10 font-semibold">Final Year</th>
+                    <div className="w-full h-full flex justify-center items-center overflow-y-auto p-3 mr-12"
+                      style={{
+                        maxHeight: '100%',
+                        maxWidth: '100%',
+                        fontFamily: "'Black Ops One', 'Saira Stencil One', sans-serif",
+                      }}
+                    >
+                      <table
+                        className="text-xs sm:text-sm md:text-base border border-white/10 rounded bg-black/30 mx-auto origin-center shadow-lg w-full"
+                        style={{
+                          margin: '0 auto',
+                          maxWidth: '100%',
+                          transform: 'rotate(90deg)',
+                          tableLayout: 'auto',
+                          fontFamily: "'Black Ops One', 'Saira Stencil One', sans-serif",
+                        }}
+                      >
+                        <tbody>
+                          {allContracts
+                            .filter(c => c.status === "Active" || c.status === "Future")
+                            .sort((a, b) => {
+                              const aYear = Number(a.contractFinalYear) || 0;
+                              const bYear = Number(b.contractFinalYear) || 0;
+                              return aYear - bYear;
+                            })
+                            .map((c, idx, arr) => (
+                              <React.Fragment key={idx}>
+                                {/* Orange separator for all but the first contract */}
+                                {idx > 0 && (
+                                  <tr>
+                                    <td colSpan={6}>
+                                      <div className="border-t-4 border-[#FF4B1F] my-2 w-full"></div>
+                                    </td>
+                                  </tr>
+                                )}
+                                {/* Type / Final Year / Team Header */}
+                                <tr className="bg-black/60 text-[#FF4B1F]">
+                                  <th className="px-2 whitespace-nowrap text-center font-semibold text-xs sm:text-sm md:text-base">Type</th>
+                                  <th className="px-2 whitespace-nowrap text-center font-semibold text-xs sm:text-sm md:text-base">Final Year</th>
+                                  <th className="px-2 whitespace-nowrap text-center font-semibold text-xs sm:text-sm md:text-base" colSpan={2}>Team</th>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {allContracts.filter(c => c.status === "Active" || c.status === "Future").map((c, idx) => {
-                                  // Debug: Log each contract row before rendering
-                                  // console.log(`[PlayerProfileCard] Rendering contract row idx=${idx}:`, c, '| type:', typeof c);
-                                  return (
-                                    <tr key={idx} className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
-                                      <td className="p-2 text-white/90">{safeDisplay(c.contractType)}</td>
-                                      <td className="p-2 text-white/80">{safeDisplay(c.contractStartYear)}</td>
-                                      <td className="p-2 text-green-400">{typeof c.curYear === 'number' ? `$${c.curYear.toFixed(1)}` : safeDisplay(c.curYear)}</td>
-                                      <td className="p-2 text-green-400">{typeof c.year2 === 'number' ? `$${c.year2.toFixed(1)}` : safeDisplay(c.year2)}</td>
-                                      <td className="p-2 text-green-400">{typeof c.year3 === 'number' ? `$${c.year3.toFixed(1)}` : safeDisplay(c.year3)}</td>
-                                      <td className="p-2 text-green-400">{typeof c.year4 === 'number' ? `$${c.year4.toFixed(1)}` : safeDisplay(c.year4)}</td>
-                                      <td className="p-2 text-white/80">{safeDisplay(c.contractFinalYear)}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
+                                {/* Type / Final Year / Team Data */}
+                                <tr className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
+                                  <td className="px-2 text-white/90 text-center">{safeDisplay(c.contractType)}</td>
+                                  <td className="px-2 text-white/80 text-center">{safeDisplay(c.contractFinalYear)}</td>
+                                  <td className="px-2 text-white font-bold text-center" colSpan={2}>{safeDisplay(c.team)}</td>
+                                </tr>
+                                {/* Year 1-4 Header */}
+                                <tr className="bg-black/60 text-[#FF4B1F]">
+                                  <th className="px-2 whitespace-nowrap text-center font-semibold text-xs sm:text-sm md:text-base">Year 1</th>
+                                  <th className="px-2 whitespace-nowrap text-center font-semibold text-xs sm:text-sm md:text-base">Year 2</th>
+                                  <th className="px-2 whitespace-nowrap text-center font-semibold text-xs sm:text-sm md:text-base">Year 3</th>
+                                  <th className="px-2 whitespace-nowrap text-center font-semibold text-xs sm:text-sm md:text-base">Year 4</th>
+                                </tr>
+                                {/* Year 1-4 Data */}
+                                <tr className="border-b border-white/10 last:border-0 hover:bg-[#FF4B1F]/10 transition-colors">
+                                  <td className="px-2 text-green-400 text-center">
+                                    {typeof c.curYear === 'number' && c.curYear === 0 ? '-' : typeof c.curYear === 'number' ? `$${c.curYear.toFixed(1)}` : safeDisplay(c.curYear)}
+                                  </td>
+                                  <td className="px-2 text-green-400 text-center">
+                                    {typeof c.year2 === 'number' && c.year2 === 0 ? '-' : typeof c.year2 === 'number' ? `$${c.year2.toFixed(1)}` : safeDisplay(c.year2)}
+                                  </td>
+                                  <td className="px-2 text-green-400 text-center">
+                                    {typeof c.year3 === 'number' && c.year3 === 0 ? '-' : typeof c.year3 === 'number' ? `$${c.year3.toFixed(1)}` : safeDisplay(c.year3)}
+                                  </td>
+                                  <td className="px-2 text-green-400 text-center">
+                                    {typeof c.year4 === 'number' && c.year4 === 0 ? '-' : typeof c.year4 === 'number' ? `$${c.year4.toFixed(1)}` : safeDisplay(c.year4)}
+                                  </td>
+                                </tr>
+                              </React.Fragment>
+                            ))}
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
                     <div className="text-white/60">No active or future contracts found.</div>
