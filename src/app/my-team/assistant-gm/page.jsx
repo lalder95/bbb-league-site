@@ -8,6 +8,11 @@ import { getLeagueRosters } from '../myTeamApi';
 
 export default function AssistantGMPage() {
   const { data: session, status } = useSession();
+  if (status === 'loading') return null;
+  if (status === 'unauthenticated' || !session) {
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    return null;
+  }
   const [teamState, setTeamState] = useState("Compete");
   const [assetPriority, setAssetPriority] = useState(["QB", "RB", "WR", "TE", "Picks"]);
   const [draggingIdx, setDraggingIdx] = useState(null);
@@ -29,34 +34,55 @@ export default function AssistantGMPage() {
 
   useEffect(() => {
     async function fetchPlayerData() {
-      const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
-      const text = await response.length ? await response.text() : '';
-      const rows = (text || '').split('\n');
-      const contracts = [];
-      rows.slice(1).forEach(row => {
-        const values = row.split(',');
-        if (values.length > 38) {
+      try {
+        const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+        const text = await response.text();
+        const rows = text.split('\n').filter(Boolean);
+        if (rows.length < 2) return setPlayerContracts([]);
+        const header = rows[0].split(',').map(h => h.trim());
+        const headerMap = {};
+        header.forEach((col, idx) => { headerMap[col] = idx; });
+        console.log('[AssistantGM Debug] headerMap:', headerMap);
+
+        const contracts = [];
+        rows.slice(1).forEach((row, idx) => {
+          const values = row.split(',');
+          if (values.length !== header.length) {
+            console.warn(`[AssistantGM Debug] Skipped row ${idx + 1} (length ${values.length}):`, values);
+            return;
+          }
           contracts.push({
-            playerId: values[0],
-            playerName: values[1],
-            position: values[21],
-            contractType: values[2],
-            status: values[14],
-            team: values[33],
-            curYear: (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
-            year2:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
-            year3:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
-            year4:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
-            isDeadCap: !(values[14] === 'Active' || values[14] === 'Future'),
-            contractFinalYear: values[5],
-            age: values[32],
-            ktcValue: values[34] ? parseInt(values[34], 10) : null,
-            rfaEligible: values[37],
-            franchiseTagEligible: values[38],
+            playerId: values[headerMap["Player ID"]],
+            playerName: values[headerMap["Player Name"]],
+            position: values[headerMap["Position"]],
+            contractType: values[headerMap["Contract Type"]],
+            status: values[headerMap["Status"]],
+            team: values[headerMap["TeamDisplayName"]],
+            curYear: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+              ? parseFloat(values[headerMap["Relative Year 1 Salary"]]) || 0
+              : parseFloat(values[headerMap["Relative Year 1 Dead"]]) || 0,
+            year2: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+              ? parseFloat(values[headerMap["Relative Year 2 Salary"]]) || 0
+              : parseFloat(values[headerMap["Relative Year 2 Dead"]]) || 0,
+            year3: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+              ? parseFloat(values[headerMap["Relative Year 3 Salary"]]) || 0
+              : parseFloat(values[headerMap["Relative Year 3 Dead"]]) || 0,
+            year4: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+              ? parseFloat(values[headerMap["Relative Year 4 Salary"]]) || 0
+              : parseFloat(values[headerMap["Relative Year 4 Dead"]]) || 0,
+            isDeadCap: !(values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future'),
+            contractFinalYear: values[headerMap["Contract Final Year"]],
+            age: values[headerMap["Age"]],
+            ktcValue: values[headerMap["Current KTC Value"]] ? parseInt(values[headerMap["Current KTC Value"]], 10) : null,
+            rfaEligible: values[headerMap["Will Be RFA?"]],
+            franchiseTagEligible: values[headerMap["Franchise Tag Eligible?"]],
           });
-        }
-      });
-      setPlayerContracts(contracts);
+        });
+        console.log('[AssistantGM Debug] Loaded contracts:', contracts.slice(0, 5), `Total: ${contracts.length}`);
+        setPlayerContracts(contracts);
+      } catch (err) {
+        console.error('[AssistantGM Debug] Error fetching or parsing contracts:', err);
+      }
     }
     fetchPlayerData();
   }, []);
@@ -141,9 +167,9 @@ export default function AssistantGMPage() {
   // Helper to get my team name and contracts for chat
   function getMyTeamName() {
     const activeContracts = playerContracts.filter(p => (p.status === 'Active' || p.status === 'Future') && p.team);
-    const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
+    const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team?.trim()).filter(Boolean)));
     const EMAIL_TO_TEAM = Object.freeze({
-      // 'user@example.com': 'Your Team Name',
+      'lalder95@gmail.com': 'lalder',
     });
     const normalize = s => (s || '').trim().toLowerCase();
     let myTeamName = '';
@@ -153,12 +179,16 @@ export default function AssistantGMPage() {
       session?.user?.team_name ||
       session?.user?.teamSlug ||
       session?.user?.team_slug;
+    console.log('[AssistantGM Debug] session.user:', session?.user);
+    console.log('[AssistantGM Debug] allTeamNames:', allTeamNames);
+    console.log('[AssistantGM Debug] userTeamFromSession:', userTeamFromSession);
     if (userTeamFromSession) {
       const val = normalize(userTeamFromSession);
       myTeamName =
         allTeamNames.find(t => normalize(t) === val) ||
         allTeamNames.find(t => normalize(t).includes(val)) ||
         '';
+      console.log('[AssistantGM Debug] myTeamName after userTeamFromSession:', myTeamName);
     }
     if (!myTeamName && session?.user?.email) {
       const mapped = EMAIL_TO_TEAM[normalize(session.user.email)];
@@ -168,6 +198,7 @@ export default function AssistantGMPage() {
           allTeamNames.find(t => normalize(t) === val) ||
           allTeamNames.find(t => normalize(t).includes(val)) ||
           '';
+        console.log('[AssistantGM Debug] myTeamName after EMAIL_TO_TEAM:', myTeamName);
       }
     }
     if (!myTeamName && session?.user?.name) {
@@ -176,15 +207,18 @@ export default function AssistantGMPage() {
         allTeamNames.find(t => normalize(t) === val) ||
         allTeamNames.find(t => normalize(t).includes(val)) ||
         '';
+      console.log('[AssistantGM Debug] myTeamName after session.user.name:', myTeamName);
     }
     return myTeamName || '';
   }
 
   function getMyContractsForAssistantGM() {
     const myTeamName = getMyTeamName();
+    console.log('[AssistantGM Debug] getMyContractsForAssistantGM myTeamName:', myTeamName);
     let myContracts = playerContracts.filter(
       p => (p.status === 'Active' || p.status === 'Future') && p.team && p.team.trim().toLowerCase() === myTeamName.trim().toLowerCase()
     );
+    console.log('[AssistantGM Debug] getMyContractsForAssistantGM myContracts:', myContracts);
     const seen = new Set();
     myContracts = myContracts
       .sort((a, b) => (b.curYear || 0) - (a.curYear || 0))
@@ -202,6 +236,12 @@ export default function AssistantGMPage() {
       teamState,
       assetPriority,
       strategyNotes,
+      playerContracts,
+      session,
+      leagueId,
+      leagueRosters,
+      leagueWeek,
+      leagueYear,
     });
   }, []);
 
@@ -211,8 +251,14 @@ export default function AssistantGMPage() {
       teamState,
       assetPriority,
       strategyNotes,
+      playerContracts,
+      session,
+      leagueId,
+      leagueRosters,
+      leagueWeek,
+      leagueYear,
     });
-  }, [teamState, assetPriority, strategyNotes]);
+  }, [teamState, assetPriority, strategyNotes, playerContracts, session, leagueId, leagueRosters, leagueWeek, leagueYear]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -231,8 +277,6 @@ export default function AssistantGMPage() {
     }
     fetchSettings();
   }, [status]);
-
-  if (status === 'loading') return null;
 
   const myTeamName = getMyTeamName();
   if (!myTeamName) {

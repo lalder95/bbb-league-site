@@ -5,7 +5,13 @@ import DraftPicksFetcher from '../../../components/draft/DraftPicksFetcher';
 import { getLeagueRosters } from '../myTeamApi';
 
 export default function DraftPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  if (status === 'loading') return null;
+  if (status === 'unauthenticated' || !session) {
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    return null;
+  }
+
   const [leagueId, setLeagueId] = useState(null);
   const [leagueRosters, setLeagueRosters] = useState({});
 

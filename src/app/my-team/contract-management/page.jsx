@@ -5,6 +5,11 @@ import PlayerProfileCard from '../components/PlayerProfileCard';
 
 export default function ContractManagementPage() {
   const { data: session, status } = useSession();
+  if (status === 'loading') return null;
+  if (status === 'unauthenticated' || !session) {
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    return null;
+  }
 
   const [playerContracts, setPlayerContracts] = useState([]);
   const [extensionChoices, setExtensionChoices] = useState({});
@@ -29,30 +34,42 @@ export default function ContractManagementPage() {
     async function fetchPlayerData() {
       const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
       const text = await response.text();
-      const rows = text.split('\n');
+      const rows = text.split('\n').filter(Boolean);
+      if (rows.length < 2) return setPlayerContracts([]);
+      const header = rows[0].split(',').map(h => h.trim());
+      const headerMap = {};
+      header.forEach((col, idx) => { headerMap[col] = idx; });
+
       const contracts = [];
-      rows.slice(1).forEach(row => {
+      rows.slice(1).forEach((row, idx) => {
         const values = row.split(',');
-        if (values.length > 38) {
-          contracts.push({
-            playerId: values[0],
-            playerName: values[1],
-            position: values[21],
-            contractType: values[2],
-            status: values[14],
-            team: values[33],
-            curYear: (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
-            year2:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[16]) || 0 : parseFloat(values[25]) || 0,
-            year3:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[17]) || 0 : parseFloat(values[26]) || 0,
-            year4:  (values[14] === 'Active' || values[14] === 'Future') ? parseFloat(values[18]) || 0 : parseFloat(values[27]) || 0,
-            isDeadCap: !(values[14] === 'Active' || values[14] === 'Future'),
-            contractFinalYear: values[5],
-            age: values[32],
-            ktcValue: values[34] ? parseInt(values[34], 10) : null,
-            rfaEligible: values[37], // Will Be RFA? (column 38, index 37)
-            franchiseTagEligible: values[38], // Franchise Tag Eligible? (column 39, index 38)
-          });
-        }
+        if (values.length !== header.length) return;
+        contracts.push({
+          playerId: values[headerMap["Player ID"]],
+          playerName: values[headerMap["Player Name"]],
+          position: values[headerMap["Position"]],
+          contractType: values[headerMap["Contract Type"]],
+          status: values[headerMap["Status"]],
+          team: values[headerMap["TeamDisplayName"]],
+          curYear: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+            ? parseFloat(values[headerMap["Relative Year 1 Salary"]]) || 0
+            : parseFloat(values[headerMap["Relative Year 1 Dead"]]) || 0,
+          year2: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+            ? parseFloat(values[headerMap["Relative Year 2 Salary"]]) || 0
+            : parseFloat(values[headerMap["Relative Year 2 Dead"]]) || 0,
+          year3: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+            ? parseFloat(values[headerMap["Relative Year 3 Salary"]]) || 0
+            : parseFloat(values[headerMap["Relative Year 3 Dead"]]) || 0,
+          year4: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
+            ? parseFloat(values[headerMap["Relative Year 4 Salary"]]) || 0
+            : parseFloat(values[headerMap["Relative Year 4 Dead"]]) || 0,
+          isDeadCap: !(values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future'),
+          contractFinalYear: values[headerMap["Contract Final Year"]],
+          age: values[headerMap["Age"]],
+          ktcValue: values[headerMap["Current KTC Value"]] ? parseInt(values[headerMap["Current KTC Value"]], 10) : null,
+          rfaEligible: values[headerMap["Will Be RFA?"]],
+          franchiseTagEligible: values[headerMap["Franchise Tag Eligible?"]],
+        });
       });
       setPlayerContracts(contracts);
     }
@@ -94,8 +111,6 @@ export default function ContractManagementPage() {
     return now >= may1 && now <= aug31;
   }
   function roundUp1(num) { return Math.ceil(num * 10) / 10; }
-
-  if (status === 'loading') return null;
 
   const curYear = new Date().getFullYear();
   const CAP = 300;
