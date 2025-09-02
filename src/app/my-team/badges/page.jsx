@@ -15,11 +15,14 @@ import {
 
 export default function BadgesPage() {
   const { data: session, status } = useSession();
-  if (status === 'loading') return null;
-  if (status === 'unauthenticated' || !session) {
-    if (typeof window !== 'undefined') window.location.href = '/login';
-    return null;
-  }
+
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      window.location.href = "/login";
+    }
+  }, [status]);
+
+  if (status === "loading") return null;
 
   const [activity, setActivity] = useState({ trades: 0, playersAdded: 0, rookiesDrafted: 0 });
   const [pedigree, setPedigree] = useState({

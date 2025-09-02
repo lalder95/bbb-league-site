@@ -8,11 +8,15 @@ import { getLeagueRosters } from '../myTeamApi';
 
 export default function AssistantGMPage() {
   const { data: session, status } = useSession();
-  if (status === 'loading') return null;
-  if (status === 'unauthenticated' || !session) {
-    if (typeof window !== 'undefined') window.location.href = '/login';
-    return null;
-  }
+
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      window.location.href = "/login";
+    }
+  }, [status]);
+
+  if (status === "loading") return null;
+
   const [teamState, setTeamState] = useState("Compete");
   const [assetPriority, setAssetPriority] = useState(["QB", "RB", "WR", "TE", "Picks"]);
   const [draggingIdx, setDraggingIdx] = useState(null);

@@ -100,7 +100,13 @@ export default function FreeAgencyPage() {
     fetchAvatars();
   }, [leagueId]);
 
-  if (status === 'loading') return null;
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      window.location.href = "/login";
+    }
+  }, [status]);
+
+  if (status === "loading") return null;
   if (status === 'unauthenticated' || !session) {
     if (typeof window !== 'undefined') window.location.href = '/login';
     return null;

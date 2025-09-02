@@ -39,7 +39,14 @@ Chart.register({
 
 export default function RosterPage() {
   const { data: session, status } = useSession();
-  if (status === 'loading') return null;
+
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      window.location.href = "/login";
+    }
+  }, [status]);
+
+  if (status === "loading") return null;
   if (status === 'unauthenticated' || !session) {
     if (typeof window !== 'undefined') window.location.href = '/login';
     return null;
