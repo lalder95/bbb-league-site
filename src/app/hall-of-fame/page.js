@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import Image from 'next/image'; // Add this import
 
 // Sample data - with division information added
 const champions = [
@@ -81,11 +82,14 @@ const PlayerImage = ({ src, alt, position }) => {
       <span>{position}</span>
     </div>
   ) : (
-    <img 
-      src={src} 
+    <Image
+      src={src}
       alt={alt}
+      width={100}
+      height={100}
       className="w-full h-full object-cover"
       onError={() => setImageError(true)}
+      loading="lazy"
     />
   );
 };
@@ -107,10 +111,13 @@ export default function HallOfFame() {
       <div className={`${isMobile ? 'p-4' : 'p-6'} bg-black/30 border-b border-white/10`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
-            <img 
-              src="/logo.png" 
-              alt="BBB League" 
+            <Image
+              src="/logo.png"
+              alt="BBB League"
+              width={isMobile ? 48 : 64}
+              height={isMobile ? 48 : 64}
               className={`${isMobile ? 'h-12 w-12' : 'h-16 w-16'} transition-transform hover:scale-105`}
+              priority
             />
             <h1 className={`${isMobile ? 'text-2xl' : 'text-3xl'} font-bold text-[#FF4B1F]`}>Hall of Fame</h1>
           </div>
@@ -152,11 +159,15 @@ export default function HallOfFame() {
                       <div className="text-white/70">{selectedChampion.teamName}</div>
                       <div className="flex items-center mt-2 pt-2 border-t border-white/10">
                         {selectedChampion.division.logo && (
-                          <img 
-                            src={selectedChampion.division.logo} 
+                          <Image
+                            src={selectedChampion.division.logo}
                             alt={selectedChampion.division.name}
+                            width={24}
+                            height={24}
                             className="w-6 h-6 mr-2"
                             onError={(e) => e.target.style.display = 'none'}
+                            unoptimized
+                            loading="lazy"
                           />
                         )}
                         <span className="text-sm text-white/70">{selectedChampion.division.name}</span>
@@ -182,14 +193,16 @@ export default function HallOfFame() {
                 <h3 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4`}>Winner's Quote</h3>
                 <div className="flex items-start gap-4">
                   {selectedChampion.teamPhoto && (
-                    <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden border border-white/20">
-                      <img 
-                        src={selectedChampion.teamPhoto}
-                        alt={`${selectedChampion.teamName} logo`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => e.target.style.display = 'none'}
-                      />
-                    </div>
+                    <Image
+                      src={selectedChampion.teamPhoto}
+                      alt={`${selectedChampion.teamName} logo`}
+                      width={96}
+                      height={96}
+                      className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden border border-white/20"
+                      onError={(e) => e.target.style.display = 'none'}
+                      unoptimized
+                      loading="lazy"
+                    />
                   )}
                   <div className="bg-black/20 p-4 rounded-lg italic border-l-4 border-[#FF4B1F] flex-1">
                     "{selectedChampion.quote}"
@@ -317,11 +330,14 @@ export default function HallOfFame() {
                 <div className="mb-4 flex justify-center">
                   <div className="w-40 h-40 rounded-full border-4 border-[#FF4B1F] overflow-hidden bg-black/30">
                     {selectedChampion.mvpPlayer.photo && !mvpImageError ? (
-                      <img 
+                      <Image
                         src={selectedChampion.mvpPlayer.photo} 
                         alt={selectedChampion.mvpPlayer.name}
+                        width={160}
+                        height={160}
                         className="w-full h-full object-cover"
                         onError={() => setMvpImageError(true)}
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-white/50">

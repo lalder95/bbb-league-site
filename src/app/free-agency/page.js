@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Image from 'next/image'; // Add this import
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
@@ -421,6 +422,7 @@ export default function FreeAgency() {
                                 contracts={[p]}
                                 imageExtension="png"
                                 className="!w-9 !h-9 min-w-[2.25rem] min-h-[2.25rem] max-w-[2.25rem] max-h-[2.25rem] rounded-full overflow-hidden shadow object-cover"
+                                cloudinaryTransform="f_auto,q_auto,w_96"
                               />
                               <span
                                 className="underline cursor-pointer hover:text-[#FF4B1F]"
@@ -483,10 +485,14 @@ export default function FreeAgency() {
                 <div key={team} className="bg-white/5 rounded-lg p-4 border border-white/10">
                   <div className="flex items-center gap-2 mb-2">
                     {teamAvatars[team] ? (
-                      <img
+                      <Image
                         src={`https://sleepercdn.com/avatars/${teamAvatars[team]}`}
                         alt={team}
+                        width={24}
+                        height={24}
                         className="w-6 h-6 rounded-full"
+                        loading="lazy"
+                        unoptimized
                       />
                     ) : (
                       <span className="w-6 h-6 rounded-full bg-white/10 inline-block"></span>
@@ -532,6 +538,7 @@ export default function FreeAgency() {
                                 contracts={[p]}
                                 imageExtension="png"
                                 className="!w-8 !h-8 min-w-[2rem] min-h-[2rem] max-w-[2rem] max-h-[2rem] rounded-full overflow-hidden shadow object-cover"
+                                cloudinaryTransform="f_auto,q_auto,w_96"
                               />
                               <span
                                 className="underline cursor-pointer hover:text-[#FF4B1F]"
@@ -730,10 +737,14 @@ export default function FreeAgency() {
                       {!isMobile && (
                         <td className="p-3 flex items-center gap-2 text-white">
                           {teamAvatars[p.team] ? (
-                            <img
+                            <Image
                               src={`https://sleepercdn.com/avatars/${teamAvatars[p.team]}`}
                               alt={p.team}
+                              width={20}
+                              height={20}
                               className="w-5 h-5 rounded-full mr-2"
+                              loading="lazy"
+                              unoptimized
                             />
                           ) : (
                             <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>

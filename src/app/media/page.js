@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image"; // Add this import
 
 // --- BankerFeed component (copied from Home page) ---
 function BankerFeed({ tweets }) {
@@ -304,10 +305,14 @@ export default function MediaPage() {
           images.map((img, idx) => (
             <div key={idx} className="flex flex-col items-center">
               <a href={img.src} target="_blank" rel="noopener noreferrer">
-                <img
+                <Image
                   src={img.src}
                   alt={img.filename}
-                  className="w-48 h-auto rounded shadow mb-2 bg-black/20 object-contain cursor-pointer transition-transform hover:scale-105"
+                  width={300}
+                  height={200}
+                  className="rounded-lg"
+                  loading="lazy"
+                  unoptimized={img.src.startsWith("http")}
                 />
               </a>
               <div className="text-center">

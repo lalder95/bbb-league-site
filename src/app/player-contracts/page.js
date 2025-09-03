@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import EscapeKeyListener from './EscapeKeyListener';
 import SwipeDownListener from './SwipeDownListener';
+import Image from 'next/image'; // Add this import
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
@@ -634,10 +635,12 @@ export default function Home() {
                       <td className="p-3 align-middle">
                         <div className="flex items-center gap-2">
                           {teamAvatars[player.team] ? (
-                            <img
+                            <Image
                               src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
                               alt={player.team}
-                              className="w-5 h-5 rounded-full mr-2"
+                              width={20}
+                              height={20}
+                              className="rounded-full mr-2"
                             />
                           ) : (
                             <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
@@ -743,10 +746,12 @@ export default function Home() {
                       {/* Team Block */}
                       <div className="flex items-center gap-2 bg-white/5 rounded px-2 py-1">
                         {teamAvatars[player.team] ? (
-                          <img
+                          <Image
                             src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
                             alt={player.team}
-                            className="w-5 h-5 rounded-full"
+                            width={20}
+                            height={20}
+                            className="rounded-full"
                           />
                         ) : (
                           <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>

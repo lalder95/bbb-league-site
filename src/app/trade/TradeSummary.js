@@ -1,6 +1,7 @@
 import React from 'react';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
+import Image from 'next/image'; // Add this import
 
 const TradeSummary = ({
   teamA,
@@ -256,10 +257,14 @@ const TradeSummary = ({
                         {/* Line 3: Team */}
                         <div className="flex flex-row items-center gap-2 mt-1 text-sm">
                           {teamAvatars && teamAvatars[player.team] ? (
-                            <img
+                            <Image
                               src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
                               alt={player.team}
-                              className="w-5 h-5 rounded-full mr-1 inline-block"
+                              width={48}
+                              height={48}
+                              className="rounded-full mr-1 inline-block"
+                              loading="lazy"
+                              unoptimized={player.photoUrl.startsWith('http')}
                             />
                           ) : (
                             <span className="w-5 h-5 rounded-full bg-white/10 mr-1 inline-block"></span>
@@ -374,10 +379,14 @@ const TradeSummary = ({
                         {/* Line 3: Team */}
                         <div className="flex flex-row items-center gap-2 mt-1 text-sm">
                           {teamAvatars && teamAvatars[player.team] ? (
-                            <img
+                            <Image
                               src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
                               alt={player.team}
-                              className="w-5 h-5 rounded-full mr-1 inline-block"
+                              width={48}
+                              height={48}
+                              className="rounded-full mr-1 inline-block"
+                              loading="lazy"
+                              unoptimized={player.photoUrl.startsWith('http')}
                             />
                           ) : (
                             <span className="w-5 h-5 rounded-full bg-white/10 mr-1 inline-block"></span>

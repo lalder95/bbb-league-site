@@ -14,6 +14,7 @@ import {
   LineElement,       // <-- add
   LineController     // <-- add
 } from 'chart.js';
+import Image from 'next/image'; // Add this import
 
 Chart.register(
   BarElement,
@@ -323,7 +324,15 @@ export default function RosterPage() {
                       <td className="p-3 font-medium text-white/90 cursor-pointer underline" onClick={() => setSelectedPlayerId(player.playerId)}>{player.playerName}</td>
                       <td className="p-3 flex items-center gap-2">
                         {teamAvatars[player.team] ? (
-                          <img src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`} alt={player.team} className="w-5 h-5 rounded-full mr-2" />
+                          <Image
+                            src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
+                            alt={player.team}
+                            width={20}
+                            height={20}
+                            className="rounded-full mr-2"
+                            loading="lazy"
+                            unoptimized={true}
+                          />
                         ) : (
                           <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
                         )}

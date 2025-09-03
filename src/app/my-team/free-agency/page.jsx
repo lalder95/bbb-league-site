@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import PlayerProfileCard from '../components/PlayerProfileCard';
+import Image from 'next/image'; // Add this import
 
 export default function FreeAgencyPage() {
   const { data: session, status } = useSession();

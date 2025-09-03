@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import Image from 'next/image'; // Add this import
 
 export default function LeagueHistory() {
   const [loading, setLoading] = useState(true);
@@ -849,10 +850,14 @@ export default function LeagueHistory() {
                         <div className="flex flex-col items-center">
                           <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center mb-2">
                             {team.avatar ? (
-                              <img 
+                              <Image
                                 src={`https://sleepercdn.com/avatars/${team.avatar}`} 
                                 alt={team.display_name}
+                                width={32}
+                                height={32}
                                 className="w-full h-full object-cover" 
+                                loading="lazy"
+                                unoptimized={team.avatar.startsWith('http')}
                               />
                             ) : (
                               <span className="text-sm font-bold text-[#FF4B1F]">
@@ -898,10 +903,14 @@ export default function LeagueHistory() {
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
                               {team.avatar ? (
-                                <img 
+                                <Image
                                   src={`https://sleepercdn.com/avatars/${team.avatar}`} 
                                   alt={team.display_name}
+                                  width={32}
+                                  height={32}
                                   className="w-full h-full object-cover" 
+                                  loading="lazy"
+                                  unoptimized={team.avatar.startsWith('http')}
                                 />
                               ) : (
                                 <span className="text-sm font-bold text-[#FF4B1F]">

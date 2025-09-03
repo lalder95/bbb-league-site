@@ -5,6 +5,7 @@ function safeDisplay(val) {
   return String(val);
 }
 import React, { useEffect, useState } from "react";
+import Image from 'next/image'; // Add this import
 
 function normalizeName(name) {
   return name
@@ -169,7 +170,7 @@ export default function PlayerProfileCard({
         return;
       }
 
-      const cloudinaryUrl = `https://res.cloudinary.com/drn1zhflh/image/upload/v1749697886/${normalized}.png`;
+      const cloudinaryUrl = `https://res.cloudinary.com/drn1zhflh/image/upload/f_auto,q_auto,w_384/${normalized}.png`;
       try {
         const res = await fetch(cloudinaryUrl, { method: "HEAD" });
         if (res.ok) {
@@ -308,11 +309,15 @@ export default function PlayerProfileCard({
                 className="absolute w-full h-full backface-hidden"
                 style={{ backfaceVisibility: "hidden" }}
               >
-                <img
+                <Image
                   src={imgSrc}
                   alt={contract?.playerName}
+                  width={expanded ? 384 : 144} // Example: 24rem or 9rem
+                  height={expanded ? 538 : 144}
                   className="object-contain w-full h-full"
                   onError={handleImgError}
+                  unoptimized={imgSrc && imgSrc.startsWith('http')}
+                  loading="lazy"
                 />
                 {onExpandClick && (
                   <button

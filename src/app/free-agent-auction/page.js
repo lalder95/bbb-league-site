@@ -5,6 +5,7 @@ import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { formatInTimeZone } from 'date-fns-tz';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
+import Image from 'next/image'; // Add this import
 
 const USER_ID = '456973480269705216';
 
@@ -751,10 +752,14 @@ export default function FreeAgentAuctionPage() {
           <td className="py-2 px-3 text-center align-middle">
             <div className="flex items-center justify-center gap-2">
               {result?.username && teamAvatars[result.username] ? (
-                <img
+                <Image
                   src={`https://sleepercdn.com/avatars/${teamAvatars[result.username]}`}
                   alt={result.username}
-                  className="w-5 h-5 rounded-full"
+                  width={48}
+                  height={48}
+                  className="rounded-full"
+                  loading="lazy"
+                  unoptimized={result.username.startsWith('http')}
                 />
               ) : (
                 <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
@@ -1064,10 +1069,14 @@ export default function FreeAgentAuctionPage() {
               )}
               <div className="flex items-center gap-1 mt-1">
                 {result?.username && teamAvatars[result.username] ? (
-                  <img
+                  <Image
                     src={`https://sleepercdn.com/avatars/${teamAvatars[result.username]}`}
                     alt={result.username}
-                    className="w-5 h-5 rounded-full"
+                    width={48}
+                    height={48}
+                    className="rounded-full"
+                    loading="lazy"
+                    unoptimized={result.username.startsWith('http')}
                   />
                 ) : (
                   <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
@@ -1722,10 +1731,14 @@ export default function FreeAgentAuctionPage() {
                         <tr key={team.team || idx} className="hover:bg-white/10 transition-colors border-b border-white/5 last:border-0">
                           <td className="p-3 font-medium flex items-center gap-2">
                             {teamAvatars[team.team] ? (
-                              <img
+                              <Image
                                 src={`https://sleepercdn.com/avatars/${teamAvatars[team.team]}`}
                                 alt={team.team}
-                                className="w-6 h-6 rounded-full"
+                                width={48}
+                                height={48}
+                                className="rounded-full"
+                                loading="lazy"
+                                unoptimized={team.team.startsWith('http')}
                               />
                             ) : null}
                             {team.team}
@@ -1786,10 +1799,14 @@ export default function FreeAgentAuctionPage() {
                             <td className="py-2 px-3">{player ? player.playerName : 'Unknown'}</td>
                             <td className="py-2 px-3 flex items-center gap-2">
                               {teamAvatars[bid.username] ? (
-                                <img
+                                <Image
                                   src={`https://sleepercdn.com/avatars/${teamAvatars[bid.username]}`}
                                   alt={bid.username}
-                                  className="w-5 h-5 rounded-full"
+                                  width={24}
+                                  height={24}
+                                  className="rounded-full"
+                                  loading="lazy"
+                                  unoptimized={bid.username.startsWith('http')}
                                 />
                               ) : (
                                 <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
