@@ -7,15 +7,8 @@ import { getSleeperLeagueWeekAndYear } from '../../../utils/sleeperUtils';
 import { getLeagueRosters } from '../myTeamApi';
 
 export default function AssistantGMPage() {
+  // All hooks must be called unconditionally and before any early returns
   const { data: session, status } = useSession();
-
-  React.useEffect(() => {
-    if (status === "unauthenticated") {
-      window.location.href = "/login";
-    }
-  }, [status]);
-
-  if (status === "loading") return null;
 
   const [teamState, setTeamState] = useState("Compete");
   const [assetPriority, setAssetPriority] = useState(["QB", "RB", "WR", "TE", "Picks"]);
@@ -35,6 +28,12 @@ export default function AssistantGMPage() {
   const [playerContracts, setPlayerContracts] = useState([]);
 
   const assistantGMChatRef = useRef(null);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      window.location.href = "/login";
+    }
+  }, [status]);
 
   useEffect(() => {
     async function fetchPlayerData() {
@@ -281,6 +280,9 @@ export default function AssistantGMPage() {
     }
     fetchSettings();
   }, [status]);
+
+  // Early return for loading state, after all hooks
+  if (status === "loading") return null;
 
   const myTeamName = getMyTeamName();
   if (!myTeamName) {
