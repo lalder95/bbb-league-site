@@ -1,28 +1,25 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import DraftPicksFetcher from '../../../components/draft/DraftPicksFetcher';
 import { getLeagueRosters } from '../myTeamApi';
 
 export default function DraftPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
 
-  React.useEffect(() => {
-    if (status === "unauthenticated") {
-      window.location.href = "/login";
-    }
-  }, [status]);
-
-  if (status === 'loading') return null;
-  if (status === 'unauthenticated' || !session) {
-    if (typeof window !== 'undefined') window.location.href = '/login';
-    return null;
-  }
-
+  // Hooks must be declared unconditionally and before any returns
   const [leagueId, setLeagueId] = useState(null);
   const [leagueRosters, setLeagueRosters] = useState({});
+  const [showMineOnly, setShowMineOnly] = useState(false);
 
-  // Find BBB league
+  // Redirect in an effect
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+  }, [status, router]);
+
+  // Find BBB league (always declare the effect; guard its body)
   useEffect(() => {
     async function findBBBLeague() {
       if (!session?.user?.sleeperId) return;
@@ -31,19 +28,21 @@ export default function DraftPage() {
         const seasonState = await seasonResponse.json();
         const currentSeason = seasonState.season;
 
-        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${session.user.sleeperId}/leagues/nfl/${currentSeason}`);
+        const userLeaguesResponse = await fetch(
+          `https://api.sleeper.app/v1/user/${session.user.sleeperId}/leagues/nfl/${currentSeason}`
+        );
         const userLeagues = await userLeaguesResponse.json();
 
-        let bbbLeagues = userLeagues.filter(league =>
-          league.name && (
-            league.name.includes('Budget Blitz Bowl') ||
-            league.name.includes('budget blitz bowl') ||
-            league.name.includes('BBB') ||
-            (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
-          )
+        let bbbLeagues = userLeagues.filter(
+          league =>
+            league.name &&
+            (league.name.includes('Budget Blitz Bowl') ||
+              league.name.includes('budget blitz bowl') ||
+              league.name.includes('BBB') ||
+              (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz')))
         );
         if (bbbLeagues.length === 0 && userLeagues.length > 0) bbbLeagues = [userLeagues[0]];
-        const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
+        const mostRecentLeague = bbbLeagues.sort((a, b) => Number(b.season) - Number(a.season))[0];
         setLeagueId(mostRecentLeague?.league_id || null);
       } catch {
         setLeagueId(null);
@@ -52,7 +51,7 @@ export default function DraftPage() {
     findBBBLeague();
   }, [session?.user?.sleeperId]);
 
-  // Load rosters for league
+  // Load rosters for league (always declare effect; guard with leagueId)
   useEffect(() => {
     if (!leagueId) return;
     (async () => {
@@ -64,6 +63,9 @@ export default function DraftPage() {
       }
     })();
   }, [leagueId]);
+
+  // Only now gate rendering to avoid conditional hooks above
+  if (status === 'loading' || status === 'unauthenticated') return null;
 
   return (
     <div>
@@ -88,8 +90,6 @@ export default function DraftPage() {
             const myRoster = (leagueRosters[leagueId] || []).find(r => r.owner_id === session.user.sleeperId);
             if (myRoster) myRosterId = myRoster.roster_id;
           }
-
-          const [showMineOnly, setShowMineOnly] = React.useState(false);
 
           return (
             <div>

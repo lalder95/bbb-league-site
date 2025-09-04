@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import ActivityBadges from '../components/ActivityBadges';
 import TeamPedigreeBadges from '../components/TeamPedigreeBadges';
 import {
@@ -15,15 +16,9 @@ import {
 
 export default function BadgesPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
 
-  React.useEffect(() => {
-    if (status === "unauthenticated") {
-      window.location.href = "/login";
-    }
-  }, [status]);
-
-  if (status === "loading") return null;
-
+  // Declare all hooks before any conditional return
   const [activity, setActivity] = useState({ trades: 0, playersAdded: 0, rookiesDrafted: 0 });
   const [pedigree, setPedigree] = useState({
     championships: 0,
@@ -38,6 +33,12 @@ export default function BadgesPage() {
   const [leagueRosters, setLeagueRosters] = useState({});
   const loaded = useRef(false);
 
+  // Redirect unauthenticated users; do not early-return before hooks
+  useEffect(() => {
+    if (status === 'unauthenticated') router.replace('/login');
+  }, [status, router]);
+
+  // Fetch activity/pedigree once when authenticated
   useEffect(() => {
     if (status !== 'authenticated' || loaded.current) return;
     loaded.current = true;
@@ -50,7 +51,7 @@ export default function BadgesPage() {
       const currentYear = new Date().getFullYear();
       for (let season = 2024; season <= currentYear; season++) {
         const leagues = await getUserLeagues(session.user.sleeperId, season);
-        const bbbLeagues = leagues.filter(league => league.name === "Budget Blitz Bowl");
+        const bbbLeagues = leagues.filter(league => league.name === 'Budget Blitz Bowl');
         allLeagues.push(...bbbLeagues);
       }
 
@@ -75,13 +76,12 @@ export default function BadgesPage() {
 
       for (const league of allLeagues) {
         const transactions = await getAllLeagueTransactions(league.league_id);
-
         trades.push(...transactions.filter(tx => tx.type === 'trade').map(tx => ({ ...tx, league_id: league.league_id })));
-        playersAdded.push(...transactions.filter(tx => tx.status === "complete" && (tx.type === "waiver" || tx.type === "free_agent")));
+        playersAdded.push(...transactions.filter(tx => tx.status === 'complete' && (tx.type === 'waiver' || tx.type === 'free_agent')));
 
         const drafts = await getLeagueDrafts(league.league_id);
         for (const draft of drafts) {
-          if (draft.season === "2024") continue;
+          if (draft.season === '2024') continue;
           const picks = await getDraftPicks(draft.draft_id);
           rookiesDrafted.push(
             ...picks
@@ -114,9 +114,9 @@ export default function BadgesPage() {
       }
 
       const allTimeGames = allTimeWins + allTimeLosses;
-      const allTimeWinPct = allTimeGames > 0 ? ((allTimeWins / allTimeGames) * 100).toFixed(1) + "%" : "0.0%";
+      const allTimeWinPct = allTimeGames > 0 ? ((allTimeWins / allTimeGames) * 100).toFixed(1) + '%' : '0.0%';
       const playoffGames = playoffWins + playoffLosses;
-      const playoffWinPct = playoffGames > 0 ? ((playoffWins / playoffGames) * 100).toFixed(1) + "%" : "0.0%";
+      const playoffWinPct = playoffGames > 0 ? ((playoffWins / playoffGames) * 100).toFixed(1) + '%' : '0.0%';
 
       setActivity({ trades: trades.length, playersAdded: playersAdded.length, rookiesDrafted: rookiesDrafted.length });
       setPedigree({
@@ -131,10 +131,12 @@ export default function BadgesPage() {
 
       setLoading(false);
     }
-    fetchActivityAndPedigree();
-  }, [session, status]);
 
-  if (status === 'loading') return null;
+    fetchActivityAndPedigree();
+  }, [session?.user?.sleeperId, status]);
+
+  // Gate rendering after all hooks are declared
+  if (status === 'loading' || status === 'unauthenticated') return null;
 
   return (
     <div>

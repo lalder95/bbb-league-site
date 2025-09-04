@@ -309,16 +309,22 @@ export default function PlayerProfileCard({
                 className="absolute w-full h-full backface-hidden"
                 style={{ backfaceVisibility: "hidden" }}
               >
-                <Image
-                  src={imgSrc}
-                  alt={contract?.playerName}
-                  width={expanded ? 384 : 144} // Example: 24rem or 9rem
-                  height={expanded ? 538 : 144}
-                  className="object-contain w-full h-full"
-                  onError={handleImgError}
-                  unoptimized={imgSrc && imgSrc.startsWith('http')}
-                  loading="lazy"
-                />
+                {imgSrc ? (
+                  <Image
+                    src={imgSrc}
+                    alt={contract?.playerName}
+                    width={expanded ? 384 : 144} // Example: 24rem or 9rem
+                    height={expanded ? 538 : 144}
+                    className="object-contain w-full h-full"
+                    onError={handleImgError}
+                    unoptimized={imgSrc && imgSrc.startsWith('http')}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white text-lg">
+                    Loading...
+                  </div>
+                )}
                 {onExpandClick && (
                   <button
                     onClick={onExpandClick}

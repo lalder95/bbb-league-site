@@ -10,11 +10,10 @@ import {
   LinearScale,
   Tooltip,
   Legend,
-  PointElement,      // <-- add
-  LineElement,       // <-- add
-  LineController     // <-- add
+  PointElement,
+  LineElement,
+  LineController
 } from 'chart.js';
-import Image from 'next/image'; // Add this import
 
 Chart.register(
   BarElement,
@@ -22,9 +21,9 @@ Chart.register(
   LinearScale,
   Tooltip,
   Legend,
-  PointElement,      // <-- add
-  LineElement,       // <-- add
-  LineController     // <-- add
+  PointElement,
+  LineElement,
+  LineController
 );
 Chart.register({
   id: 'chartAreaBackground',
@@ -41,23 +40,18 @@ Chart.register({
 export default function RosterPage() {
   const { data: session, status } = useSession();
 
-  React.useEffect(() => {
-    if (status === "unauthenticated") {
-      window.location.href = "/login";
-    }
-  }, [status]);
-
-  if (status === "loading") return null;
-  if (status === 'unauthenticated' || !session) {
-    if (typeof window !== 'undefined') window.location.href = '/login';
-    return null;
-  }
-
+  // All hooks must be called before any return or conditional
   const [playerContracts, setPlayerContracts] = useState([]);
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      window.location.href = "/login";
+    }
+  }, [status]);
 
   // Load contracts
   useEffect(() => {
@@ -177,6 +171,13 @@ export default function RosterPage() {
     }
     fetchAvatars();
   }, [leagueId]);
+
+  // Early return for loading state, after all hooks
+  if (status === "loading") return null;
+  if (status === 'unauthenticated' || !session) {
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    return null;
+  }
 
   // Build roster view for the user's team
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
@@ -324,15 +325,7 @@ export default function RosterPage() {
                       <td className="p-3 font-medium text-white/90 cursor-pointer underline" onClick={() => setSelectedPlayerId(player.playerId)}>{player.playerName}</td>
                       <td className="p-3 flex items-center gap-2">
                         {teamAvatars[player.team] ? (
-                          <Image
-                            src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
-                            alt={player.team}
-                            width={20}
-                            height={20}
-                            className="rounded-full mr-2"
-                            loading="lazy"
-                            unoptimized={true}
-                          />
+                          <img src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`} alt={player.team} className="w-5 h-5 rounded-full mr-2" />
                         ) : (
                           <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
                         )}

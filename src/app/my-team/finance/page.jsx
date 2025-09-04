@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart,
@@ -30,18 +31,9 @@ Chart.register({
 
 export default function FinancePage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
 
-  React.useEffect(() => {
-    if (status === "unauthenticated") {
-      window.location.href = "/login";
-    }
-  }, [status]);
-
-  if (status === "loading") return null;
-  if (status === 'unauthenticated' || !session) {
-    if (typeof window !== 'undefined') window.location.href = '/login';
-    return null;
-  }
+  // Always declare hooks before any early returns
   const [playerContracts, setPlayerContracts] = useState([]);
 
   useEffect(() => {
@@ -90,22 +82,18 @@ export default function FinancePage() {
     fetchPlayerData();
   }, []);
 
+  // Redirect in an effect; do not early-return before hooks run
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/login');
+    }
+  }, [status, router]);
+
+  // Gate rendering (after hooks have been declared)
+  if (status === 'loading' || status === 'unauthenticated') return null;
+
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
   const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team?.trim()).filter(Boolean)));
-  // let myTeamName = '';
-  // if (session?.user?.name) {
-  //   const nameLower = session.user.name.trim().toLowerCase();
-  //   myTeamName = allTeamNames.find(t => t.toLowerCase() === nameLower) || '';
-  // }
-  // if (!myTeamName) {
-  //   const teamCounts = {};
-  //   activeContracts.forEach(p => {
-  //     const t = p.team.trim();
-  //     teamCounts[t] = (teamCounts[t] || 0) + 1;
-  //   });
-  //   myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
-  // }
-  // Determine team without defaulting to most common.
   const EMAIL_TO_TEAM = Object.freeze({
     // 'user@example.com': 'Your Team Name',
   });
