@@ -558,11 +558,21 @@ export default function PlayerProfileCard({
     }
   };
 
-  // Central close handler with fallback
+  // Central close handler: ensure parent can set expanded = false
   const handleClose = (e) => {
     e?.stopPropagation?.();
-    if (typeof onExpandClick === 'function') return onExpandClick();
-    if (typeof onClick === 'function') return onClick();
+    // unflip locally for a clean exit
+    setFlippedCard(false);
+    setTimeout(() => setFlippedContainer(false), 300);
+
+    if (typeof onExpandClick === 'function') {
+      // Prefer an explicit "close" signal
+      onExpandClick(false);
+      return;
+    }
+    if (typeof onClick === 'function') {
+      onClick(false);
+    }
   };
 
   return (
@@ -658,13 +668,11 @@ export default function PlayerProfileCard({
                 className="absolute w-full h-full backface-hidden"
                 style={{ backfaceVisibility: "hidden" }}
               >
-                {/* top-right controls (only when expanded) */}
+                {/* top-right controls (front only when expanded and not flipped) */}
                 <div className="absolute top-1 right-2 z-50 flex items-center gap-2 pointer-events-none">
-                  {expanded && (
+                  {expanded && !flippedCard && (
                     <>
-                      {/* Flip visible on front only when not flipped */}
-                      {!flippedCard && <FlipIconButton onClick={handleFlip} />}
-                      {/* Always render Close while expanded */}
+                      <FlipIconButton onClick={handleFlip} />
                       <button
                         onClick={handleClose}
                         className="pointer-events-auto inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-md border-2 border-black focus:outline-none focus:ring-2 focus:ring-black/60 transition"
@@ -708,12 +716,10 @@ export default function PlayerProfileCard({
                   backfaceVisibility: "hidden",
                 }}
               >
-                {/* top-right controls on back (only when expanded) */}
-                {expanded && (
+                {/* top-right controls (back only when expanded and flipped) */}
+                {expanded && flippedCard && (
                   <div className="absolute top-1 right-2 z-50 flex items-center gap-2 pointer-events-none">
-                    {/* Flip visible on back only when flipped */}
-                    {flippedCard && <FlipIconButton onClick={handleFlip} />}
-                    {/* Always render Close while expanded */}
+                    <FlipIconButton onClick={handleFlip} />
                     <button
                       onClick={handleClose}
                       className="pointer-events-auto inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-md border-2 border-black focus:outline-none focus:ring-2 focus:ring-black/60 transition"

@@ -337,6 +337,8 @@ export default function Home() {
                 const player = players.find(p => String(p.playerId) === String(selectedPlayerId));
                 return player ? player.team : '';
               })()}
+              // Pass a close handler so the in-card red X can collapse the modal
+              onExpandClick={() => setSelectedPlayerId(null)}
             />
             <button
               className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"

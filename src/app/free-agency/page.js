@@ -317,6 +317,8 @@ export default function FreeAgency() {
                   className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
                   teamName={teamName}
                   teamAvatars={teamAvatars}
+                  // Close the modal when the in-card X is clicked
+                  onExpandClick={() => setSelectedPlayerId(null)}
                 />
               );
             })()}
