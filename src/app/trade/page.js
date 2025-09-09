@@ -73,7 +73,7 @@ function TeamSection({
                 )}
                 <AnimatePresence>
                   {selectedPlayers.map((player, idx) => (
-                    <React.Fragment key={player.id}>
+                    <React.Fragment key={player.uniqueKey}>
                       {idx > 0 && (
                         <div className="w-full border-t border-[#FF4B1F]/40 my-2"></div>
                       )}
@@ -154,7 +154,7 @@ function TeamSection({
                 <div className="grid grid-cols-3 gap-2">
                   {filteredPlayers.map(player => (
                     <div
-                      key={player.id}
+                      key={player.uniqueKey}
                       className="cursor-pointer flex flex-col items-center"
                       onClick={() => handleAddPlayer(player)}
                     >
@@ -325,10 +325,12 @@ export default function Trade() {
         const contractRows = contractsText.split('\n');
         const parsedContracts = contractRows.slice(1)
           .filter(row => row.trim())
-          .map(row => {
+          .map((row, index) => {
             const values = row.split(',');
             const status = values[14];
             return {
+              // stable unique key per CSV row
+              uniqueKey: `${values[0]}-${values[5]}-${values[2]}-${values[14]}-${index}`,
               id: values[0],
               playerName: values[1],
               contractType: values[2],

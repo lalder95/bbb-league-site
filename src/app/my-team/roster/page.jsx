@@ -69,6 +69,8 @@ export default function RosterPage() {
         const values = row.split(',');
         if (values.length !== header.length) return;
         contracts.push({
+          // stable unique key per CSV row
+          uniqueKey: `${values[headerMap["Player ID"]]}-${values[headerMap["Contract Final Year"]]}-${values[headerMap["Contract Type"]]}-${values[headerMap["Status"]]}-${idx}`,
           playerId: values[headerMap["Player ID"]],
           playerName: values[headerMap["Player Name"]],
           position: values[headerMap["Position"]],
@@ -319,7 +321,7 @@ export default function RosterPage() {
                 </thead>
                 <tbody>
                   {myContracts.map((player) => (
-                    <tr key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
+                    <tr key={player.uniqueKey} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
                       <td className="p-3">
                         <div style={{ width: 32, height: 32 }} className="flex items-center justify-center">
                           <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />

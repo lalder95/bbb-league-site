@@ -52,9 +52,11 @@ export default function FreeAgency() {
         const rows = text.split('\n');
         const allContracts = rows.slice(1)
           .filter(row => row.trim())
-          .map(row => {
+          .map((row, index) => {
             const values = row.split(',');
             return {
+              // stable unique key per contract row
+              uniqueKey: `${values[39] || 'noid'}-${values[0]}-${values[5]}-${values[2]}-${values[14]}-${index}`,
               contractId: values[39], // ContractID is the key
               playerId: values[0],
               playerName: values[1],
@@ -417,7 +419,7 @@ export default function FreeAgency() {
                           </tr>
                         )}
                         {paginated.map(p => (
-                          <tr key={p.playerId + '-' + p.team}>
+                          <tr key={p.uniqueKey}>
                             <td className="p-2 flex items-center gap-2">
                               <PlayerProfileCard
                                 playerId={p.playerId}
@@ -533,7 +535,7 @@ export default function FreeAgency() {
                           </tr>
                         )}
                         {paginated.map(p => (
-                          <tr key={p.playerId + '-' + p.team}>
+                          <tr key={p.uniqueKey}>
                             <td className="p-2 flex items-center gap-2">
                               <PlayerProfileCard
                                 playerId={p.playerId}
@@ -605,7 +607,7 @@ export default function FreeAgency() {
             <div className="flex flex-col gap-4">
               {paginatedFreeAgents.map(p => (
                 <div
-                  key={p.playerId + '-' + p.team}
+                  key={p.uniqueKey}
                   className="bg-white/5 rounded-lg p-4 flex items-center gap-4 shadow"
                 >
                   <PlayerProfileCard

@@ -120,11 +120,13 @@ export default function Home() {
         const rows = text.split('\n');
         const parsedData = rows.slice(1)
           .filter(row => row.trim())
-          .map(row => {
+          .map((row, index) => {
             const values = row.split(',');
             const status = values[14];
             const isActive = status === 'Active';
             return {
+              // unique and stable per CSV row
+              uniqueKey: `${values[0]}-${values[5]}-${values[2]}-${values[14]}-${index}`,
               playerId: values[0],
               playerName: values[1],
               position: values[21],
@@ -138,7 +140,7 @@ export default function Home() {
               isDeadCap: !isActive,
               contractFinalYear: values[5],
               age: values[32],
-              ktcValue: values[34] ? parseInt(values[34], 10) : null, // <-- Parse as integer
+              ktcValue: values[34] ? parseInt(values[34], 10) : null,
               rfaEligible: values[37],
               franchiseTagEligible: values[38],
             };
@@ -610,7 +612,7 @@ export default function Home() {
                 <tbody>
                   {visiblePlayers.map((player) => (
                     <tr
-                      key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`}
+                      key={player.uniqueKey}
                       className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 ${getPositionStyles(player.position)}`}
                     >
                       {/* PlayerProfileCard column */}
@@ -721,7 +723,7 @@ export default function Home() {
               <div className="flex flex-col gap-4 p-2">
                 {visiblePlayers.map((player) => (
                   <div
-                    key={player.contractId || `${player.playerId}-${player.contractFinalYear || ''}`}
+                    key={player.uniqueKey}
                     className={`bg-black/60 rounded-lg shadow p-4 border-l-4 ${getPositionStyles(player.position)} flex gap-4 items-center`}
                   >
                     <div className="flex flex-col items-center justify-center">
