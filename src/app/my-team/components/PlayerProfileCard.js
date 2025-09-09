@@ -469,16 +469,21 @@ export default function PlayerProfileCard({
     return (
       <span
         className={
-          "inline-flex items-center px-3 py-1.5 rounded-full text-sm sm:text-base font-semibold bg-black/30 text-white mr-1.5 mb-1.5 " +
+          // Bigger, responsive bubbles that won’t overflow; truncate long text
+          "inline-flex items-center rounded-full font-semibold text-white " +
+          "px-[clamp(8px,1.4vw,12px)] py-[clamp(4px,0.8vw,7px)] " +
+          "text-[clamp(12px,1.1vw,16px)] mr-1.5 mb-1.5 bg-black/30 " +
+          "max-w-full truncate " + // prevent individual bubble overflow
           className
         }
+        title={String(display)} // show full text on hover
       >
         {String(display)}
       </span>
     );
   };
 
-  // Simple table for ESPN stats with headers
+  // Simple table for ESPN stats with headers (responsive, non-overflowing)
   const StatsTable = ({ statType, headers = [], stats = [] }) => {
     const hasHeaders = Array.isArray(headers) && headers.length > 0;
     const computedHeaders = hasHeaders ? headers : stats.map((_, i) => `Stat ${i + 1}`);
@@ -486,27 +491,40 @@ export default function PlayerProfileCard({
     const displayHeaders = Array.from({ length: colCount }, (_, i) => computedHeaders[i] ?? `Stat ${i + 1}`);
     const displayValues = Array.from({ length: colCount }, (_, i) => stats[i] ?? '-');
 
+    // Auto-reduce table text size for many columns, clamped between 11–16px
+    const tableFontPx = Math.max(11, Math.min(16, 16 - Math.max(0, colCount - 7)));
+
     return (
-      <div className="w-full max-w-4xl px-2">
-        <div className="rounded-lg border border-white/15 bg-black/70 backdrop-blur-sm shadow-xl">
+      <div className="w-full max-w-[95vw] md:max-w-4xl px-2">
+        <div className="rounded-lg border border-white/15 bg-black/70 backdrop-blur-sm shadow-xl overflow-hidden">
           <div className="text-lg font-bold text-[#FF4B1F] mb-1 text-center pt-2">
             {statType}
           </div>
+          {/* Constrain width and allow horizontal scroll on very narrow screens */}
           <div className="w-full overflow-x-auto">
-            <table className="w-full text-sm rounded-t-none">
+            <table
+              className="w-full text-sm rounded-t-none"
+              style={{ fontSize: `${tableFontPx}px`, tableLayout: 'auto' }}
+            >
               <thead className="bg-white/5 text-[#FF4B1F]">
                 <tr>
                   {displayHeaders.map((h, i) => (
-                    <th key={i} className="px-3 py-2 whitespace-nowrap text-center font-semibold border-b border-white/10">
+                    <th
+                      key={i}
+                      className="px-2 sm:px-3 py-1.5 sm:py-2 whitespace-nowrap text-center font-semibold border-b border-white/10"
+                    >
                       {String(h)}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-white/0 text-base">
+              <tbody className="bg-white/0">
                 <tr className="hover:bg-white/5">
                   {displayValues.map((v, i) => (
-                    <td key={i} className="px-3 py-2 text-center text-white/90 border-b border-white/10">
+                    <td
+                      key={i}
+                      className="px-2 sm:px-3 py-1.5 sm:py-2 text-center text-white/90 border-b border-white/10 whitespace-nowrap"
+                    >
                       {String(v)}
                     </td>
                   ))}
@@ -884,7 +902,7 @@ export default function PlayerProfileCard({
       {/* Bubbles directly below the card (front side only) */}
       {expanded && !flippedCard && contract && typeof contract === 'object' && !Array.isArray(contract) && (
         <div className="w-full flex justify-center mt-1 pointer-events-auto">
-          <div className="flex flex-wrap justify-center text-center px-2 py-2 gap-1">
+          <div className="max-w-[95vw] md:max-w-4xl w-full flex flex-wrap justify-center text-center px-2 py-2 gap-1 overflow-hidden">
             {safeDisplay(contract.playerName) !== '-' && <Bubble className="bg-[#FF4B1F]/60">{String(safeDisplay(contract.playerName))}</Bubble>}
             {safeDisplay(contract.position) !== '-' && <Bubble className="bg-blue-700/60">{String(safeDisplay(contract.position))}</Bubble>}
             <Bubble className="bg-green-700/60">
@@ -893,40 +911,20 @@ export default function PlayerProfileCard({
             {safeDisplay(contract.contractType) !== '-' && <Bubble className="bg-indigo-700/60">{String(safeDisplay(contract.contractType))}</Bubble>}
             {safeDisplay(contract.team) !== '-' && <Bubble className="bg-purple-700/60">{String(safeDisplay(contract.team))}</Bubble>}
             {safeDisplay(contract.age) !== '-' && (
-              <Bubble
-                className={
-                  "bg-yellow-700/60 " +
-                  (Number(contract.age) >= 30 ? "animate-pulse" : "")
-                }
-              >
+              <Bubble className={"bg-yellow-700/60 " + (Number(contract.age) >= 30 ? "animate-pulse" : "")}>
                 {`Age: ${String(safeDisplay(contract.age))}`}
               </Bubble>
             )}
-            <Bubble
-              className={
-                "bg-cyan-700/60 " +
-                (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")
-              }
-            >
+            <Bubble className={"bg-cyan-700/60 " + (String(contract.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : "")}>
               {`RFA: ${String(contract.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
             </Bubble>
-            <Bubble
-              className={
-                "bg-pink-700/60 " +
-                (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")
-              }
-            >
+            <Bubble className={"bg-pink-700/60 " + (String(contract.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : "")}>
               {`Tag: ${String(contract.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}`}
             </Bubble>
             <Bubble className="bg-teal-700/60">
               {`KTC: ${String(safeDisplay(contract.ktcValue))}`}
             </Bubble>
-            <Bubble
-              className={
-                "bg-orange-700/60 " +
-                (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")
-              }
-            >
+            <Bubble className={"bg-orange-700/60 " + (String(contract.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : "")}>
               {`Final Year: ${String(safeDisplay(contract.contractFinalYear))}`}
             </Bubble>
           </div>
