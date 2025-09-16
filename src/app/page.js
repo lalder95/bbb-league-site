@@ -662,17 +662,14 @@ export default function Home() {
                     key={id}
                     className="bg-black/30 rounded-lg border border-white/10 p-4 flex flex-col"
                   >
-                    {/* Toggle moved under the VS bubble */}
-                    {/* Responsive layout: vertical on mobile, horizontal on desktop */}
-                    <div className={`${isMobile ? 'grid grid-cols-[1fr_auto_1fr] items-start gap-3' : 'grid grid-cols-[1fr_280px_1fr] items-center gap-4 md:gap-6'}`}>
-                      {/* Team 1 */}
-                      <div className={`flex ${isMobile ? 'flex-col items-center justify-start gap-1' : 'items-center min-w-0 gap-3'}`}>
-                        {/* Team 1 name (auto-size, single line) */}
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                      {/* Left Team */}
+                      <div className="flex flex-col items-center min-w-0">
                         <span
-                          className={`font-bold ${isMobile ? 'text-center whitespace-nowrap' : 'truncate'}`}
+                          className="font-bold truncate whitespace-nowrap text-center"
                           style={{
-                            fontSize: `clamp(0.95rem, ${Math.max(
-                              2.0 - (matchup[0].teamName?.length || 0) * 0.06,
+                            fontSize: `clamp(1rem, ${Math.max(
+                              2.2 - (matchup[0].teamName?.length || 0) * 0.09,
                               1
                             )}rem, 1.25rem)`
                           }}
@@ -680,8 +677,7 @@ export default function Home() {
                         >
                           {matchup[0].teamName}
                         </span>
-                        {/* Avatar below name on mobile */}
-                        <div className={`${isMobile ? 'mt-1' : ''} w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F]`}>
+                        <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F] mt-2">
                           {matchup[0].avatar ? (
                             <img
                               src={`https://sleepercdn.com/avatars/${matchup[0].avatar}`}
@@ -694,49 +690,33 @@ export default function Home() {
                             </span>
                           )}
                         </div>
-                        {/* Score below avatar on mobile */}
-                        {isMobile && (
-                          <div className={`mt-1 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
-                            {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
-                          </div>
-                        )}
+                        <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
+                          {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
+                        </div>
                       </div>
-                      {/* Center: fixed-width column to align VS across rows */}
-                      <div className={`${isMobile ? 'flex flex-col items-center justify-center w-full gap-2' : 'w-full grid grid-cols-[1fr_auto_1fr] items-center justify-items-center gap-4'}`}>
-                          {!isMobile && (
-                            <div className={`font-extrabold text-2xl md:text-3xl text-white text-center min-w-[5.5rem] ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
-                              {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
-                            </div>
-                          )}
-                        <div className="flex flex-col items-center justify-center gap-2">
-                           <div className="rounded-full bg-[#FF4B1F] text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md">
-                             VS
-                           </div>
-                           <button
-                             onClick={() =>
-                               setExpandedMatchups(prev => ({ ...prev, [id]: !prev[id] }))
-                             }
-                             className="text-xs px-2 py-1 rounded bg-[#FF4B1F]/20 text-[#FF4B1F] border border-[#FF4B1F]/40 hover:bg-[#FF4B1F]/30 transition"
-                             aria-label={expanded ? 'Hide Matchup' : 'Show Matchup'}
-                             title={expanded ? 'Hide Matchup' : 'Show Matchup'}
-                           >
-                             {expanded ? 'Hide Matchup' : 'Show Matchup'}
-                           </button>
-                         </div>
-                          {!isMobile && (
-                            <div className={`font-extrabold text-2xl md:text-3xl text-white text-center min-w-[5.5rem] ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
-                              {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
-                            </div>
-                          )}
-                       </div>
-                      {/* Team 2 */}
-                      <div className={`flex ${isMobile ? 'flex-col items-center justify-start gap-1' : 'items-center min-w-0 gap-3 justify-end'}`}>
-                        {/* Team 2 name (auto-size, single line) */}
+                      {/* VS Center */}
+                      <div className="flex flex-col items-center justify-center min-w-[60px]">
+                        <div className="rounded-full bg-[#FF4B1F] text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md mb-2">
+                          VS
+                        </div>
+                        <button
+                          onClick={() =>
+                            setExpandedMatchups(prev => ({ ...prev, [id]: !prev[id] }))
+                          }
+                          className="text-xs px-2 py-1 rounded bg-[#FF4B1F]/20 text-[#FF4B1F] border border-[#FF4B1F]/40 hover:bg-[#FF4B1F]/30 transition"
+                          aria-label={expanded ? 'Hide Matchup' : 'Show Matchup'}
+                          title={expanded ? 'Hide Matchup' : 'Show Matchup'}
+                        >
+                          {expanded ? 'Hide Matchup' : 'Show Matchup'}
+                        </button>
+                      </div>
+                      {/* Right Team */}
+                      <div className="flex flex-col items-center min-w-0">
                         <span
-                          className={`font-bold ${isMobile ? 'text-center whitespace-nowrap' : 'truncate'}`}
+                          className="font-bold truncate whitespace-nowrap text-center"
                           style={{
-                            fontSize: `clamp(0.95rem, ${Math.max(
-                              2.0 - (matchup[1].teamName?.length || 0) * 0.06,
+                            fontSize: `clamp(1rem, ${Math.max(
+                              2.2 - (matchup[1].teamName?.length || 0) * 0.09,
                               1
                             )}rem, 1.25rem)`
                           }}
@@ -744,8 +724,7 @@ export default function Home() {
                         >
                           {matchup[1].teamName}
                         </span>
-                        {/* Avatar below name on mobile */}
-                        <div className={`${isMobile ? 'mt-1' : ''} w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F]`}>
+                        <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F] mt-2">
                           {matchup[1].avatar ? (
                             <img
                               src={`https://sleepercdn.com/avatars/${matchup[1].avatar}`}
@@ -758,15 +737,11 @@ export default function Home() {
                             </span>
                           )}
                         </div>
-                        {/* Score below avatar on mobile */}
-                        {isMobile && (
-                          <div className={`mt-1 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
-                            {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
-                          </div>
-                        )}
+                        <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
+                          {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
+                        </div>
                       </div>
-                     </div>
-
+                    </div>
                     {/* Starters Section */}
                     {expanded && (
                       <div className="mt-4 border-t border-white/10 pt-4">
@@ -1881,6 +1856,18 @@ function AlignedStarters({
           type="button"
           className="font-semibold text-white hover:underline text-sm"
           onClick={() => setExpandedPlayerId(p.id)}
+          style={{
+            fontSize: `clamp(0.85rem, ${Math.max(
+              1.4 - (p.name?.length || 0) * 0.06,
+              0.85
+            )}rem, 1.1rem)`,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            display: 'block',
+            maxWidth: '100%',
+          }}
+          title={p.name}
         >
           {p.name}
         </button>
@@ -1976,6 +1963,18 @@ function AlignedStarters({
               type="button"
               className="hover:underline text-white font-bold text-sm"
               onClick={() => setExpandedPlayerId(p.id)}
+              style={{
+                fontSize: `clamp(0.85rem, ${Math.max(
+                  1.4 - (p.name?.length || 0) * 0.06,
+                  0.85
+                )}rem, 1.1rem)`,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'block',
+                maxWidth: '100%',
+              }}
+              title={p.name}
             >
               {p.name}
             </button>
@@ -1995,14 +1994,17 @@ function AlignedStarters({
             />
 
             <div>
-              <button
-                type="button"
-                className="text-xs mt-1 px-2 py-1 rounded bg-[#FF4B1F]/20 text-[#FF4B1F] border border-[#FF4B1F]/40 hover:bg-[#FF4B1F]/30 transition"
-                onClick={onToggle}
-                aria-expanded={expanded}
-              >
-                {expanded ? 'Hide Stats' : 'Show Stats'}
-              </button>
+              {/* Only render Show Stats button if game state is not "kickoff" or "No game" */}
+              {!(gs === 'pre' || gs === '' || gs === null) && (
+                <button
+                  type="button"
+                  className="text-xs mt-1 px-2 py-1 rounded bg-[#FF4B1F]/20 text-[#FF4B1F] border border-[#FF4B1F]/40 hover:bg-[#FF4B1F]/30 transition"
+                  onClick={onToggle}
+                  aria-expanded={expanded}
+                >
+                  {expanded ? 'Hide Stats' : 'Show Stats'}
+                </button>
+              )}
             </div>
           </div>
         </div>
