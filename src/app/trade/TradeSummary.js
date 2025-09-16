@@ -210,14 +210,13 @@ const TradeSummary = ({
                       dataKey="value"
                       stroke="#38bdf8"
                       strokeWidth={3}
-                      dot={(props) => (
+                      dot={({ cx, cy, value, index }) => (
                         <circle
-                          {...props}
-                          key={props.key} // Add this line to ensure a unique key prop
-                          cx={props.cx}
-                          cy={props.cy}
+                          key={`dot-${cx}-${cy}-${index}`}
+                          cx={cx}
+                          cy={cy}
                           r={6}
-                          fill={props.payload.value < 0 ? "#ef4444" : "#38bdf8"}
+                          fill={value < 0 ? "#ef4444" : "#38bdf8"}
                           stroke="#fff"
                           strokeWidth={2}
                         />
@@ -264,7 +263,7 @@ const TradeSummary = ({
                               height={48}
                               className="rounded-full mr-1 inline-block"
                               loading="lazy"
-                              unoptimized={player.photoUrl.startsWith('http')}
+                              unoptimized={player.photoUrl && player.photoUrl.startsWith('http')}
                             />
                           ) : (
                             <span className="w-5 h-5 rounded-full bg-white/10 mr-1 inline-block"></span>
@@ -332,14 +331,13 @@ const TradeSummary = ({
                       dataKey="value"
                       stroke="#38bdf8"
                       strokeWidth={3}
-                      dot={(props) => (
+                      dot={({ cx, cy, value, index }) => (
                         <circle
-                          {...props}
-                          key={props.key} // Add this line to ensure a unique key prop
-                          cx={props.cx}
-                          cy={props.cy}
+                          key={`dot-${cx}-${cy}-${index}`}
+                          cx={cx}
+                          cy={cy}
                           r={6}
-                          fill={props.payload.value < 0 ? "#ef4444" : "#38bdf8"}
+                          fill={value < 0 ? "#ef4444" : "#38bdf8"}
                           stroke="#fff"
                           strokeWidth={2}
                         />
@@ -386,7 +384,7 @@ const TradeSummary = ({
                               height={48}
                               className="rounded-full mr-1 inline-block"
                               loading="lazy"
-                              unoptimized={player.photoUrl.startsWith('http')}
+                              unoptimized={player.photoUrl && player.photoUrl.startsWith('http')}
                             />
                           ) : (
                             <span className="w-5 h-5 rounded-full bg-white/10 mr-1 inline-block"></span>
