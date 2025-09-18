@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, ReferenceLine, LabelList } from 'recharts';
 
 // Utility functions
@@ -20,6 +20,84 @@ export default function Analytics() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+
+  // --- Add missing state for points chart ---
+  const [playerPointsMap, setPlayerPointsMap] = useState({});
+  const [pointsLoading, setPointsLoading] = useState(true);
+
+  // --- NEW: Sleeper league ID logic from home page ---
+  const USER_ID = '456973480269705216';
+  const [leagueId, setLeagueId] = useState(null);
+
+  useEffect(() => {
+    async function findBBBLeague() {
+      try {
+        // Get current NFL season
+        const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        if (!seasonResponse.ok) throw new Error('Failed to fetch NFL state');
+        const seasonState = await seasonResponse.json();
+        const currentSeason = seasonState.season;
+
+        // Get user's leagues for the current season
+        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
+        if (!userLeaguesResponse.ok) throw new Error('Failed to fetch user leagues');
+        const userLeagues = await userLeaguesResponse.json();
+
+        // Try flexible matching for "Budget Blitz Bowl"
+        let bbbLeagues = userLeagues.filter(league =>
+          league.name && (
+            league.name.includes('Budget Blitz Bowl') ||
+            league.name.includes('budget blitz bowl') ||
+            league.name.includes('BBB') ||
+            (league.name.toLowerCase().includes('budget') &&
+              league.name.toLowerCase().includes('blitz'))
+          )
+        );
+
+        // If not found, try previous season
+        if (bbbLeagues.length === 0) {
+          const prevSeason = (parseInt(currentSeason) - 1).toString();
+          const prevSeasonResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prevSeason}`);
+          if (prevSeasonResponse.ok) {
+            const prevSeasonLeagues = await prevSeasonResponse.json();
+            const prevBBBLeagues = prevSeasonLeagues.filter(league =>
+              league.name && (
+                league.name.includes('Budget Blitz Bowl') ||
+                league.name.includes('budget blitz bowl') ||
+                league.name.includes('BBB') ||
+                (league.name.toLowerCase().includes('budget') &&
+                  league.name.toLowerCase().includes('blitz'))
+              )
+            );
+            if (prevBBBLeagues.length > 0) {
+              bbbLeagues = prevBBBLeagues;
+            } else {
+              if (userLeagues.length > 0) {
+                bbbLeagues = [userLeagues[0]];
+              } else if (prevSeasonLeagues.length > 0) {
+                bbbLeagues = [prevSeasonLeagues[0]];
+              } else {
+                throw new Error('No leagues found for your user ID');
+              }
+            }
+          } else {
+            if (userLeagues.length > 0) {
+              bbbLeagues = [userLeagues[0]];
+            } else {
+              throw new Error('No leagues found for your user ID');
+            }
+          }
+        }
+
+        // Sort by season and take the most recent
+        const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
+        setLeagueId(mostRecentLeague.league_id);
+      } catch (err) {
+        setLeagueId(null);
+      }
+    }
+    findBBBLeague();
+  }, []);
 
   useEffect(() => {
     function handleResize() {
@@ -236,6 +314,117 @@ export default function Analytics() {
   // Reference lines (must be > 0 on log scale)
   const xRef = centerX > 0 ? centerX : xDomain[0] * Math.sqrt(xDomain[1] / xDomain[0]);
   const yRef = centerY > 0 ? centerY : yDomain[0] * Math.sqrt(yDomain[1] / yDomain[0]);
+
+  useEffect(() => {
+    if (!leagueId) return;
+    async function fetchPlayerPoints() {
+      setPointsLoading(true);
+      try {
+        // Get current season and week from Sleeper API
+        const stateResp = await fetch('https://api.sleeper.app/v1/state/nfl');
+        const state = await stateResp.json();
+        const currentWeek = state.week;
+
+        // Fetch all rosters to get all player IDs in the league
+        const rostersResp = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`);
+        const rosters = await rostersResp.json();
+        const allPlayerIds = Array.from(new Set(rosters.flatMap(r => r.players || [])));
+
+        // Fetch weekly points for each player for all weeks up to currentWeek
+        const pointsMap = {};
+        for (let week = 1; week <= currentWeek; week++) {
+          const matchupsResp = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
+          const matchups = await matchupsResp.json();
+          matchups.forEach(m => {
+            const pts = m.players_points || {};
+            Object.entries(pts).forEach(([pid, val]) => {
+              if (!pointsMap[pid]) pointsMap[pid] = [];
+              pointsMap[pid][week - 1] = typeof val === 'number' ? val : 0;
+            });
+          });
+        }
+        setPlayerPointsMap(pointsMap);
+      } catch (err) {
+        setPlayerPointsMap({});
+      } finally {
+        setPointsLoading(false);
+      }
+    }
+    fetchPlayerPoints();
+  }, [leagueId]);
+
+  // --- Helper: Get average points for a player ---
+  function getAvgPoints(playerId) {
+    const arr = playerPointsMap[playerId] || [];
+    const nums = arr.filter(x => typeof x === 'number' && !isNaN(x));
+    if (!nums.length) return 0;
+    return nums.reduce((a, b) => a + b, 0) / nums.length;
+  }
+
+  // --- Prepare scatter data for Salary vs. Avg Points chart ---
+  // Add team and position filters to the new chart
+  const scatterPointsData = useMemo(() =>
+    players
+      .filter(p =>
+        p.isActive &&
+        p.contractType !== 'Rookie' &&
+        (!selectedTeam || p.team === selectedTeam) &&
+        p.position === selectedPosition && // <-- position filter added
+        !isNaN(parseFloat(p.curYear))
+      )
+      .map(p => {
+        const avgPoints = getAvgPoints(p.playerId);
+        const curYear = parseFloat(p.curYear);
+        // Clamp to small positive values for log scale
+        const EPS_Y = 0.01;
+        const EPS_X = 0.01;
+        return {
+          ...p,
+          curYear: Math.max(curYear, EPS_Y),
+          avgPoints: Math.max(avgPoints, EPS_X),
+          playerName: p.playerName || '',
+        };
+      }), [players, playerPointsMap, selectedTeam, selectedPosition]
+  );
+
+  // --- Compute log domains and averages for axes ---
+  const xValsPts = scatterPointsData.map(p => p.avgPoints).filter(v => v > 0);
+  const yValsPts = scatterPointsData.map(p => p.curYear).filter(v => v > 0);
+
+  const avgPts = getAverage(xValsPts);
+  const avgSalaryPts = getAverage(yValsPts);
+
+  const minXPts = xValsPts.length ? Math.min(...xValsPts) : 0.01;
+  const maxXPts = xValsPts.length ? Math.max(...xValsPts) : 50;
+  const minYPts = yValsPts.length ? Math.min(...yValsPts) : 0.01;
+  const maxYPts = yValsPts.length ? Math.max(...yValsPts) : 80;
+
+  const centerXPts = avgPts > 0 ? avgPts : Math.sqrt(minXPts * maxXPts);
+  const centerYPts = avgSalaryPts > 0 ? avgSalaryPts : Math.sqrt(minYPts * maxYPts);
+
+  const computeCenteredLogDomainPts = (center, minVal, maxVal, pad = 1.1) => {
+    const eps = 1e-6;
+    let c = Math.max(center || 0, eps);
+    const minP = Math.max(minVal || 0, eps);
+    const maxP = Math.max(maxVal || 0, c * 1.01);
+    let up = Math.log(maxP / c);
+    let down = Math.log(c / minP);
+    let half = Math.max(up, down, Math.log(1.5)) * pad;
+    const lower = c / Math.exp(half);
+    const upper = c * Math.exp(half);
+    return [lower, upper];
+  };
+
+  const xDomainPts = xValsPts.length
+    ? computeCenteredLogDomainPts(centerXPts, minXPts, maxXPts, 1.08)
+    : [0.01, 50];
+
+  const yDomainPts = yValsPts.length
+    ? computeCenteredLogDomainPts(centerYPts, minYPts, maxYPts, 1.12)
+    : [0.01, 100];
+
+  const xRefPts = centerXPts > 0 ? centerXPts : xDomainPts[0] * Math.sqrt(xDomainPts[1] / xDomainPts[0]);
+  const yRefPts = centerYPts > 0 ? centerYPts : yDomainPts[0] * Math.sqrt(yDomainPts[1] / yDomainPts[0]);
 
   if (loading) {
     return (
@@ -532,6 +721,197 @@ export default function Analytics() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* --- NEW CHART: Player Salary vs. Weekly Average Points --- */}
+        <div className={`bg-black/30 rounded-lg border border-white/10 mt-8 ${isMobile ? 'p-3' : 'p-6'}`}>
+          <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-2 text-[#FF4B1F]`}>
+            Player Salary vs. Weekly Average Points
+          </h2>
+          <div style={{ fontSize: isMobile ? '0.75em' : '0.8em', color: '#FF4B1F', marginBottom: isMobile ? 12 : 18, fontWeight: 500 }}>
+            This scatter chart compares each player's current salary to their weekly average points scored for the current season. Use it to identify value contracts and overpaid players.
+          </div>
+          {/* --- Team and Position Filters --- */}
+          <div className="flex flex-wrap gap-4 mb-4">
+            <div>
+              <label className="mr-2">Team:</label>
+              <select
+                value={selectedTeam}
+                onChange={e => setSelectedTeam(e.target.value)}
+                className="text-black rounded px-2 py-1"
+              >
+                <option value="">All</option>
+                {uniqueTeams.map(team => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mr-2">Position:</label>
+              <select
+                value={selectedPosition}
+                onChange={e => setSelectedPosition(e.target.value)}
+                className="text-black rounded px-2 py-1"
+              >
+                {uniquePositions.map(pos => (
+                  <option key={pos} value={pos}>{pos}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {pointsLoading ? (
+            <div className="min-h-[300px] flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-[#FF4B1F] border-t-transparent"></div>
+            </div>
+          ) : (
+            <div style={{ width: '100%', height: isMobile ? 400 : 600, position: 'relative' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart
+                  margin={{ top: 20, right: 20, bottom: isMobile ? 80 : 100, left: 20 }}
+                >
+                  <XAxis
+                    type="number"
+                    dataKey="avgPoints"
+                    name="Avg Points"
+                    stroke="#fff"
+                    scale="log"
+                    domain={xDomainPts}
+                    allowDataOverflow={true}
+                    tick={false}
+                    tickLine={false}
+                    label={{ value: 'Weekly Avg Points', position: 'insideBottom', offset: -5, fill: '#fff' }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="curYear"
+                    name="Salary"
+                    stroke="#fff"
+                    scale="log"
+                    domain={yDomainPts}
+                    allowDataOverflow={true}
+                    tick={false}
+                    tickLine={false}
+                    label={{ value: 'Current Salary ($)', angle: -90, position: 'insideLeft', fill: '#fff' }}
+                  />
+                  <Tooltip
+                    cursor={{ strokeDasharray: '3 3' }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const p = payload[0].payload;
+                        return (
+                          <div className="bg-[#001A2B] border border-white/10 rounded p-3">
+                            <div className="font-bold mb-1">{p.playerName}</div>
+                            <div>Team: {p.team}</div>
+                            <div>Position: {p.position}</div>
+                            <div>Avg Points: {p.avgPoints?.toFixed(2)}</div>
+                            <div>Salary: ${p.curYear}</div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <ReferenceLine x={xRefPts} stroke="#fff" strokeDasharray="3 3" />
+                  <ReferenceLine y={yRefPts} stroke="#fff" strokeDasharray="3 3" />
+                  { [
+                    { pos: 'QB', color: '#ef4444' },
+                    { pos: 'RB', color: '#3b82f6' },
+                    { pos: 'WR', color: '#22c55e' },
+                    { pos: 'TE', color: '#a855f7' },
+                  ].map(({ pos, color }) => (
+                    <Scatter
+                      key={pos}
+                      name={pos}
+                      data={scatterPointsData.filter(p => p.position === pos)}
+                      fill={color}
+                    />
+                  ))}
+                </ScatterChart>
+              </ResponsiveContainer>
+              {/* Overlayed quadrant/explanation labels */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: isMobile ? 90 : 150,
+                  top: isMobile ? 20 : 40,
+                  color: 'rgba(251, 191, 36, 0.8)',
+                  fontWeight: 700,
+                  fontSize: isMobile ? 11 : 15,
+                  zIndex: 3,
+                  pointerEvents: 'none',
+                  textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+                }}
+              >
+                Overpaid
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  right: isMobile ? 24 : 60,
+                  top: isMobile ? 20 : 40,
+                  color: 'rgba(251, 191, 36, 0.8)',
+                  fontWeight: 700,
+                  fontSize: isMobile ? 11 : 15,
+                  zIndex: 3,
+                  pointerEvents: 'none',
+                  textAlign: 'right',
+                  textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+                }}
+              >
+                Fair Upper Market
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  left: isMobile ? 90 : 150,
+                  bottom: isMobile ? 110 : 160,
+                  color: 'rgba(251, 191, 36, 0.8)',
+                  fontWeight: 700,
+                  fontSize: isMobile ? 11 : 15,
+                  zIndex: 3,
+                  pointerEvents: 'none',
+                  textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+                }}
+              >
+                Fair Lower Market
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  right: isMobile ? 24 : 60,
+                  bottom: isMobile ? 110 : 160,
+                  color: 'rgba(251, 191, 36, 0.8)',
+                  fontWeight: 700,
+                  fontSize: isMobile ? 11 : 15,
+                  zIndex: 3,
+                  pointerEvents: 'none',
+                  textAlign: 'right',
+                  textShadow: '0 1px 4px #001A2B, 0 0 2px #fff2',
+                }}
+              >
+                Underpaid
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: isMobile ? 8 : 16,
+                  textAlign: 'center',
+                  pointerEvents: 'none',
+                  zIndex: 2,
+                  padding: isMobile ? 2 : 8,
+                  background: 'rgba(0,26,43,0.85)',
+                }}
+              >
+                <div style={{ fontSize: '0.8em', color: '#bbb' }}>
+                  Avg Points Position Average: {avgPts ? avgPts.toFixed(2) : 'N/A'}
+                  <br />
+                  Salary Position Average: ${avgSalaryPts ? avgSalaryPts.toFixed(2) : 'N/A'}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
