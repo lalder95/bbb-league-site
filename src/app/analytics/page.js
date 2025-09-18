@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ScatterChart, Scatter, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, ReferenceLine, LabelList } from 'recharts';
 
 // Utility functions
 const getAverage = arr => {
@@ -53,6 +53,8 @@ export default function Analytics() {
               team: values[33],
               curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
               ktcValue: values[34] ? parseInt(values[34], 10) : null,
+              relYear1Salary: parseFloat(values[15]) || 0,
+              relYear1Dead: parseFloat(values[24]) || 0,
             };
           });
         
@@ -72,31 +74,36 @@ export default function Analytics() {
     const counts = {};
     
     players.forEach(player => {
-      if (!investments[player.team]) {
-        investments[player.team] = {
-          team: player.team,
-          QB: 0,
-          RB: 0,
-          WR: 0,
-          TE: 0,
-          DeadCap: 0,
-        };
-        
-        counts[player.team] = {
-          QB: 0,
-          RB: 0,
-          WR: 0,
-          TE: 0,
-          DeadCap: 0,
-        };
-      }
-      
-      if (player.isActive) {
-        investments[player.team][player.position] += player.curYear;
-        counts[player.team][player.position]++;
-      } else {
-        investments[player.team].DeadCap += player.curYear;
-        counts[player.team].DeadCap++;
+      // Only count contracts with Relative Year 1 Salary > 0 OR Relative Year 1 Dead > 0
+      const relYear1Salary = parseFloat(player.relYear1Salary ?? player.curYear ?? 0);
+      const relYear1Dead = parseFloat(player.relYear1Dead ?? 0);
+
+      if (relYear1Salary > 0 || relYear1Dead > 0) {
+        if (!investments[player.team]) {
+          investments[player.team] = {
+            team: player.team,
+            QB: 0,
+            RB: 0,
+            WR: 0,
+            TE: 0,
+            DeadCap: 0,
+          };
+          counts[player.team] = {
+            QB: 0,
+            RB: 0,
+            WR: 0,
+            TE: 0,
+            DeadCap: 0,
+          };
+        }
+
+        if (player.isActive) {
+          investments[player.team][player.position] += player.curYear;
+          counts[player.team][player.position]++;
+        } else {
+          investments[player.team].DeadCap += player.curYear;
+          counts[player.team].DeadCap++;
+        }
       }
     });
 
@@ -141,6 +148,7 @@ export default function Analytics() {
   // Filter state
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('QB'); // Default to QB
+  const [hideZeroKTC, setHideZeroKTC] = useState(true); // <-- new toggle, ON by default
 
   // Data filtered by position only (and active, non-rookie)
   const positionFilteredData = players
@@ -149,7 +157,8 @@ export default function Analytics() {
       p.contractType !== 'Rookie' &&
       p.position === selectedPosition && // No "All" option, always filter by position
       !isNaN(parseFloat(p.curYear)) &&
-      !isNaN(parseFloat(p.ktcValue))
+      !isNaN(parseFloat(p.ktcValue)) &&
+      (!hideZeroKTC || parseFloat(p.ktcValue) > 0) // <-- hide 0 KTC for averages
     );
 
   // Reference lines use positionFilteredData (not affected by team filter)
@@ -162,20 +171,71 @@ export default function Analytics() {
       p.isActive &&
       p.contractType !== 'Rookie' &&
       (!selectedTeam || p.team === selectedTeam) &&
-      p.position === selectedPosition && // No "All" option
+      p.position === selectedPosition &&
       !isNaN(parseFloat(p.curYear)) &&
-      !isNaN(parseFloat(p.ktcValue))
+      !isNaN(parseFloat(p.ktcValue)) &&
+      (!hideZeroKTC || parseFloat(p.ktcValue) > 0) // <-- hide 0 KTC for plot
     )
-    .map(p => ({
-      ...p,
-      curYear: parseFloat(p.curYear),
-      ktcValue: parseFloat(p.ktcValue),
-      playerName: p.playerName || '',
-    }));
+    .map(p => {
+      const curYear = parseFloat(p.curYear);
+      const ktcValue = parseFloat(p.ktcValue);
+      // Log scale can't handle <= 0, so clamp small values to a tiny positive epsilon
+      const EPS_Y = 0.01; // salary
+      const EPS_X = 1;    // KTC
+      return {
+        ...p,
+        curYear: Math.max(curYear, EPS_Y),
+        ktcValue: Math.max(ktcValue, EPS_X),
+        playerName: p.playerName || '',
+      };
+    });
 
-  const medianKTC = getMedian(scatterData.map(p => p.ktcValue));
-  const medianSalary = getMedian(scatterData.map(p => p.curYear));
+  // Make X/Y domains symmetric around the averages in LOG space so lines cross in the center
+  // IMPORTANT: Use positionFilteredData (ignores team) so team changes don't affect axes
+  const xValsAll = positionFilteredData
+    .map(p => parseFloat(p.ktcValue))
+    .filter(v => v > 0);
+  const yValsAll = positionFilteredData
+    .map(p => parseFloat(p.curYear))
+    .filter(v => v > 0);
 
+  const computeCenteredLogDomain = (center, minVal, maxVal, pad = 1.1) => {
+    // center, minVal, maxVal must be > 0
+    const eps = 1e-6;
+    let c = Math.max(center || 0, eps);
+    const minP = Math.max(minVal || 0, eps);
+    const maxP = Math.max(maxVal || 0, c * 1.01);
+
+    // Distances in log space (base doesn't matter for ratios)
+    let up = Math.log(maxP / c);
+    let down = Math.log(c / minP);
+    let half = Math.max(up, down, Math.log(1.5)) * pad; // ensure non-zero spread
+
+    const lower = c / Math.exp(half);
+    const upper = c * Math.exp(half);
+    return [lower, upper];
+  };
+
+  // Safe centers for log scale (fallback to geometric mean if average <= 0)
+  const minX = xValsAll.length ? Math.min(...xValsAll) : 1;
+  const maxX = xValsAll.length ? Math.max(...xValsAll) : 10;
+  const minY = yValsAll.length ? Math.min(...yValsAll) : 0.01;
+  const maxY = yValsAll.length ? Math.max(...yValsAll) : 10;
+
+  const centerX = avgKTC > 0 ? avgKTC : Math.sqrt(minX * maxX);
+  const centerY = avgSalary > 0 ? avgSalary : Math.sqrt(minY * maxY);
+
+  const xDomain = xValsAll.length
+    ? computeCenteredLogDomain(centerX, minX, maxX, 1.08)
+    : [1, 10000];
+
+  const yDomain = yValsAll.length
+    ? computeCenteredLogDomain(centerY, minY, maxY, 1.12)
+    : [0.01, 100];
+
+  // Reference lines (must be > 0 on log scale)
+  const xRef = centerX > 0 ? centerX : xDomain[0] * Math.sqrt(xDomain[1] / xDomain[0]);
+  const yRef = centerY > 0 ? centerY : yDomain[0] * Math.sqrt(yDomain[1] / yDomain[0]);
 
   if (loading) {
     return (
@@ -230,17 +290,14 @@ export default function Analytics() {
                 data={data}
                 margin={{ top: isMobile ? 50 : 60, right: 10, left: isMobile ? 60 : 120, bottom: isMobile ? 40 : 50 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" horizontal={false} />
+                {/* Removed gridlines */}
+                {/* <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" horizontal={false} /> */}
                 <XAxis 
                   type="number"
                   domain={[0, 300]}
                   stroke="#fff"
-                  label={isMobile ? undefined : { 
-                    value: 'Cap Space ($)', 
-                    position: 'insideBottom',
-                    offset: -5,
-                    style: { fill: '#fff' }
-                  }}
+                  // Removed axis label
+                  // label={isMobile ? undefined : { value: 'Cap Space ($)', position: 'insideBottom', offset: -5, style: { fill: '#fff' } }}
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                 />
                 <YAxis 
@@ -256,11 +313,21 @@ export default function Analytics() {
                   verticalAlign="top" 
                   align="center" 
                 />
-                <Bar dataKey="QB" stackId="a" fill="#ef4444" />
-                <Bar dataKey="RB" stackId="a" fill="#3b82f6" />
-                <Bar dataKey="WR" stackId="a" fill="#22c55e" />
-                <Bar dataKey="TE" stackId="a" fill="#a855f7" />
-                <Bar dataKey="DeadCap" stackId="a" fill="#6b7280" />
+                <Bar dataKey="QB" stackId="a" fill="#ef4444">
+                  <LabelList dataKey="QB" content={renderCenteredLabel} fontSize={isMobile ? 10 : 13} />
+                </Bar>
+                <Bar dataKey="RB" stackId="a" fill="#3b82f6">
+                  <LabelList dataKey="RB" content={renderCenteredLabel} fontSize={isMobile ? 10 : 13} />
+                </Bar>
+                <Bar dataKey="WR" stackId="a" fill="#22c55e">
+                  <LabelList dataKey="WR" content={renderCenteredLabel} fontSize={isMobile ? 10 : 13} />
+                </Bar>
+                <Bar dataKey="TE" stackId="a" fill="#a855f7">
+                  <LabelList dataKey="TE" content={renderCenteredLabel} fontSize={isMobile ? 10 : 13} />
+                </Bar>
+                <Bar dataKey="DeadCap" stackId="a" fill="#6b7280">
+                  <LabelList dataKey="DeadCap" content={renderCenteredLabel} fontSize={isMobile ? 10 : 13} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -299,30 +366,48 @@ export default function Analytics() {
                 ))}
               </select>
             </div>
+            {/* New: hide players with 0 KTC */}
+            <label htmlFor="hideZeroKTC" className="flex items-center gap-2 cursor-pointer">
+              <input
+                id="hideZeroKTC"
+                type="checkbox"
+                className="accent-[#FF4B1F]"
+                checked={hideZeroKTC}
+                onChange={e => setHideZeroKTC(e.target.checked)}
+              />
+              <span>Hide Players with 0 KTC Score</span>
+            </label>
           </div>
           <div style={{ width: '100%', height: isMobile ? 400 : 600, position: 'relative' }}>
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart
                 margin={{ top: 20, right: 20, bottom: isMobile ? 80 : 100, left: 20 }}
               >
-                <CartesianGrid stroke="#ffffff20" />
+                {/* Removed gridlines */}
+                {/* <CartesianGrid stroke="#ffffff20" /> */}
                 <XAxis
                   type="number"
                   dataKey="ktcValue"
                   name="KTC"
                   stroke="#fff"
-                  domain={[0, 10000]} // <-- static X axis
-                  label={{ value: 'KTC Score', position: 'insideBottom', offset: -5, fill: '#fff' }}
-                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                  scale="log"
+                  domain={xDomain}
+                  allowDataOverflow={true}
+                  tick={false}            // hide number labels
+                  tickLine={false}        // hide tick marks
+                  label={{ value: 'KTC Score', position: 'insideBottom', offset: -5, fill: '#fff' }}  // keep axis label
                 />
                 <YAxis
                   type="number"
                   dataKey="curYear"
                   name="Salary"
                   stroke="#fff"
-                  domain={[0, 100]} // <-- static Y axis
-                  label={{ value: 'Current Salary ($)', angle: -90, position: 'insideLeft', fill: '#fff' }}
-                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                  scale="log"
+                  domain={yDomain}
+                  allowDataOverflow={true}
+                  tick={false}            // hide number labels
+                  tickLine={false}        // hide tick marks
+                  label={{ value: 'Current Salary ($)', angle: -90, position: 'insideLeft', fill: '#fff' }} // keep axis label
                 />
                 <Tooltip
                   cursor={{ strokeDasharray: '3 3' }}
@@ -342,8 +427,8 @@ export default function Analytics() {
                     return null;
                   }}
                 />
-                <ReferenceLine x={avgKTC} stroke="#fff" strokeDasharray="3 3" />
-                <ReferenceLine y={avgSalary} stroke="#fff" strokeDasharray="3 3" />
+                <ReferenceLine x={xRef} stroke="#fff" strokeDasharray="3 3" />
+                <ReferenceLine y={yRef} stroke="#fff" strokeDasharray="3 3" />
                 {/* Color map for positions */}
                 { [
                   { pos: 'QB', color: '#ef4444' },
@@ -450,5 +535,27 @@ export default function Analytics() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Custom label renderer for centered labels, hides label if bar is too small
+function renderCenteredLabel(props) {
+  const { x, y, width, height, value } = props;
+  // Minimum width for label to fit (adjust as needed)
+  const minWidth = 35;
+  if (width < minWidth || value === 0) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y + height / 2}
+      textAnchor="middle"
+      dominantBaseline="central"
+      fill="#fff"
+      fontWeight={700}
+      fontSize={props.fontSize || 13}
+      style={{ pointerEvents: 'none' }}
+    >
+      {`$${value.toFixed(1)}`}
+    </text>
   );
 }
