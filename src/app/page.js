@@ -599,8 +599,8 @@ export default function Home() {
                       <td className={`py-2 px-3 text-center font-semibold ${team.rosterId === leaderWins ? orange : ""}`}>{team.wins}</td>
                       <td className={`py-2 px-3 text-center font-semibold ${team.rosterId === leaderLosses ? orange : ""}`}>{team.losses}</td>
                       <td className={`py-2 px-3 text-center font-semibold ${team.rosterId === leaderTies ? orange : ""}`}>{team.ties}</td>
-                      <td className={`py-2 px-3 text-center ${team.rosterId === leaderPF ? orange : ""}`}>{(team.pointsFor / 100).toFixed(1)}</td>
-                      <td className={`py-2 px-3 text-center rounded-r-lg ${team.rosterId === leaderPA ? orange : ""}`}>{(team.pointsAgainst / 100).toFixed(1)}</td>
+                      <td className={`py-2 px-3 text-center ${team.rosterId === leaderPF ? orange : ""}`}>{(team.pointsFor / 1).toFixed(1)}</td>
+                      <td className={`py-2 px-3 text-center rounded-r-lg ${team.rosterId === leaderPA ? orange : ""}`}>{(team.pointsAgainst / 1).toFixed(1)}</td>
                     </tr>
                   ))}
                 </tbody>
