@@ -1598,17 +1598,17 @@ function WeeklyStats({ playerName, position, nflTeam, week, onGameStateChange, s
                     if (keyNorm && added.has(keyNorm)) return;
 
                     const headers = resolveStatHeaders(group);
-                    // Find this athlete within the specific stat group only.
-                    // If not found, DO NOT fall back to the current 'a' (prevents duping Receiving as Rushing).
-                    const athRow = (group?.athletes || []).find(ga => {
-                      const gaId = getAthleteId(ga);
-                      const gaName = getAthleteName(ga);
-                      const gaNorm = gaName ? normalizeLoose(gaName) : '';
-                      return (matchedAthleteId && gaId && gaId === matchedAthleteId) ||
-                             (!!gaNorm && gaNorm === matchedNameNorm);
-                    });
+                    // Try to find the matched athlete's row inside this group
+                    const athRow =
+                      (group?.athletes || []).find(ga => {
+                        const gaId = getAthleteId(ga);
+                        const gaName = getAthleteName(ga);
+                        const gaNorm = gaName ? normalizeLoose(gaName) : '';
+                        return (matchedAthleteId && gaId && gaId === matchedAthleteId) ||
+                               (!!gaNorm && gaNorm === matchedNameNorm);
+                      }) || a;
 
-                    if (!athRow) return; // skip this group; player has no stats here
+                   
 
                     const rowStats = athRow?.stats || athRow?.statistics || [];
                     if (rowStats && rowStats.length) {
@@ -1907,45 +1907,57 @@ function AlignedStarters({
     expanded,
     onToggle
   }) {
-    if (!p) {
-      return <div className="bg-black/20 rounded px-2 py-2 min-h-[112px] border border-white/5" />;
-    }
-
     // Effect only depends on the game state flag we pass
     const effectClass = useMemo(
       () => (gs === 'in' ? 'animate-swell' : gs === 'pre' ? 'grayscale' : ''),
       [gs]
     );
 
+    // Guard against missing player
     const scoreText =
-      typeof p.score === 'number'
+      typeof p?.score === 'number'
         ? p.score.toFixed(2)
-        : (p.nflTeam || p.teamDisplayName || '--');
+        : (p?.nflTeam || p?.teamDisplayName || '--');
 
     // Memoize the card so it never rebuilds unless IDs or salary bits change
-    const cardEl = useMemo(() => (
-      <div className="flex flex-col items-center">
-        <button
-          type="button"
-          onClick={() => setExpandedPlayerId(p.id)}
-          className={`rounded-md overflow-hidden ${effectClass} focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] transition-transform`}
-          title="Open player card"
-        >
-          <MemoPlayerProfileCard
-            playerId={p.id}
-            contracts={null}
-            expanded={false}
-            className="w-20 h-20"
-            teamName={teamName}
-          />
-        </button>
-        {formatSalaryShort(p.salary, p.isDeadCap) && (
-          <div className="mt-1 text-[13px] leading-none text-white/80 text-center">
-            {formatSalaryShort(p.salary, p.isDeadCap)}
+    const cardEl = useMemo(() => {
+      if (!p) {
+        // Placeholder when player is missing
+        return (
+          <div className="flex flex-col items-center">
+            <div className="w-20 h-20 rounded-md bg-white/5 border border-white/10" />
           </div>
-        )}
-      </div>
-    ), [effectClass, p.id, p.salary, p.isDeadCap, teamName]);
+        );
+      }
+      return (
+        <div className="flex flex-col items-center">
+          <button
+            type="button"
+            onClick={() => setExpandedPlayerId(p.id)}
+            className={`rounded-md overflow-hidden ${effectClass} focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] transition-transform`}
+            title="Open player card"
+          >
+            <MemoPlayerProfileCard
+              playerId={p.id}
+              contracts={null}
+              expanded={false}
+              className="w-20 h-20"
+              teamName={teamName}
+            />
+          </button>
+          {formatSalaryShort(p.salary, p.isDeadCap) && (
+            <div className="mt-1 text-[13px] leading-none text-white/80 text-center">
+              {formatSalaryShort(p.salary, p.isDeadCap)}
+            </div>
+          )}
+        </div>
+      );
+  }, [effectClass, p, teamName]);
+
+    // After hooks are declared, it's now safe to early-return for missing player
+    if (!p) {
+      return <div className="bg-black/20 rounded px-2 py-2 min-h-[112px] border border-white/5" />;
+    }
 
     if (isMobile) {
       return (
