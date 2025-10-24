@@ -490,7 +490,7 @@ export default function Home() {
             </div>
             <div className="bg-black/30 p-3 md:p-4 rounded-lg">
               <h4 className="font-semibold mb-2">Trade Calculator</h4>
-              <p className="text-sm text-white/70">Explore potential trades and plan your team's future.</p>
+              <p className="text-sm text-white/70">Explore potential trades and plan your team&apos;s future.</p>
               <Link href="/trade" className="text-[#FF4B1F] text-sm mt-2 inline-block hover:underline">
                 Open Trade Calculator →
               </Link>
@@ -1598,17 +1598,17 @@ function WeeklyStats({ playerName, position, nflTeam, week, onGameStateChange, s
                     if (keyNorm && added.has(keyNorm)) return;
 
                     const headers = resolveStatHeaders(group);
-                    // Try to find the matched athlete's row inside this group
-                    const athRow =
-                      (group?.athletes || []).find(ga => {
-                        const gaId = getAthleteId(ga);
-                        const gaName = getAthleteName(ga);
-                        const gaNorm = gaName ? normalizeLoose(gaName) : '';
-                        return (matchedAthleteId && gaId && gaId === matchedAthleteId) ||
-                               (!!gaNorm && gaNorm === matchedNameNorm);
-                      }) || a;
+                    // Find this athlete within the specific stat group only.
+                    // If not found, DO NOT fall back to the current 'a' (prevents duping Receiving as Rushing).
+                    const athRow = (group?.athletes || []).find(ga => {
+                      const gaId = getAthleteId(ga);
+                      const gaName = getAthleteName(ga);
+                      const gaNorm = gaName ? normalizeLoose(gaName) : '';
+                      return (matchedAthleteId && gaId && gaId === matchedAthleteId) ||
+                             (!!gaNorm && gaNorm === matchedNameNorm);
+                    });
 
-                   
+                    if (!athRow) return; // skip this group; player has no stats here
 
                     const rowStats = athRow?.stats || athRow?.statistics || [];
                     if (rowStats && rowStats.length) {
@@ -1636,8 +1636,13 @@ function WeeklyStats({ playerName, position, nflTeam, week, onGameStateChange, s
                     }
                   }
 
-                  // Fallback: if nothing collected, at least include the current group's row
-                  if (groupsOut.length === 0) {
+                  // Fallback: only add if the group is not already present and the group name matches a desired group
+                                    if (
+                    groupsOut.length === 0 &&
+                    statGroup &&
+                    !Array.isArray(wanted) &&
+                    !groupsOut.some(g => normalizeGroupName(g.statType) === normalizeGroupName(statGroup?.name || statGroup?.displayName))
+                  ) {
                     const rawStats = a?.stats || a?.statistics || [];
                     if (rawStats && rawStats.length) {
                       const headers = resolveStatHeaders(statGroup);
