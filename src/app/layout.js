@@ -4,7 +4,6 @@ import Navigation from '@/components/Navigation';
 import ConditionalNewsTicker from '@/components/ConditionalNewsTicker';
 import { Providers } from './providers';
 import "./globals.css";
-import Head from 'next/head';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,7 +23,6 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <Head />
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#001A2B] min-h-screen pb-16`}>
         <Providers>
           <Navigation />

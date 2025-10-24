@@ -38,6 +38,22 @@ export default function Home() {
   // ADD THIS LINE for player card modal state
   const [expandedPlayerId, setExpandedPlayerId] = useState(null);
   const [playerGameStates, setPlayerGameStates] = useState({});
+  // Announcements
+  const [announcements, setAnnouncements] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/announcements', { cache: 'no-store' });
+        const data = await res.json();
+        if (!cancelled) setAnnouncements(Array.isArray(data.announcements) ? data.announcements : []);
+      } catch {
+        if (!cancelled) setAnnouncements([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [isMobile, setIsMobile] = useState(false);
   const [teamAvatars, setTeamAvatars] = useState({}); // NEW: for expanded card avatar support
 
@@ -1054,6 +1070,35 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
           />
         </div>
       </div>
+      
+      {announcements.length > 0 && (
+        <div className="bg-[#FF4B1F] border-2 border-[#001A2B] mb-3 md:mb-4">
+          <div className={`max-w-7xl mx-auto ${isMobile ? 'p-3' : 'p-4'} space-y-2`}>
+            {announcements.map((a, idx) => (
+              <div
+                key={a._id}
+                className={`px-2 py-1 ${idx > 0 ? 'border-t border-[#001A2B]/40 mt-2 pt-2' : ''}`}
+              >
+                <div className="flex flex-col items-center text-center gap-2">
+                  <div className="text-black font-extrabold leading-snug text-xl md:text-2xl">
+                    {a.message}
+                  </div>
+                  {a.link && (
+                    <a
+                      href={a.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-black/40 hover:bg-black/50 text-white font-semibold border border-black/30 shadow-sm"
+                    >
+                      Click Here
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent">
         <div className={`max-w-7xl mx-auto ${isMobile ? 'p-3' : 'p-6'}`}>

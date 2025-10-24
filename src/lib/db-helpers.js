@@ -1,5 +1,6 @@
 // src/lib/db-helpers.js
 import clientPromise from './mongodb';
+import { ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
 
 // Get the MongoDB database
@@ -155,6 +156,101 @@ export async function getContractChanges() {
     const changes = db.collection('contractChanges');
     const allChanges = await changes.find({}).toArray();
     return allChanges;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Announcements helpers
+async function getAnnouncementsCollection() {
+  const db = await getDatabase();
+  return db.collection('announcements');
+}
+
+export async function addAnnouncement({ message, link, startAt, endAt, createdBy }) {
+  try {
+    if (!message || !startAt || !endAt) {
+      return { success: false, error: 'message, startAt, and endAt are required' };
+    }
+    const startDate = new Date(startAt);
+    const endDate = new Date(endAt);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return { success: false, error: 'Invalid startAt or endAt datetime' };
+    }
+    const col = await getAnnouncementsCollection();
+    const doc = {
+      message: String(message),
+      link: link ? String(link) : '',
+      startAt: startDate,
+      endAt: endDate,
+      createdAt: new Date(),
+      createdBy: createdBy || null,
+    };
+    const result = await col.insertOne(doc);
+    return { success: true, insertedId: result.insertedId, announcement: { ...doc, _id: result.insertedId } };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getActiveAnnouncements(now = new Date()) {
+  try {
+    const col = await getAnnouncementsCollection();
+    const list = await col
+      .find({ startAt: { $lte: now }, endAt: { $gte: now } })
+      .sort({ startAt: -1 })
+      .toArray();
+    return list;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getAllAnnouncements() {
+  try {
+    const col = await getAnnouncementsCollection();
+    const list = await col.find({}).sort({ startAt: -1 }).toArray();
+    return list;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateAnnouncement(id, { message, link, startAt, endAt }) {
+  try {
+    if (!id) return { success: false, error: 'id is required' };
+    const _id = typeof id === 'string' ? new ObjectId(id) : id;
+    const col = await getAnnouncementsCollection();
+    const update = {};
+    if (message !== undefined) update.message = String(message);
+    if (link !== undefined) update.link = link ? String(link) : '';
+    if (startAt !== undefined) {
+      const d = new Date(startAt);
+      if (isNaN(d.getTime())) return { success: false, error: 'Invalid startAt' };
+      update.startAt = d;
+    }
+    if (endAt !== undefined) {
+      const d = new Date(endAt);
+      if (isNaN(d.getTime())) return { success: false, error: 'Invalid endAt' };
+      update.endAt = d;
+    }
+    if (Object.keys(update).length === 0) {
+      return { success: false, error: 'No fields to update' };
+    }
+    const result = await col.updateOne({ _id }, { $set: update });
+    return { success: true, modifiedCount: result.modifiedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteAnnouncement(id) {
+  try {
+    if (!id) return { success: false, error: 'id is required' };
+    const _id = typeof id === 'string' ? new ObjectId(id) : id;
+    const col = await getAnnouncementsCollection();
+    const result = await col.deleteOne({ _id });
+    return { success: true, deletedCount: result.deletedCount };
   } catch (error) {
     return { success: false, error: error.message };
   }

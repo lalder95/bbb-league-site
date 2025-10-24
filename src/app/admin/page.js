@@ -115,6 +115,13 @@ export default function AdminPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Link 
+            href="/admin/announcements" 
+            className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
+          >
+            <h2 className="text-xl font-bold mb-2">Announcements</h2>
+            <p className="text-white/70">Create banners for the home page</p>
+          </Link>
+          <Link 
             href="/admin/users" 
             className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
           >
