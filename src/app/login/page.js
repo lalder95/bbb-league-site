@@ -1,11 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { signIn, useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function Login() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrlParam = searchParams?.get('callbackUrl');
+  const callbackUrl = callbackUrlParam || '/';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -28,11 +31,11 @@ export default function Login() {
       } 
       // Only redirect if passwordChangeRequired is explicitly false
       else if (session.user?.passwordChangeRequired === false) {
-        console.log("No password change required, redirecting to My Team page");
-        router.push('/my-team');
+        console.log("No password change required, redirecting to callbackUrl:", callbackUrl);
+        router.push(callbackUrl);
       }
     }
-  }, [session, status, router]);
+  }, [session, status, router, callbackUrl]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -44,6 +47,7 @@ export default function Login() {
         username,
         password,
         redirect: false,
+        callbackUrl,
       });
   
       console.log("SignIn result:", result || 'No result returned');
@@ -112,12 +116,14 @@ export default function Login() {
       signIn('credentials', {
         username,
         password: newPassword,
-        redirect: false
+        redirect: false,
+        callbackUrl,
       }).then((result) => {
-        if (result.error) {
+        if (result?.error) {
           throw new Error(result.error);
         }
-        router.push('/');
+        // After successful re-authentication, go back to the original page
+        router.push(callbackUrl);
         router.refresh();
       });
     } catch (err) {

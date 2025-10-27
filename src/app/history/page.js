@@ -3,6 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Image from 'next/image'; // Add this import
+import dynamic from 'next/dynamic';
+
+const BarChartRace = dynamic(() => import('@/components/history/BarChartRace'), { ssr: false });
 
 export default function LeagueHistory() {
   const [loading, setLoading] = useState(true);
@@ -22,6 +25,7 @@ export default function LeagueHistory() {
   });
   const [selectedMatchup, setSelectedMatchup] = useState(null); // { teamId, opponentId }
   const [matchupList, setMatchupList] = useState([]); // Array of matchup objects
+  const [weeklyFrames, setWeeklyFrames] = useState([]); // For weekly bar chart race
 
   // Add toggles for regular season and playoffs
   const [showRegular, setShowRegular] = useState(true);
@@ -115,6 +119,7 @@ export default function LeagueHistory() {
     }
     
     findBBBLeagues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Process data from all leagues to build the head-to-head matrix
@@ -399,6 +404,9 @@ export default function LeagueHistory() {
       
       // Track all-time records while processing matchups
       trackLeagueRecords(matchupData);
+  // Build weekly frames for bar chart race (season-week granularity)
+  const frames = buildWeeklyFrames(matchupData, teamsArray);
+  setWeeklyFrames(frames);
       
       // Save the teams array
       setHeadToHeadMatrix(matrix);
@@ -413,6 +421,54 @@ export default function LeagueHistory() {
       console.error('Error processing league data:', err);
       setError(err.message);
       setLoading(false);
+    }
+  }
+
+  // Build season-week frames for cumulative points race
+  function buildWeeklyFrames(matchupData, teamsArray) {
+    try {
+      const seasonWeekMap = new Map(); // key: `${season}-${week}` -> Map<userId, pointsThisWeek>
+
+      matchupData.forEach(m => {
+        if (!m?.user1 || !m?.user2) return;
+        // Deduplicate mirrored entries by only counting when user1 < user2
+        const u1 = String(m.user1);
+        const u2 = String(m.user2);
+        if (u1 > u2) return; // skip mirrored direction
+
+        const key = `${m.season}-${m.week}`;
+        if (!seasonWeekMap.has(key)) seasonWeekMap.set(key, new Map());
+        const perUser = seasonWeekMap.get(key);
+
+        const s1 = typeof m.score1 === 'number' ? m.score1 : (typeof m.score1 === 'string' ? parseFloat(m.score1) : 0);
+        const s2 = typeof m.score2 === 'number' ? m.score2 : (typeof m.score2 === 'string' ? parseFloat(m.score2) : 0);
+
+        perUser.set(m.user1, (perUser.get(m.user1) || 0) + (isFinite(s1) ? s1 : 0));
+        perUser.set(m.user2, (perUser.get(m.user2) || 0) + (isFinite(s2) ? s2 : 0));
+      });
+
+      // Sort keys by season asc, then week asc
+      const keys = Array.from(seasonWeekMap.keys()).sort((a, b) => {
+        const [sa, wa] = a.split('-').map(Number);
+        const [sb, wb] = b.split('-').map(Number);
+        if (sa !== sb) return sa - sb;
+        return wa - wb;
+      });
+
+      const frames = keys.map(key => {
+        const [season, week] = key.split('-').map(Number);
+        const perUserMap = seasonWeekMap.get(key);
+        const perUser = {};
+        teamsArray.forEach(t => {
+          perUser[t.user_id] = perUserMap.get(t.user_id) || 0;
+        });
+        return { season, week, perUser };
+      });
+
+      return frames;
+    } catch (e) {
+      console.warn('Failed building weekly frames:', e);
+      return [];
     }
   }
   
@@ -764,7 +820,7 @@ export default function LeagueHistory() {
         <h1 className="text-3xl font-bold text-[#FF4B1F] mb-4">Error Loading League History</h1>
         <p className="mb-4">{error}</p>
         <p className="text-sm text-white/70 mb-8">
-          If you're setting up this site for the first time, make sure to update the USER_ID in the Home component with your Sleeper user ID.
+          If you&apos;re setting up this site for the first time, make sure to update the USER_ID in the Home component with your Sleeper user ID.
         </p>
         
         {/* Manual League ID Input */}
@@ -1157,6 +1213,25 @@ export default function LeagueHistory() {
               </span>
             </div>
           </div>
+        </div>
+
+        {/* All-Time Points: Bar Chart Race */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">All-Time Points Race</h2>
+          {(weeklyFrames.length > 0 || (seasonPerformance.length > 0 && teams.length > 0)) ? (
+            <BarChartRace
+              seasons={seasonPerformance.map(d => d.season)}
+              seasonPerformance={seasonPerformance}
+              weeklyFrames={weeklyFrames}
+              teams={teams}
+              topN={Math.min(12, teams.length)}
+              stepMs={1200}
+            />
+          ) : (
+            <div className="bg-black/30 rounded-lg border border-white/10 p-6 text-white/60">
+              No season data available for the bar chart race.
+            </div>
+          )}
         </div>
         
         {/* 
