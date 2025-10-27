@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+// Removed Recharts import as the Season-by-Season Performance chart section was removed
 import Image from 'next/image'; // Add this import
 import dynamic from 'next/dynamic';
 
@@ -16,8 +16,7 @@ export default function LeagueHistory() {
   const [currentTeamId, setCurrentTeamId] = useState(null);
   const [loadProgress, setLoadProgress] = useState({ stage: 'Initializing', percentage: 0 });
   const [seasonPerformance, setSeasonPerformance] = useState([]);
-  const [selectedChartType, setSelectedChartType] = useState('winPct');
-  const [playoffData, setPlayoffData] = useState({});
+  // Removed selectedChartType and playoffData state as we removed the performance chart section
   const [leagueRecords, setLeagueRecords] = useState({
     highestScore: { score: 0, team: '', week: 0, season: '' },
     highestSeasonTotal: { points: 0, team: '', season: '' },
@@ -528,7 +527,6 @@ export default function LeagueHistory() {
     try {
       // Prepare data structure for each team across all seasons
       const seasonData = {};
-      const playoffInfo = {};
       
       teamsData.forEach(team => {
         seasonData[team.user_id] = {
@@ -538,13 +536,6 @@ export default function LeagueHistory() {
           seasons: {}
         };
         
-        playoffInfo[team.user_id] = {
-          user_id: team.user_id,
-          display_name: team.display_name,
-          playoffAppearances: 0,
-          championships: 0,
-          runnerUps: 0
-        };
         
         seasons.forEach(season => {
           seasonData[team.user_id].seasons[season] = {
@@ -607,15 +598,12 @@ export default function LeagueHistory() {
               // Check if team made playoffs
               if (roster.settings?.playoff_rank) {
                 userSeason.playoffAppearance = true;
-                playoffInfo[roster.owner_id].playoffAppearances++;
                 
                 // Check for championship/runner-up
                 if (roster.settings.playoff_rank === 1) {
                   userSeason.championship = true;
-                  playoffInfo[roster.owner_id].championships++;
                 } else if (roster.settings.playoff_rank === 2) {
                   userSeason.runnerUp = true;
-                  playoffInfo[roster.owner_id].runnerUps++;
                 }
               }
             } else {
@@ -657,8 +645,7 @@ export default function LeagueHistory() {
         setSeasonPerformance(chartData);
       }
       
-      setPlayoffData(playoffInfo);
-      console.log('Season performance data generated successfully');
+  console.log('Season performance data generated successfully');
       
     } catch (err) {
       console.error('Error processing real season data:', err);
@@ -1035,185 +1022,7 @@ export default function LeagueHistory() {
         =============================================
         */}
         
-        {/* Season Performance Charts */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4">Season-by-Season Performance</h2>
-          
-          <div className="flex flex-wrap gap-4 mb-6">
-            <button
-              onClick={() => setSelectedChartType('winPct')}
-              className={`px-4 py-2 rounded ${
-                selectedChartType === 'winPct' 
-                  ? 'bg-[#FF4B1F] text-white' 
-                  : 'bg-black/30 text-white/70 hover:bg-black/40'
-              }`}
-            >
-              Win Percentage
-            </button>
-            <button
-              onClick={() => setSelectedChartType('points')}
-              className={`px-4 py-2 rounded ${
-                selectedChartType === 'points' 
-                  ? 'bg-[#FF4B1F] text-white' 
-                  : 'bg-black/30 text-white/70 hover:bg-black/40'
-              }`}
-            >
-              Points Scored
-            </button>
-          </div>
-          
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-            <div className="h-96">
-              {seasonPerformance.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={seasonPerformance}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
-                    <XAxis 
-                      dataKey="season" 
-                      stroke="#fff"
-                      style={{ fontSize: '0.8rem' }}
-                    />
-                    <YAxis 
-                      stroke="#fff"
-                      style={{ fontSize: '0.8rem' }}
-                      domain={selectedChartType === 'winPct' ? [0, 1] : ['auto', 'auto']}
-                      tickFormatter={selectedChartType === 'winPct' 
-                        ? (value) => `${(value * 100).toFixed(0)}%` 
-                        : (value) => value
-                      }
-                    />
-                    <Tooltip 
-                      formatter={(value, name) => {
-                        const userId = name.split('_')[0];
-                        const teamName = teams.find(t => t.user_id === userId)?.display_name || 'Unknown';
-                        return [
-                          selectedChartType === 'winPct' 
-                            ? `${(value * 100).toFixed(1)}%` 
-                            : value.toFixed(1),
-                          teamName
-                        ];
-                      }}
-                      labelFormatter={(value) => `Season ${value}`}
-                      contentStyle={{ backgroundColor: '#001A2B', border: '1px solid rgba(255,255,255,0.1)' }}
-                    />
-                    <Legend 
-                      formatter={(value) => {
-                        const parts = value.split('_');
-                        const userId = parts[0];
-                        if (parts[1] !== selectedChartType) return null;
-                        return teams.find(t => t.user_id === userId)?.display_name || 'Unknown';
-                      }}
-                    />
-                    
-                    {teams.map((team, index) => {
-                      // Get team color based on index
-                      const teamColors = [
-                        '#FF4B1F', '#3b82f6', '#22c55e', '#a855f7', '#eab308',
-                        '#ec4899', '#14b8a6', '#f97316', '#64748b', '#8b5cf6'
-                      ];
-                      
-                      const color = teamColors[index % teamColors.length];
-                      
-                      return (
-                        <Line
-                          key={`${team.user_id}_${selectedChartType}`}
-                          type="monotone"
-                          dataKey={`${team.user_id}_${selectedChartType}`}
-                          name={`${team.user_id}_${selectedChartType}`}
-                          stroke={color}
-                          strokeWidth={2}
-                          dot={(props) => {
-                            if (!props || !props.payload) return null;
-                            
-                            const { cx, cy, index } = props;
-                            const season = seasonPerformance[index]?.season;
-                            const userId = team.user_id;
-                            
-                            // Add special marker for playoff/championship
-                            const isPlayoff = seasonPerformance[index]?.[`${userId}_playoff`];
-                            const isChampion = seasonPerformance[index]?.[`${userId}_champion`];
-                            const isRunnerUp = seasonPerformance[index]?.[`${userId}_runnerUp`];
-                            
-                            if (!cx || !cy) return null;
-                            
-                            if (isChampion) {
-                              return (
-                                <svg x={cx - 6} y={cy - 6} width={12} height={12}>
-                                  <polygon 
-                                    points="6,0 7.5,4.5 12,4.5 8.25,7.5 9.75,12 6,9 2.25,12 3.75,7.5 0,4.5 4.5,4.5" 
-                                    fill="#ffd700" 
-                                  />
-                                </svg>
-                              );
-                            } else if (isRunnerUp) {
-                              return (
-                                <svg x={cx - 6} y={cy - 6} width={12} height={12}>
-                                  <polygon 
-                                    points="6,0 7.5,4.5 12,4.5 8.25,7.5 9.75,12 6,9 2.25,12 3.75,7.5 0,4.5 4.5,4.5" 
-                                    fill="#c0c0c0" 
-                                  />
-                                </svg>
-                              );
-                            } else if (isPlayoff) {
-                              return (
-                                <circle 
-                                  cx={cx} 
-                                  cy={cy} 
-                                  r={4}
-                                  stroke={color}
-                                  strokeWidth={2}
-                                  fill="#001A2B" 
-                                />
-                              );
-                            }
-                            
-                            return (
-                              <circle 
-                                cx={cx} 
-                                cy={cy} 
-                                r={3}
-                                fill={color} 
-                              />
-                            );
-                          }}
-                          activeDot={{ r: 6 }}
-                        />
-                      );
-                    })}
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-white/50">
-                  No performance data available
-                </div>
-              )}
-            </div>
-            
-            <div className="mt-4 text-sm text-white/70">
-              <span className="inline-flex items-center mr-4">
-                <svg className="w-4 h-4 mr-1" viewBox="0 0 16 16">
-                  <circle cx="8" cy="8" r="4" fill="#001A2B" stroke="#ffffff80" strokeWidth="2" />
-                </svg>
-                Playoff Appearance
-              </span>
-              <span className="inline-flex items-center mr-4">
-                <svg className="w-4 h-4 mr-1" viewBox="0 0 16 16">
-                  <polygon points="8,2 9.8,6.2 14.2,6.2 10.7,9 12,13.2 8,10.4 4,13.2 5.3,9 1.8,6.2 6.2,6.2" fill="#ffd700" />
-                </svg>
-                League Champion
-              </span>
-              <span className="inline-flex items-center">
-                <svg className="w-4 h-4 mr-1" viewBox="0 0 16 16">
-                  <polygon points="8,2 9.8,6.2 14.2,6.2 10.7,9 12,13.2 8,10.4 4,13.2 5.3,9 1.8,6.2 6.2,6.2" fill="#c0c0c0" />
-                </svg>
-                Runner-up
-              </span>
-            </div>
-          </div>
-        </div>
+        {/* Season Performance Charts section removed per request */}
 
         {/* All-Time Points: Bar Chart Race */}
         <div className="mb-8">
