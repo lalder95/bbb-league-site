@@ -120,21 +120,25 @@ export default function BarChartRace({
     return { rows: [], maxValue: 0, label: '' };
   }, [idx, weeklyFrames, seasonPerformance, seasons, teamsUsed, teamMap, topN, mode]);
 
-  // Auto-advance timer
+  // Auto-advance timer (with 5s hold at end before loop restart)
   useEffect(() => {
     const frameCount = weeklyFrames?.length ? weeklyFrames.length : (seasons?.length || 0);
     if (!playing || frameCount === 0) return;
     const maxIdx = frameCount - 1;
     if (!loop && idx >= maxIdx) return; // stop at end when not looping
 
+    const atEnd = idx >= maxIdx;
+    const delay = atEnd && loop ? 5000 : Math.max(200, stepMs / (speed || 1));
+
     timerRef.current = setTimeout(() => {
       setIdx(prev => {
-        if (prev >= maxIdx) {
+        const wasEnd = prev >= maxIdx;
+        if (wasEnd) {
           return loop ? 0 : maxIdx;
         }
         return Math.min(prev + 1, maxIdx);
       });
-    }, Math.max(200, stepMs / (speed || 1)));
+    }, delay);
     return () => clearTimeout(timerRef.current);
   }, [playing, idx, seasons?.length, weeklyFrames?.length, stepMs, speed, loop]);
 
@@ -352,7 +356,9 @@ export default function BarChartRace({
           min={0}
           max={Math.max(0, (weeklyFrames?.length ? weeklyFrames.length : seasons.length) - 1)}
           value={idx}
-          onChange={(e) => setIdx(parseInt(e.target.value))}
+          onMouseDown={() => { setPlaying(false); if (timerRef.current) clearTimeout(timerRef.current); }}
+          onTouchStart={() => { setPlaying(false); if (timerRef.current) clearTimeout(timerRef.current); }}
+          onChange={(e) => { setPlaying(false); setIdx(parseInt(e.target.value)); }}
           className="w-full"
         />
         <div className="flex justify-between text-xs text-white/50 mt-1">
