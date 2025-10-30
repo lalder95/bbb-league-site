@@ -1366,7 +1366,7 @@ function BankerFeed({ tweets }) {
           <div className="text-xs text-gray-400 pl-1 pt-1 flex items-center gap-2">
             {tweet._timestamp ? formatTweetDate(tweet._timestamp) : ""}
             <span>·</span>
-            <span className="text-blue-400 font-medium">bAnker for iPhone</span>
+            <span className="text-blue-400 font-medium">bAnker for Mobile</span>
           </div>
           {tweet._parentNotes ? (
             <div className="text-[11px] text-white/50 italic pl-1">
