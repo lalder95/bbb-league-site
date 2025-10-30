@@ -104,6 +104,22 @@ export default function Navigation() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Lock background scroll when mobile menu is open
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPaddingRight;
+    };
+  }, [isMenuOpen]);
+
   const navGroups = [
     {
       type: 'single',
@@ -251,67 +267,78 @@ export default function Navigation() {
           </div>
         </div>
 
-        {/* Mobile Navigation */}
-        <div className="md:hidden overflow-hidden transition-[max-height,opacity] duration-300" style={{ maxHeight: isMenuOpen ? '1000px' : '0px', opacity: isMenuOpen ? 1 : 0 }}>
-          <div className="px-2 pt-2 pb-3 space-y-1 bg-black/30 backdrop-blur-md rounded-lg border border-white/10">
-              {navGroups.map((group, index) => (
-                <div key={index}>
-                  {group.type === 'single' ? (
-                    group.links.map(({ href, label }) => (
-                      <Link
-                        key={href}
-                        href={href}
-                        className={`
-                          ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
-                          block px-3 py-2 rounded-md text-base transition-all duration-300 ease-in-out
-                        `}
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        {label}
-                      </Link>
-                    ))
-                  ) : (
-                    <div className="border-b border-white/10 pb-2 mb-2">
-                      <div className="px-3 py-2 text-white/70 font-semibold">{group.title}</div>
-                      {group.links.map(({ href, label }) => (
+        {/* Mobile Navigation Overlay */}
+        {isMenuOpen && (
+          <div className="fixed inset-0 z-40 md:hidden">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setIsMenuOpen(false)}
+              aria-hidden
+            />
+            {/* Scrollable Menu Panel */}
+            <div className="absolute top-16 inset-x-0 bottom-0 overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-md border-t border-white/10">
+              <div className="px-3 py-3 space-y-1">
+                {navGroups.map((group, index) => (
+                  <div key={index}>
+                    {group.type === 'single' ? (
+                      group.links.map(({ href, label }) => (
                         <Link
                           key={href}
                           href={href}
                           className={`
                             ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
-                            block px-4 py-2 rounded-md text-base ml-2 transition-all duration-300 ease-in-out
+                            block px-3 py-2 rounded-md text-base transition-all duration-300 ease-in-out
                           `}
                           onClick={() => setIsMenuOpen(false)}
                         >
                           {label}
                         </Link>
-                      ))}
-                    </div>
+                      ))
+                    ) : (
+                      <div className="border-b border-white/10 pb-2 mb-2">
+                        <div className="px-3 py-2 text-white/70 font-semibold">{group.title}</div>
+                        {group.links.map(({ href, label }) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={`
+                              ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
+                              block px-4 py-2 rounded-md text-base ml-2 transition-all duration-300 ease-in-out
+                            `}
+                            onClick={() => setIsMenuOpen(false)}
+                          >
+                            {label}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Auth Links for Mobile */}
+                <div className="border-t border-white/10 pt-2 mt-2">
+                  {session ? (
+                    <button
+                      onClick={() => signOut({ callbackUrl: '/' })}
+                      className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                    >
+                      Logout
+                    </button>
+                  ) : (
+                    <Link
+                      href="/login"
+                      className="block px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Login
+                    </Link>
                   )}
                 </div>
-              ))}
-
-              {/* Auth Links for Mobile */}
-              <div className="border-t border-white/10 pt-2 mt-2">
-                {session ? (
-                  <button
-                    onClick={() => signOut({ callbackUrl: '/' })}
-                    className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
-                  >
-                    Logout
-                  </button>
-                ) : (
-                  <Link
-                    href="/login"
-                    className="block px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Login
-                  </Link>
-                )}
               </div>
             </div>
-        </div>
+          </div>
+        )}
       </div>
     </nav>
   );

@@ -33,6 +33,11 @@ export default function HoldoutsPage() {
   // Team display/avatar
   const [teamAvatars, setTeamAvatars] = useState({}); // display_name -> avatar id
   const [teamNameMap, setTeamNameMap] = useState({}); // playerId -> display_name
+  const [owners, setOwners] = useState([]); // [{ owner_id, display_name, avatar }]
+  const [rostersData, setRostersData] = useState([]); // raw rosters
+  const [selectedOwnerId, setSelectedOwnerId] = useState('');
+  const [selectedDisplayName, setSelectedDisplayName] = useState('');
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState([]); // array of playerIds for selected team
 
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'ppg', direction: 'desc' });
@@ -179,13 +184,48 @@ export default function HoldoutsPage() {
         const avatarMap = {}; const userNameById = {};
         users.forEach(u => { const d = u?.display_name || ''; avatarMap[d] = u?.avatar || null; userNameById[u?.user_id] = d; });
         const pToTeam = {};
-        rosters.forEach(r => { const owner = userNameById[r?.owner_id] || ''; (r?.players || []).forEach(pid => { pToTeam[String(pid)] = owner; }); });
-        if (!cancelled) { setTeamAvatars(avatarMap); setTeamNameMap(pToTeam); }
-      } catch { if (!cancelled) { setTeamAvatars({}); setTeamNameMap({}); } }
+        rosters.forEach(r => {
+          const owner = userNameById[r?.owner_id] || '';
+          (r?.players || []).forEach(pid => { pToTeam[String(pid)] = owner; });
+        });
+
+        const ownerList = rosters.map(r => ({
+          owner_id: String(r?.owner_id || ''),
+          display_name: userNameById[r?.owner_id] || 'Unknown',
+          avatar: users.find(u => String(u?.user_id) === String(r?.owner_id))?.avatar || null,
+        }))
+        // de-duplicate by owner_id (in case of multiple rosters edges)
+        .filter((v, i, a) => a.findIndex(x => x.owner_id === v.owner_id) === i)
+        .sort((a,b) => String(a.display_name).localeCompare(String(b.display_name)));
+
+        // pick default selection if none
+        let defaultOwnerId = selectedOwnerId;
+        if (!defaultOwnerId && ownerList.length) defaultOwnerId = ownerList[0].owner_id;
+        const defaultDisplay = ownerList.find(o => o.owner_id === defaultOwnerId)?.display_name || '';
+
+        if (!cancelled) {
+          setTeamAvatars(avatarMap);
+          setTeamNameMap(pToTeam);
+          setOwners(ownerList);
+          setRostersData(rosters);
+          setSelectedOwnerId(defaultOwnerId || '');
+          setSelectedDisplayName(defaultDisplay);
+        }
+      } catch { if (!cancelled) { setTeamAvatars({}); setTeamNameMap({}); setOwners([]); setRostersData([]); } }
     }
     fetchTeams();
     return () => { cancelled = true; };
   }, [leagueId]);
+
+  // Update selected player's list when selection or rosters change
+  useEffect(() => {
+    if (!selectedOwnerId || !rostersData?.length) { setSelectedPlayerIds([]); return; }
+    const roster = rostersData.find(r => String(r?.owner_id) === String(selectedOwnerId));
+    const ids = Array.isArray(roster?.players) ? roster.players.map(p => String(p)) : [];
+    setSelectedPlayerIds(ids);
+    const dn = owners.find(o => o.owner_id === String(selectedOwnerId))?.display_name || '';
+    setSelectedDisplayName(dn);
+  }, [selectedOwnerId, rostersData, owners]);
 
   // Build holdouts list
   const rows = useMemo(() => {
@@ -294,6 +334,108 @@ export default function HoldoutsPage() {
       return nameOk && posOk;
     });
   }, [contracts, playerTotals, playerWeeks, playerNonPositiveWeeks, teamNameMap, sortConfig, searchTerm, positionFilter, currentSeason]);
+
+  // Build "Your Team" matrix rows (all players on selected roster)
+  const myMatrixRows = useMemo(() => {
+    if (!selectedPlayerIds?.length) return [];
+    const season = toNumber(currentSeason);
+    const finalYearTarget = String(season + 1);
+
+    // Helper maps
+    const contractByPid = contracts.reduce((acc, c) => {
+      const pid = String(c.playerId);
+      if (!acc[pid]) acc[pid] = [];
+      acc[pid].push(c);
+      return acc;
+    }, {});
+
+    // Build PPG and position groups for ranks
+    const ppgById = new Map();
+    const posGroups = new Map();
+    Object.entries(playerTotals).forEach(([pid, total]) => {
+      const points = toNumber(total);
+      const games = toNumber(playerWeeks[String(pid)], 0);
+      const ppg = games > 0 ? points / games : 0;
+      ppgById.set(String(pid), ppg);
+      const c = (contractByPid[String(pid)] || [])[0];
+      const pos = String(c?.position || '-').toUpperCase();
+      if (!posGroups.has(pos)) posGroups.set(pos, []);
+      posGroups.get(pos).push({ id: String(pid), ppg });
+    });
+    const rankMap = new Map();
+    for (const [pos, list] of posGroups.entries()) {
+      list.sort((a,b) => b.ppg - a.ppg);
+      list.forEach((row, i) => rankMap.set(`${pos}:${row.id}`, i + 1));
+    }
+
+    // Salary 20th thresholds per position (Active contracts only)
+    const activeByPos = new Map();
+    contracts.forEach(c => {
+      if (String(c.status).toLowerCase() !== 'active') return;
+      const pos = String(c.position || '-').toUpperCase();
+      if (!activeByPos.has(pos)) activeByPos.set(pos, []);
+      const sal = toNumber(c.curYear);
+      if (sal > 0) activeByPos.get(pos).push(sal);
+    });
+    const salary20thThresh = new Map();
+    for (const [pos, list] of activeByPos.entries()) {
+      list.sort((a,b) => b - a);
+      salary20thThresh.set(pos, list.length >= 20 ? list[19] : Infinity);
+    }
+
+    // Select a representative contract row per player (prefer Active Base)
+    function pickContractRows(pid) {
+      const rows = contractByPid[String(pid)] || [];
+      const lower = rows.map(r => ({ r, t: {
+        status: String(r.status).toLowerCase(),
+        type: String(r.contractType).toLowerCase()
+      }}));
+      const baseActive = lower.find(x => x.t.status === 'active' && x.t.type === 'base');
+      if (baseActive) return baseActive.r;
+      const anyActive = lower.find(x => x.t.status === 'active');
+      if (anyActive) return anyActive.r;
+      return rows[0] || null;
+    }
+
+    // Build matrix rows
+    const out = selectedPlayerIds.map(pid => {
+      const c = pickContractRows(pid);
+      const posKey = String(c?.position || '-').toUpperCase();
+      const playerName = c?.playerName || String(pid);
+      const ppg = ppgById.get(String(pid)) || 0;
+      const ppgRank = rankMap.get(`${posKey}:${String(pid)}`) || null;
+      const salary = toNumber(c?.curYear);
+      const threshold = salary20thThresh.get(posKey) ?? Infinity;
+      const nonPosWeeks = toNumber(playerNonPositiveWeeks[String(pid)], 0);
+      const checks = {
+        baseContract: String(c?.contractType || '').toLowerCase() === 'base',
+        activeStatus: String(c?.status || '').toLowerCase() === 'active',
+        expiresNextSeason: String(c?.contractFinalYear || '') === finalYearTarget,
+        ageUnder29: toNumber(c?.age) < 29,
+        top20PPG: typeof ppgRank === 'number' ? ppgRank <= 20 : false,
+        salaryBelow20th: salary < threshold,
+        nonPosWeekLimit: nonPosWeeks < 8,
+      };
+      return {
+        playerId: String(pid),
+        playerName,
+        position: posKey,
+        team: teamNameMap[String(pid)] || selectedDisplayName || '-',
+        ppg,
+        ppgRank,
+        salary,
+        threshold,
+        contractFinalYear: c?.contractFinalYear ?? '-',
+        age: c?.age ?? '-',
+        nonPosWeeks,
+        checks,
+      };
+    });
+
+    // sort by position then name for readability
+    out.sort((a,b) => (String(a.position).localeCompare(String(b.position)) || String(a.playerName).localeCompare(String(b.playerName))));
+    return out;
+  }, [selectedPlayerIds, contracts, playerTotals, playerWeeks, playerNonPositiveWeeks, teamNameMap, selectedDisplayName, currentSeason]);
 
   // Helper: Evaluate criteria for a specific player name
   function evaluatePlayerByName(name) {
@@ -511,7 +653,51 @@ export default function HoldoutsPage() {
           PPG excludes games with 0 points scored
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
+        {/* Mobile cards for Holdouts list */}
+        <div className="block md:hidden space-y-3">
+          {rows.map(r => (
+            <div key={`holdout-card-${r.playerId}-${r.contractFinalYear}`} className="bg-black/20 border border-white/10 rounded-lg p-3">
+              <div className="flex items-center gap-3">
+                <div onClick={() => setSelectedPlayerId(r.playerId)} className="cursor-pointer">
+                  <PlayerProfileCard playerId={r.playerId} expanded={false} className="w-10 h-10 rounded-full overflow-hidden" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <button className="text-white font-semibold underline truncate" onClick={() => setSelectedPlayerId(r.playerId)}>{r.playerName}</button>
+                    <span className="text-white/70 text-sm">[{r.position}]</span>
+                    <span className="ml-auto text-green-400 text-xs bg-green-500/10 border border-green-500/30 rounded px-2 py-0.5">Qualifies</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-white/80 mt-1">
+                    {teamAvatars[r.team] ? (
+                      <img src={`https://sleepercdn.com/avatars/${teamAvatars[r.team]}`} alt={r.team} className="w-4 h-4 rounded-full" />
+                    ) : <span className="w-4 h-4 rounded-full bg-white/10 inline-block" />}
+                    <span className="truncate">{r.team}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">PPG:</span> <span className="font-semibold">{r.ppg.toFixed(2)}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Salary:</span> <span className="font-semibold">{formatMoney(r.salary)}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">PPG Rank:</span> <span className="font-semibold">{r.ppgRank ?? '-'}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">20th (Pos):</span> <span className="font-semibold">{formatMoney(r.salaryThreshold20th)}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Final Yr:</span> <span className="font-semibold">{r.contractFinalYear}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Age:</span> <span className="font-semibold">{r.age}</span></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Mobile section divider to clearly separate lists */}
+        <div className="md:hidden my-6">
+          <div className="flex items-center gap-3">
+            <span className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <span className="text-white/60 text-xs uppercase tracking-wider">Player Check</span>
+            <span className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          </div>
+        </div>
+
+        {/* Desktop table for Holdouts list */}
+        <div className="hidden md:block overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-black/40 border-b border-white/10">
@@ -530,7 +716,7 @@ export default function HoldoutsPage() {
                   <th
                     key={key}
                     onClick={key === 'profile' ? undefined : (e) => { e.stopPropagation(); handleSort(key); }}
-                    className={`p-3 text-left transition-colors ${key === 'profile' ? '' : 'cursor-pointer hover:bg-white/5'}`}
+                    className={`p-2 md:p-3 text-left transition-colors ${key === 'profile' ? '' : 'cursor-pointer hover:bg-white/5'} ${['team','ppgRank','salaryThreshold20th','contractFinalYear','age'].includes(key) ? 'hidden md:table-cell' : ''}`}
                     style={key === 'profile' ? {} : { userSelect: 'none' }}
                   >
                     <div className="flex items-center gap-2">
@@ -546,11 +732,11 @@ export default function HoldoutsPage() {
             <tbody>
               {rows.map(r => (
                 <tr key={`${r.playerId}-${r.contractFinalYear}`} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
-                  <td className="p-3 align-middle" style={{ width: '40px', minWidth: '40px', cursor: 'pointer' }} onClick={() => setSelectedPlayerId(r.playerId)} title="View Player Card">
+                  <td className="p-2 md:p-3 align-middle" style={{ width: '40px', minWidth: '40px', cursor: 'pointer' }} onClick={() => setSelectedPlayerId(r.playerId)} title="View Player Card">
                     <PlayerProfileCard playerId={r.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow object-cover m-0 p-0" />
                   </td>
-                  <td className="p-3 font-medium underline cursor-pointer" onClick={() => setSelectedPlayerId(r.playerId)}>{r.playerName}</td>
-                  <td className="p-3 align-middle">
+                  <td className="p-2 md:p-3 font-medium underline cursor-pointer" onClick={() => setSelectedPlayerId(r.playerId)}>{r.playerName}</td>
+                  <td className="p-2 md:p-3 align-middle hidden md:table-cell">
                     <div className="flex items-center gap-2">
                       {teamAvatars[r.team] ? (
                         <Image src={`https://sleepercdn.com/avatars/${teamAvatars[r.team]}`} alt={r.team} width={20} height={20} className="rounded-full mr-2" />
@@ -558,17 +744,137 @@ export default function HoldoutsPage() {
                       {r.team}
                     </div>
                   </td>
-                  <td className="p-3">{r.position}</td>
-                  <td className="p-3">{r.ppg.toFixed(2)}</td>
-                  <td className="p-3">{formatMoney(r.salary)}</td>
-                  <td className="p-3">{r.ppgRank ?? '-'}</td>
-                  <td className="p-3">{formatMoney(r.salaryThreshold20th)}</td>
-                  <td className="p-3">{r.contractFinalYear}</td>
-                  <td className="p-3">{r.age}</td>
+                  <td className="p-2 md:p-3">{r.position}</td>
+                  <td className="p-2 md:p-3">{r.ppg.toFixed(2)}</td>
+                  <td className="p-2 md:p-3">{formatMoney(r.salary)}</td>
+                  <td className="p-2 md:p-3 hidden md:table-cell">{r.ppgRank ?? '-'}</td>
+                  <td className="p-2 md:p-3 hidden md:table-cell">{formatMoney(r.salaryThreshold20th)}</td>
+                  <td className="p-2 md:p-3 hidden md:table-cell">{r.contractFinalYear}</td>
+                  <td className="p-2 md:p-3 hidden md:table-cell">{r.age}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Your Team Criteria Matrix */}
+  <div className="mt-10 md:mt-8 bg-black/20 rounded-lg border border-white/10 p-4">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <h3 className="text-[#FF4B1F] font-semibold">ALL PLAYER CHECK</h3>
+            <div className="flex items-center gap-2">
+              <label className="text-white/70 text-sm" htmlFor="owner-select">Select team:</label>
+              <select
+                id="owner-select"
+                value={selectedOwnerId}
+                onChange={(e) => setSelectedOwnerId(e.target.value)}
+                className="p-2 rounded bg-white/5 border border-white/10 text-white text-sm"
+              >
+                {owners.map(o => (
+                  <option key={o.owner_id} value={o.owner_id}>{o.display_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {selectedPlayerIds?.length ? (
+            <div className="overflow-x-auto rounded border border-white/10">
+              {/* Mobile cards for Matrix */}
+              <div className="block md:hidden space-y-3 p-2">
+                {myMatrixRows.map(r => {
+                  const passList = [r.checks.baseContract, r.checks.activeStatus, r.checks.expiresNextSeason, r.checks.ageUnder29, r.checks.top20PPG, r.checks.salaryBelow20th, r.checks.nonPosWeekLimit];
+                  const meetsAll = passList.every(Boolean);
+                  return (
+                    <div key={`matrix-card-${r.playerId}`} className={`border rounded-lg p-3 ${meetsAll ? 'border-green-500/40 bg-green-500/10' : 'border-white/10 bg-black/20'}`}>
+                      <div className="flex items-center gap-3">
+                        <div onClick={() => setSelectedPlayerId(r.playerId)} className="cursor-pointer">
+                          <PlayerProfileCard playerId={r.playerId} expanded={false} className="w-10 h-10 rounded-full overflow-hidden" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <button className="text-white font-semibold underline truncate" onClick={() => setSelectedPlayerId(r.playerId)}>{r.playerName}</button>
+                            <span className="text-white/70 text-sm">[{r.position}]</span>
+                            {meetsAll && <span className="ml-auto text-green-400 text-xs bg-green-500/10 border border-green-500/30 rounded px-2 py-0.5">Meets All</span>}
+                          </div>
+                          <div className="text-sm text-white/80 mt-1">PPG: <span className="font-semibold">{r.ppg.toFixed(2)}</span> • Rank: <span className="font-semibold">{r.ppgRank ?? '-'}</span></div>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Salary:</span> <span className="font-semibold">{formatMoney(r.salary)}</span></div>
+                        <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">20th (Pos):</span> <span className="font-semibold">{formatMoney(r.threshold)}</span></div>
+                        <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Final Yr:</span> <span className="font-semibold">{r.contractFinalYear}</span></div>
+                        <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Age:</span> <span className="font-semibold">{r.age}</span></div>
+                        <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">≤0 wks:</span> <span className="font-semibold">{r.nonPosWeeks}</span></div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        {[{label:'Base', pass:r.checks.baseContract},{label:'Active', pass:r.checks.activeStatus},{label:'Expires +1', pass:r.checks.expiresNextSeason},{label:'Age <29', pass:r.checks.ageUnder29},{label:'Top-20 PPG', pass:r.checks.top20PPG},{label:'< 20th $', pass:r.checks.salaryBelow20th},{label:'NP < 8', pass:r.checks.nonPosWeekLimit}].map((c, idx) => (
+                          <div key={idx} className={`flex items-center justify-between rounded border px-2 py-1 ${c.pass ? 'border-green-500/40 bg-green-500/10 text-green-300' : 'border-red-500/40 bg-red-500/10 text-red-300'}`}>
+                            <span>{c.label}</span>
+                            <span className="font-semibold">{c.pass ? '✔️' : '✖️'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop matrix table */}
+              <table className="hidden md:table w-full border-collapse">
+                <thead>
+                  <tr className="bg-black/40 border-b border-white/10">
+                    {[{ key: 'profile', label: '' },
+                      { key: 'player', label: 'Player' },
+                      { key: 'pos', label: 'Pos' },
+                      { key: 'ppg', label: 'PPG' },
+                      { key: 'rank', label: 'Rank' },
+                      { key: 'salary', label: 'Salary' },
+                      { key: 'thresh', label: '20th (Pos)' },
+                      { key: 'final', label: 'Final Yr' },
+                      { key: 'age', label: 'Age' },
+                      { key: 'npw', label: '≤0 wks' },
+                      { key: 'c1', label: 'Base' },
+                      { key: 'c2', label: 'Active' },
+                      { key: 'c3', label: 'Expires +1' },
+                      { key: 'c4', label: '<29' },
+                      { key: 'c5', label: 'Top-20 PPG' },
+                      { key: 'c6', label: '< 20th $' },
+                      { key: 'c7', label: 'NP < 8' },
+                    ].map(col => (
+                      <th key={col.key} className={`p-2 text-left text-xs md:text-sm ${['rank','salary','thresh','final','age','npw'].includes(col.key) ? 'hidden md:table-cell' : ''}`}>{col.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {myMatrixRows.map(r => {
+                    const passList = [r.checks.baseContract, r.checks.activeStatus, r.checks.expiresNextSeason, r.checks.ageUnder29, r.checks.top20PPG, r.checks.salaryBelow20th, r.checks.nonPosWeekLimit];
+                    const meetsAll = passList.every(Boolean);
+                    return (
+                    <tr key={r.playerId} className={`transition-colors border-b last:border-0 ${meetsAll ? 'bg-green-500/10 border-green-500/30 hover:bg-green-500/15' : 'hover:bg-white/5 border-white/5'}`}>
+                      <td className="p-2 align-middle" style={{ width: '36px', minWidth: '36px', cursor: 'pointer' }} onClick={() => setSelectedPlayerId(r.playerId)}>
+                        <PlayerProfileCard playerId={r.playerId} expanded={false} className="w-7 h-7 rounded-full overflow-hidden" />
+                      </td>
+                      <td className="p-2 font-medium underline cursor-pointer" onClick={() => setSelectedPlayerId(r.playerId)}>{r.playerName}</td>
+                      <td className="p-2">{r.position}</td>
+                      <td className="p-2">{r.ppg.toFixed(2)}</td>
+                      <td className="p-2 hidden md:table-cell">{r.ppgRank ?? '-'}</td>
+                      <td className="p-2 hidden md:table-cell">{formatMoney(r.salary)}</td>
+                      <td className="p-2 hidden md:table-cell">{formatMoney(r.threshold)}</td>
+                      <td className="p-2 hidden md:table-cell">{r.contractFinalYear}</td>
+                      <td className="p-2 hidden md:table-cell">{r.age}</td>
+                      <td className="p-2 hidden md:table-cell">{r.nonPosWeeks}</td>
+                      {passList.map((pass, idx) => (
+                          <td key={idx} className={`p-2 text-center font-semibold ${pass ? 'text-green-400' : 'text-red-400'}`}>{pass ? '✔️' : '✖️'}</td>
+                        ))}
+                    </tr>
+                  );})}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-white/70">No roster found for the selected team.</div>
+          )}
+          <div className="text-[#FF4B1F] mt-2" style={{ fontSize: '0.85rem' }}>
+            PPG excludes games with 0 points scored. NP = non-positive scoring weeks.
+          </div>
         </div>
 
         {/* Criteria explanation list below the table for clarity */}

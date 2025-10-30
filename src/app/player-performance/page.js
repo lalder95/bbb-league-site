@@ -373,7 +373,44 @@ export default function PlayerPerformancePage() {
           PPG excludes games with 0 points scored
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
+        {/* Mobile cards */}
+        <div className="block md:hidden space-y-3">
+          {visibleRows.map((r) => (
+            <div key={`card-${r.playerId}`} className="bg-black/20 border border-white/10 rounded-lg p-3">
+              <div className="flex items-center gap-3">
+                <div onClick={() => setSelectedPlayerId(r.playerId)} className="cursor-pointer">
+                  <PlayerProfileCard playerId={r.playerId} expanded={false} className="w-10 h-10 rounded-full overflow-hidden" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <button className="text-white font-semibold underline truncate" onClick={() => setSelectedPlayerId(r.playerId)}>{r.playerName}</button>
+                    <span className="text-white/70 text-sm">[{r.position}]</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-white/80 mt-1">
+                    {teamAvatars[r.team] ? (
+                      <img src={`https://sleepercdn.com/avatars/${teamAvatars[r.team]}`} alt={r.team} className="w-4 h-4 rounded-full" />
+                    ) : <span className="w-4 h-4 rounded-full bg-white/10 inline-block" />}
+                    <span className="truncate">{r.team}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Points:</span> <span className="font-semibold">{r.points.toFixed(2)}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">PPG:</span> <span className="font-semibold">{r.ppg.toFixed(2)}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Overall Rank:</span> <span className="font-semibold">{r.overallRank ?? '-'}</span></div>
+                <div className="bg-white/5 rounded px-2 py-1"><span className="text-white/70">Pos Rank:</span> <span className="font-semibold">{r.positionRank ?? '-'}</span></div>
+              </div>
+            </div>
+          ))}
+          {visibleCount < rows.length && (
+            <div className="flex justify-center py-2">
+              <button onClick={() => setVisibleCount(c => c + 100)} className="px-4 py-2 rounded bg-[#FF4B1F] text-white font-semibold hover:bg-[#e03e0f] transition">Show More</button>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-black/40 border-b border-white/10">
@@ -390,7 +427,7 @@ export default function PlayerPerformancePage() {
                   <th
                     key={key}
                     onClick={key === 'profile' ? undefined : (e) => { e.stopPropagation(); handleSort(key); }}
-                    className={`p-3 text-left transition-colors ${key === 'profile' ? '' : 'cursor-pointer hover:bg-white/5'}`}
+                    className={`p-2 md:p-3 text-left transition-colors ${key === 'profile' ? '' : 'cursor-pointer hover:bg-white/5'} ${['team','overallRank','positionRank'].includes(key) ? 'hidden md:table-cell' : ''}`}
                     style={key === 'profile' ? {} : { userSelect: 'none' }}
                   >
                     <div className="flex items-center gap-2">
@@ -408,7 +445,7 @@ export default function PlayerPerformancePage() {
                 <tr key={r.playerId} className={`hover:bg-white/5 transition-colors border-b border-white/5 last:border-0`}>
                   {/* PlayerProfileCard column */}
                   <td
-                    className="p-3 align-middle"
+                    className="p-2 md:p-3 align-middle"
                     style={{ width: '40px', minWidth: '40px', cursor: 'pointer' }}
                     onClick={() => setSelectedPlayerId(r.playerId)}
                     title="View Player Card"
@@ -420,11 +457,11 @@ export default function PlayerPerformancePage() {
                     />
                   </td>
                   {/* Player Name */}
-                  <td className="p-3 font-medium underline cursor-pointer" onClick={() => setSelectedPlayerId(r.playerId)}>
+                  <td className="p-2 md:p-3 font-medium underline cursor-pointer" onClick={() => setSelectedPlayerId(r.playerId)}>
                     {r.playerName}
                   </td>
                   {/* Team */}
-                  <td className="p-3 align-middle">
+                  <td className="p-2 md:p-3 align-middle hidden md:table-cell">
                     <div className="flex items-center gap-2">
                       {teamAvatars[r.team] ? (
                         <Image
@@ -440,11 +477,11 @@ export default function PlayerPerformancePage() {
                       {r.team}
                     </div>
                   </td>
-                  <td className="p-3">{r.position}</td>
-                  <td className="p-3">{r.points.toFixed(2)}</td>
-                  <td className="p-3">{r.ppg.toFixed(2)}</td>
-                  <td className="p-3">{r.overallRank ?? '-'}</td>
-                  <td className="p-3">{r.positionRank ?? '-'}</td>
+                  <td className="p-2 md:p-3">{r.position}</td>
+                  <td className="p-2 md:p-3">{r.points.toFixed(2)}</td>
+                  <td className="p-2 md:p-3">{r.ppg.toFixed(2)}</td>
+                  <td className="p-2 md:p-3 hidden md:table-cell">{r.overallRank ?? '-'}</td>
+                  <td className="p-2 md:p-3 hidden md:table-cell">{r.positionRank ?? '-'}</td>
                 </tr>
               ))}
             </tbody>
