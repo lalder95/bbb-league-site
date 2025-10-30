@@ -136,7 +136,9 @@ export default function Navigation() {
       links: [
         { href: '/analytics', label: 'Analytics' },
         { href: '/draft', label: 'Draft' },
-        { href: '/free-agency', label: 'Free Agency' }
+        { href: '/free-agency', label: 'Free Agency' },
+        { href: '/player-performance', label: 'Player Performance' },
+        { href: '/holdouts', label: 'Holdouts' }
       ]
     },
     {
