@@ -11,6 +11,8 @@ const NavDropdown = ({ title, links, isActive }) => {
   const pathname = usePathname();
   const dropdownRef = useRef(null);
   const timeoutRef = useRef(null);
+  const buttonRef = useRef(null);
+  const itemRefs = useRef([]);
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -25,11 +27,39 @@ const NavDropdown = ({ title, links, isActive }) => {
     setIsOpen(true);
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setIsOpen(false);
+      buttonRef.current?.focus();
+    }
+    if (!isOpen && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      setIsOpen(true);
+      // Focus first item after open
+      setTimeout(() => itemRefs.current[0]?.focus(), 0);
+    } else if (isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      const items = itemRefs.current.filter(Boolean);
+      if (!items.length) return;
+      const currentIndex = items.indexOf(document.activeElement);
+      let nextIndex = currentIndex;
+      if (e.key === 'ArrowDown') nextIndex = (currentIndex + 1) % items.length;
+      if (e.key === 'ArrowUp') nextIndex = (currentIndex - 1 + items.length) % items.length;
+      items[nextIndex]?.focus();
+    }
+  };
+
   useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); }, []);
 
   return (
     <div className="relative group" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((v) => !v)}
+        onKeyDown={handleKeyDown}
         className={`
           flex items-center px-3 py-2 rounded-full transition-all duration-300 ease-in-out
           ${links.some(link => link.href === pathname) ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F] hover:bg-white/5'}
@@ -39,14 +69,17 @@ const NavDropdown = ({ title, links, isActive }) => {
         <ChevronDown className="ml-1 h-4 w-4 transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
       </button>
       {isOpen && (
-        <div ref={dropdownRef} onMouseEnter={handleDropdownMouseEnter} className="absolute z-50 left-0 mt-2 w-56 bg-black/80 rounded-lg shadow-xl border border-white/10 py-2">
-          {links.map(({ href, label }) => (
+        <div ref={dropdownRef} role="menu" onMouseEnter={handleDropdownMouseEnter} className="absolute z-50 left-0 mt-2 w-56 bg-black/80 backdrop-blur-md rounded-xl shadow-2xl border border-white/10 py-2">
+          {links.map(({ href, label }, idx) => (
             <Link
               key={href}
               href={href}
+              ref={(el) => (itemRefs.current[idx] = el)}
+              role="menuitem"
+              tabIndex={-1}
               className={`
-                block px-4 py-2 transition-colors 
-                ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:bg-white/10 hover:text-[#FF4B1F]'}
+                block px-4 py-2 rounded-md transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50
+                ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/80 hover:bg-white/10 hover:text-[#FF4B1F]'}
               `}
             >
               {label}
@@ -62,6 +95,14 @@ export default function Navigation() {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: session } = useSession();
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const navGroups = [
     {
@@ -123,7 +164,15 @@ export default function Navigation() {
   }
 
   return (
-    <nav className="bg-black/30 border-b border-white/10 shadow-lg">
+    <nav
+      className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
+        scrolled
+          ? 'supports-[backdrop-filter]:bg-black/40 bg-black/70 backdrop-blur-xl border-b border-white/10 shadow-lg'
+          : 'bg-transparent'
+      }`}
+      role="navigation"
+      aria-label="Main navigation"
+    >
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -136,7 +185,7 @@ export default function Navigation() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:justify-center md:flex-1">
-            <div className="flex space-x-2 bg-black/20 rounded-full p-1">
+            <div className="flex space-x-2 bg-white/5 supports-[backdrop-filter]:bg-white/10 backdrop-blur-sm rounded-full p-1 border border-white/10">
               {navGroups.map((group, index) => (
                 group.type === 'single' ? (
                   group.links.map(({ href, label }) => (
@@ -144,11 +193,19 @@ export default function Navigation() {
                       key={href}
                       href={href}
                       className={`
-                        ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F] font-semibold' : 'text-white/70 hover:text-[#FF4B1F] hover:bg-white/5'} 
-                        px-3 py-2 rounded-full text-sm transition-all duration-300 ease-in-out transform hover:scale-105 hover:shadow-md
+                        relative px-3 py-2 rounded-full text-sm transition-all duration-300 ease-in-out
+                        ${pathname === href ? 'text-[#FF4B1F] font-semibold' : 'text-white/80 hover:text-white'}
                       `}
                     >
-                      {label}
+                      <span className="relative z-10">{label}</span>
+                      <span
+                        className={`absolute inset-0 rounded-full transition-all duration-300 ${
+                          pathname === href
+                            ? 'bg-[#FF4B1F]/15 ring-1 ring-[#FF4B1F]/30'
+                            : 'bg-transparent group-hover:bg-white/5'
+                        }`}
+                        aria-hidden
+                      />
                     </Link>
                   ))
                 ) : (
@@ -168,12 +225,12 @@ export default function Navigation() {
             {session ? (
               <button
                 onClick={() => signOut({ callbackUrl: '/' })}
-                className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-colors transform hover:scale-105 shadow-md hover:shadow-lg"
+                className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-transform hover:scale-105 shadow-md hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
               >
                 Logout
               </button>
             ) : (
-              <Link href="/login" className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-colors transform hover:scale-105 shadow-md hover:shadow-lg">
+              <Link href="/login" className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-transform hover:scale-105 shadow-md hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50">
                 Login
               </Link>
             )}
@@ -181,16 +238,20 @@ export default function Navigation() {
 
           {/* Mobile menu button */}
           <div className="md:hidden">
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-white hover:text-[#FF4B1F] transition-colors">
+            <button
+              aria-label="Toggle menu"
+              aria-expanded={isMenuOpen}
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="text-white hover:text-[#FF4B1F] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+            >
               {isMenuOpen ? <X className="h-6 w-6 animate-rotate-in" /> : <Menu className="h-6 w-6 animate-rotate-out" />}
             </button>
           </div>
         </div>
 
         {/* Mobile Navigation */}
-        {isMenuOpen && (
-          <div className="md:hidden">
-            <div className="px-2 pt-2 pb-3 space-y-1 bg-black/20 rounded-lg">
+        <div className="md:hidden overflow-hidden transition-[max-height,opacity] duration-300" style={{ maxHeight: isMenuOpen ? '1000px' : '0px', opacity: isMenuOpen ? 1 : 0 }}>
+          <div className="px-2 pt-2 pb-3 space-y-1 bg-black/30 backdrop-blur-md rounded-lg border border-white/10">
               {navGroups.map((group, index) => (
                 <div key={index}>
                   {group.type === 'single' ? (
@@ -233,14 +294,14 @@ export default function Navigation() {
                 {session ? (
                   <button
                     onClick={() => signOut({ callbackUrl: '/' })}
-                    className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20"
+                    className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
                   >
                     Logout
                   </button>
                 ) : (
                   <Link
                     href="/login"
-                    className="block px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20"
+                    className="block px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Login
@@ -248,8 +309,7 @@ export default function Navigation() {
                 )}
               </div>
             </div>
-          </div>
-        )}
+        </div>
       </div>
     </nav>
   );
