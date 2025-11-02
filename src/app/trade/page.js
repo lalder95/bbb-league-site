@@ -7,25 +7,29 @@ import { AnimatePresence, motion } from 'framer-motion';
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
 function TeamSection({ 
-  side, 
-  team, 
+  label,
+  participant,
   setTeam,
-  searchTerm, 
-  setSearchTerm, 
-  filteredPlayers, 
-  selectedPlayers, 
-  setSelectedPlayers,
+  setSearchTerm,
+  filteredPlayers,
+  addPlayer,
+  removePlayer,
+  updateDestination,
   uniqueTeams,
-  tradeValidation,
+  teamOptions,
   impact,
-  teamAvatars
+  teamAvatars,
+  canRemove,
+  onRemove,
+  hideDestination = false,
+  otherTeamName = ''
 }) {
   const [justAddedId, setJustAddedId] = useState(null);
   const [expandedCardId, setExpandedCardId] = useState(null);
   const [popupPlayer, setPopupPlayer] = useState(null);
 
   const handleAddPlayer = (player) => {
-    setSelectedPlayers([...selectedPlayers, player]);
+    addPlayer(player);
     setJustAddedId(player.id);
     setTimeout(() => setJustAddedId(null), 600);
   };
@@ -33,12 +37,22 @@ function TeamSection({
   return (
     <div className="flex-1 p-4">
       <div className="bg-black/30 rounded-lg border border-white/10 p-4">
-        <h2 className="text-xl font-bold mb-4 text-[#FF4B1F]">Team {side}</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-[#FF4B1F]">{label}</h2>
+          {canRemove && (
+            <button
+              onClick={onRemove}
+              className="text-red-400 hover:text-red-300 text-sm bg-black/40 rounded px-2 py-1 border border-white/10"
+              title="Remove team from trade"
+            >
+              Remove
+            </button>
+          )}
+        </div>
         <select
-          value={team}
+          value={participant.team}
           onChange={(e) => {
             setTeam(e.target.value);
-            setSelectedPlayers([]);
           }}
           className="w-full p-2 mb-4 rounded bg-[#0a1929] border border-white/10 text-white"
           style={{ color: 'white', backgroundColor: '#0a1929' }}
@@ -55,12 +69,12 @@ function TeamSection({
           ))}
         </select>
 
-        {team && (
+        {participant.team && (
           <>
             <input
               type="text"
               placeholder="Search players..."
-              value={searchTerm}
+              value={participant.searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full p-2 mb-4 rounded bg-white/5 border border-white/10 text-white"
             />
@@ -68,11 +82,11 @@ function TeamSection({
             <div className="mb-4">
               <h3 className="text-sm font-bold mb-2 text-white/70">Selected Players:</h3>
               <div className="space-y-2 bg-[#FF4B1F]/20 border-2 border-[#FF4B1F] rounded p-2 shadow-lg">
-                {selectedPlayers.length === 0 && (
+                {participant.selectedPlayers.length === 0 && (
                   <div className="text-xs text-white/40 italic">No players selected.</div>
                 )}
                 <AnimatePresence>
-                  {selectedPlayers.map((player, idx) => (
+                  {participant.selectedPlayers.map((player, idx) => (
                     <React.Fragment key={player.uniqueKey}>
                       {idx > 0 && (
                         <div className="w-full border-t border-[#FF4B1F]/40 my-2"></div>
@@ -127,12 +141,30 @@ function TeamSection({
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
+                          {/* Destination selector for multi-team trades only */}
+                          {!hideDestination ? (
+                            <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs font-semibold bg-black/40 text-white border border-white/10 ml-2">
+                              To:
+                              <select
+                                className="bg-[#0a1929] text-white rounded px-1 py-0.5 border border-white/10"
+                                value={player.toTeam || ''}
+                                onChange={(e) => updateDestination(player.id, e.target.value)}
+                              >
+                                <option value="">Select team</option>
+                                {teamOptions
+                                  .filter(t => t !== participant.team)
+                                  .map((t) => (
+                                    <option key={t} value={t}>{t}</option>
+                                  ))}
+                              </select>
+                            </span>
+                          ) : null}
                         </div>
                         {/* Remove button */}
                         <button
                           onClick={e => {
                             e.stopPropagation();
-                            setSelectedPlayers(selectedPlayers.filter(p => p.id !== player.id));
+                            removePlayer(player.id);
                           }}
                           className="ml-auto text-red-400 hover:text-red-300 text-xs bg-black/60 rounded px-2 py-1"
                         >
@@ -265,12 +297,11 @@ export default function Trade() {
   const [contracts, setContracts] = useState([]);
   const [fines, setFines] = useState({});
   const [loading, setLoading] = useState(true);
-  const [searchTermA, setSearchTermA] = useState('');
-  const [searchTermB, setSearchTermB] = useState('');
-  const [selectedPlayersA, setSelectedPlayersA] = useState([]);
-  const [selectedPlayersB, setSelectedPlayersB] = useState([]);
-  const [teamA, setTeamA] = useState('');
-  const [teamB, setTeamB] = useState('');
+  // Multi-team participants: {id, team, searchTerm, selectedPlayers:[{...player, toTeam?:string}]}
+  const [participants, setParticipants] = useState([
+    { id: 1, team: '', searchTerm: '', selectedPlayers: [] },
+    { id: 2, team: '', searchTerm: '', selectedPlayers: [] },
+  ]);
   const [showSummary, setShowSummary] = useState(false);
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
@@ -405,23 +436,58 @@ export default function Trade() {
 
   const uniqueTeams = [...new Set(players.map(player => player.team))].sort();
 
-  const filteredPlayersA = players
-    .filter(player => 
-      player.team === teamA &&
-      player.playerName.toLowerCase().includes(searchTermA.toLowerCase()) &&
-      !selectedPlayersA.some(selected => selected.id === player.id) &&
-      !selectedPlayersB.some(selected => selected.id === player.id)
-    )
-    .sort((a, b) => a.playerName.localeCompare(b.playerName));
+  // Utility: set team for a participant and clear their selections
+  const setParticipantTeam = (id, team) => {
+    setParticipants(prev => prev.map(p => p.id === id ? { ...p, team, selectedPlayers: [], searchTerm: '' } : p));
+  };
 
-  const filteredPlayersB = players
-    .filter(player => 
-      player.team === teamB &&
-      player.playerName.toLowerCase().includes(searchTermB.toLowerCase()) &&
-      !selectedPlayersA.some(selected => selected.id === player.id) &&
-      !selectedPlayersB.some(selected => selected.id === player.id)
-    )
-    .sort((a, b) => a.playerName.localeCompare(b.playerName));
+  const setParticipantSearch = (id, term) => {
+    setParticipants(prev => prev.map(p => p.id === id ? { ...p, searchTerm: term } : p));
+  };
+
+  const addParticipant = () => {
+    setParticipants(prev => {
+      const nextId = prev.length ? Math.max(...prev.map(p => p.id)) + 1 : 1;
+      return [...prev, { id: nextId, team: '', searchTerm: '', selectedPlayers: [] }];
+    });
+  };
+
+  const removeParticipant = (id) => {
+    setParticipants(prev => prev.filter(p => p.id !== id));
+  };
+
+  const addPlayerToParticipant = (id, player) => {
+    setParticipants(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      if (p.selectedPlayers.some(sp => sp.id === player.id)) return p;
+      return { ...p, selectedPlayers: [...p.selectedPlayers, { ...player, toTeam: '' }] };
+    }));
+  };
+
+  const removePlayerFromParticipant = (id, playerId) => {
+    setParticipants(prev => prev.map(p => p.id === id ? { ...p, selectedPlayers: p.selectedPlayers.filter(sp => sp.id !== playerId) } : p));
+  };
+
+  const updatePlayerDestination = (id, playerId, toTeam) => {
+    setParticipants(prev => prev.map(p => p.id === id ? {
+      ...p,
+      selectedPlayers: p.selectedPlayers.map(sp => sp.id === playerId ? { ...sp, toTeam } : sp)
+    } : p));
+  };
+
+  // Global set of selected player ids to prevent duplicates
+  const selectedIds = new Set(participants.flatMap(p => p.selectedPlayers.map(sp => sp.id)));
+
+  // Build filtered list per participant
+  const getFilteredPlayers = (participant) => {
+    return players
+      .filter(player =>
+        player.team === participant.team &&
+        player.playerName.toLowerCase().includes((participant.searchTerm || '').toLowerCase()) &&
+        !selectedIds.has(player.id)
+      )
+      .sort((a, b) => a.playerName.localeCompare(b.playerName));
+  };
 
   const calculateCapImpact = (playerList) => {
     return {
@@ -514,32 +580,97 @@ export default function Trade() {
     };
   };
 
+  // Build incoming/outgoing for each team from destinations
+  const buildTeamFlows = () => {
+    const teamToIncoming = {};
+    const teamToOutgoing = {};
+    const teams = participants.map(p => p.team).filter(Boolean);
+    const uniqueActiveTeamsLocal = [...new Set(teams)];
+    const isTwoTeamTradeLocal = uniqueActiveTeamsLocal.length === 2;
+    participants.forEach(p => {
+      if (!p.team) return;
+      teamToIncoming[p.team] = [];
+      teamToOutgoing[p.team] = p.selectedPlayers.map(sp => ({ ...sp }));
+    });
+    participants.forEach(p => {
+      p.selectedPlayers.forEach(sp => {
+        let dest = sp.toTeam;
+        if (!dest && isTwoTeamTradeLocal && p.team) {
+          dest = uniqueActiveTeamsLocal.find(t => t !== p.team);
+        }
+        if (dest && teamToIncoming[dest]) {
+          teamToIncoming[dest].push({ ...sp });
+        }
+      });
+    });
+    return { teamToIncoming, teamToOutgoing };
+  };
+
   const validateTrade = () => {
-    const impactA = calculateTradeImpact(teamA, selectedPlayersB, selectedPlayersA);
-    const impactB = calculateTradeImpact(teamB, selectedPlayersA, selectedPlayersB);
+    const { teamToIncoming, teamToOutgoing } = buildTeamFlows();
+    const teams = participants.map(p => p.team).filter(Boolean);
+    const impactsByTeam = {};
+    teams.forEach(teamName => {
+      const incoming = teamToIncoming[teamName] || [];
+      const outgoing = teamToOutgoing[teamName] || [];
+      impactsByTeam[teamName] = calculateTradeImpact(teamName, incoming, outgoing);
+    });
 
-    // Check .remaining for each year!
-    const isInvalidCurYear =
-      impactA.after.curYear.remaining < 0 || impactB.after.curYear.remaining < 0;
+    const remainders = [];
+    const curYearNegatives = [];
+    const futureNegatives = [];
+    const closeList = [];
+    const yearKeys = [
+      { key: 'curYear', label: 'Y1' },
+      { key: 'year2', label: 'Y2' },
+      { key: 'year3', label: 'Y3' },
+      { key: 'year4', label: 'Y4' },
+    ];
+    teams.forEach(teamName => {
+      const imp = impactsByTeam[teamName];
+      yearKeys.forEach(({ key }) => remainders.push(imp.after[key].remaining));
+      // Collect detailed warnings
+      if (imp.after.curYear.remaining < 0) {
+        curYearNegatives.push({ team: teamName, remaining: imp.after.curYear.remaining });
+      }
+      const yearsNeg = [];
+      ['year2','year3','year4'].forEach(k => {
+        const val = imp.after[k].remaining;
+        if (val < 0) yearsNeg.push({ year: k === 'year2' ? 'Y2' : k === 'year3' ? 'Y3' : 'Y4', remaining: val });
+      });
+      if (yearsNeg.length) futureNegatives.push({ team: teamName, years: yearsNeg });
+      yearKeys.forEach(({ key, label }) => {
+        const val = imp.after[key].remaining;
+        if (val >= 0 && val < 50) closeList.push({ team: teamName, year: label, remaining: val });
+      });
+    });
+    const isInvalidCurYear = teams.some(teamName => impactsByTeam[teamName].after.curYear.remaining < 0);
+    const isFutureYearOverCap = teams.some(teamName => (
+      impactsByTeam[teamName].after.year2.remaining < 0 ||
+      impactsByTeam[teamName].after.year3.remaining < 0 ||
+      impactsByTeam[teamName].after.year4.remaining < 0
+    ));
+    const isClose = remainders.some(val => val >= 0 && val < 50);
 
-    const isFutureYearOverCap =
-      impactA.after.year2.remaining < 0 || impactA.after.year3.remaining < 0 || impactA.after.year4.remaining < 0 ||
-      impactB.after.year2.remaining < 0 || impactB.after.year3.remaining < 0 || impactB.after.year4.remaining < 0;
-
-    const isClose = (
-      [
-        impactA.after.curYear.remaining, impactA.after.year2.remaining, impactA.after.year3.remaining, impactA.after.year4.remaining,
-        impactB.after.curYear.remaining, impactB.after.year2.remaining, impactB.after.year3.remaining, impactB.after.year4.remaining
-      ].some(val => val >= 0 && val < 50)
-    );
+    // Ensure all selected players have destinations and those destinations are valid existing teams (not self)
+  const currentTeamsSet = new Set(teams);
+  const isTwoTeamLocal = [...currentTeamsSet].length === 2;
+  const anyMissing = isTwoTeamLocal ? false : participants.some(p => p.selectedPlayers.some(sp => !sp.toTeam));
+    const anyInvalid = participants.some(p => p.selectedPlayers.some(sp => sp.toTeam && (!currentTeamsSet.has(sp.toTeam) || sp.toTeam === p.team)));
+    const unassigned = anyMissing || anyInvalid;
 
     return {
-      isValid: !isInvalidCurYear && !isFutureYearOverCap,
+      isValid: !isInvalidCurYear && !isFutureYearOverCap && !unassigned,
       isInvalidCurYear,
       isFutureYearOverCap,
       isClose,
-      impactA,
-      impactB
+      unassigned,
+      impactsByTeam,
+      details: {
+        curYearNegatives,
+        futureNegatives,
+        closeList,
+      }
     };
   };
 
@@ -551,16 +682,18 @@ export default function Trade() {
     );
   }
 
-  const tradeValidation = teamA && teamB ? validateTrade() : null;
+  const haveAtLeastTwoTeams = participants.filter(p => p.team).length >= 2;
+  const activeTeams = participants.map(p => p.team).filter(Boolean);
+  const uniqueActiveTeams = [...new Set(activeTeams)];
+  const isTwoTeamTrade = uniqueActiveTeams.length === 2;
+  const tradeValidation = haveAtLeastTwoTeams ? validateTrade() : null;
 
   // Reset handler
   const handleReset = () => {
-    setTeamA('');
-    setTeamB('');
-    setSelectedPlayersA([]);
-    setSelectedPlayersB([]);
-    setSearchTermA('');
-    setSearchTermB('');
+    setParticipants([
+      { id: 1, team: '', searchTerm: '', selectedPlayers: [] },
+      { id: 2, team: '', searchTerm: '', selectedPlayers: [] },
+    ]);
     setShowSummary(false);
   };
 
@@ -586,7 +719,7 @@ export default function Trade() {
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
-        {tradeValidation && (teamA && teamB) && (
+        {tradeValidation && haveAtLeastTwoTeams && (
           <div className={`mb-6 p-4 rounded-lg ${
             tradeValidation.isInvalidCurYear ? 'bg-red-500/20 border border-red-500/50' :
             tradeValidation.isFutureYearOverCap ? 'bg-yellow-500/20 border border-yellow-500/50' :
@@ -594,17 +727,47 @@ export default function Trade() {
             'bg-green-500/20 border border-green-500/50'
           }`}>
             <div className="font-bold mb-2">
-              {tradeValidation.isInvalidCurYear
-                ? 'Invalid Trade: Insufficient cap space in current year'
+              {tradeValidation.unassigned
+                ? 'Assign a destination team for all selected players to evaluate this trade'
+                : tradeValidation.isInvalidCurYear
+                ? 'Over cap this year'
                 : tradeValidation.isFutureYearOverCap
-                ? 'Warning: One or both teams over the cap in a future year'
+                ? 'Over cap in future year(s)'
                 : tradeValidation.isClose
-                ? 'Warning: Teams will be close to cap'
+                ? 'Near the cap threshold'
                 : 'Valid Trade'}
             </div>
+            {!tradeValidation.unassigned && (
+              <div className="text-sm text-white/80 space-y-1">
+                {tradeValidation.details?.curYearNegatives?.length > 0 && (
+                  <div>
+                    Current year over cap: {tradeValidation.details.curYearNegatives.map((d, i) => `${d.team} ($${Math.abs(d.remaining).toFixed(1)} over)`).join(', ')}
+                  </div>
+                )}
+                {tradeValidation.details?.futureNegatives?.length > 0 && (
+                  <div>
+                    Future years over cap: {tradeValidation.details.futureNegatives.map((d) => `${d.team} (${d.years.map(y => `${y.year} -$${Math.abs(y.remaining).toFixed(1)}`).join(', ')})`).join('; ')}
+                  </div>
+                )}
+                {tradeValidation.details?.closeList?.length > 0 && (
+                  <div>
+                    Close to cap (&lt;$50 remaining): {(() => {
+                      // Group by team
+                      const byTeam = tradeValidation.details.closeList.reduce((acc, c) => {
+                        acc[c.team] = acc[c.team] || [];
+                        acc[c.team].push(c);
+                        return acc;
+                      }, {});
+                      return Object.entries(byTeam).map(([team, arr]) => `${team} (${arr.map(a => `${a.year} $${a.remaining.toFixed(1)}`).join(', ')})`).join('; ');
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
             <button
+              disabled={tradeValidation.unassigned}
               onClick={() => setShowSummary(true)}
-              className="text-sm text-[#FF4B1F] hover:text-[#FF4B1F]/80"
+              className={`text-sm ${tradeValidation.unassigned ? 'text-white/30 cursor-not-allowed' : 'text-[#FF4B1F] hover:text-[#FF4B1F]/80'}`}
             >
               View Trade Summary
             </button>
@@ -612,46 +775,52 @@ export default function Trade() {
         )}
 
         {showSummary && tradeValidation && (
-          <TradeSummary 
-            teamA={teamA}
-            teamB={teamB}
-            selectedPlayersA={selectedPlayersA}
-            selectedPlayersB={selectedPlayersB}
-            tradeValidation={tradeValidation}
+          <TradeSummary
+            participants={participants}
+            impactsByTeam={tradeValidation.impactsByTeam}
             onClose={() => setShowSummary(false)}
             teamAvatars={teamAvatars}
           />
         )}
 
-        <div className="flex flex-col md:flex-row gap-6">
-          <TeamSection
-            side="A"
-            team={teamA}
-            setTeam={setTeamA}
-            searchTerm={searchTermA}
-            setSearchTerm={setSearchTermA}
-            filteredPlayers={filteredPlayersA}
-            selectedPlayers={selectedPlayersA}
-            setSelectedPlayers={setSelectedPlayersA}
-            uniqueTeams={uniqueTeams}
-            tradeValidation={tradeValidation}
-            impact={tradeValidation?.impactA}
-            teamAvatars={teamAvatars}
-          />
-          <TeamSection
-            side="B"
-            team={teamB}
-            setTeam={setTeamB}
-            searchTerm={searchTermB}
-            setSearchTerm={setSearchTermB}
-            filteredPlayers={filteredPlayersB}
-            selectedPlayers={selectedPlayersB}
-            setSelectedPlayers={setSelectedPlayersB}
-            uniqueTeams={uniqueTeams}
-            tradeValidation={tradeValidation}
-            impact={tradeValidation?.impactB}
-            teamAvatars={teamAvatars}
-          />
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-white/70 text-sm">Teams in trade: {participants.filter(p => p.team).length}</div>
+          <button
+            onClick={addParticipant}
+            className="px-3 py-1.5 bg-white/10 border border-white/20 rounded text-white hover:bg-white/20"
+          >
+            + Add Team
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {participants.map((p, idx) => {
+            const filtered = getFilteredPlayers(p);
+            const teamOptions = participants.map(pp => pp.team).filter(Boolean);
+            const impact = p.team && tradeValidation ? tradeValidation.impactsByTeam?.[p.team] : null;
+            const otherTeam = isTwoTeamTrade && p.team ? uniqueActiveTeams.find(t => t !== p.team) : '';
+            return (
+              <TeamSection
+                key={p.id}
+                label={`Team ${idx + 1}`}
+                participant={p}
+                setTeam={(team) => setParticipantTeam(p.id, team)}
+                setSearchTerm={(term) => setParticipantSearch(p.id, term)}
+                filteredPlayers={filtered}
+                addPlayer={(player) => addPlayerToParticipant(p.id, player)}
+                removePlayer={(playerId) => removePlayerFromParticipant(p.id, playerId)}
+                updateDestination={(playerId, toTeam) => updatePlayerDestination(p.id, playerId, toTeam)}
+                uniqueTeams={uniqueTeams.filter(t => !participants.some(pp => pp.id !== p.id && pp.team === t))}
+                teamOptions={teamOptions}
+                impact={impact}
+                teamAvatars={teamAvatars}
+                canRemove={participants.length > 2}
+                onRemove={() => removeParticipant(p.id)}
+                hideDestination={isTwoTeamTrade}
+                otherTeamName={otherTeam}
+              />
+            );
+          })}
         </div>
       </div>
     </main>

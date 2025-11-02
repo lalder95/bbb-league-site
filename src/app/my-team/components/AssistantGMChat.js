@@ -28,6 +28,9 @@ export default function AssistantGMChat({
   myDraftPicksList: propMyDraftPicksList,
   leagueWeek,  leagueYear,
   activeTab, // <-- add this prop
+  autoMessage, // Optional: a message to auto-send
+  autoSendTrigger, // Optional: change this value to trigger auto-send
+  autoStartNewConversation = false, // Optional: start fresh when auto-sending
 }) {
   // Find user's team name
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
@@ -207,21 +210,26 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function sendMessage(e) {
-    e.preventDefault();
-    if (!input.trim()) return;
+  async function sendRawMessage(content, baseMessages, options = {}) {
+    if (!content?.trim()) return;
     setLoading(true);
-    const userMsg = { role: 'user', content: input };
-    const newMessages = [...messages, userMsg];
+    const userMsg = { role: 'user', content };
+    // If this is an auto-sent seeded message, optionally mark it hidden in UI
+    if (options.hideInUI) {
+      userMsg.uiHidden = true;
+      userMsg.auto = true;
+    }
+    const base = Array.isArray(baseMessages) ? baseMessages : messages;
+    const newMessages = [...base, userMsg];
     setMessages(newMessages);
-    setInput(''); // <-- Clear input immediately
 
     let data;
     try {
       const res = await fetch('/api/assistant-gm-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages }),
+        // Strip any UI-only fields before sending to server
+        body: JSON.stringify({ messages: newMessages.map(({ role, content }) => ({ role, content })) }),
       });
       const text = await res.text();
       data = JSON.parse(text);
@@ -232,6 +240,14 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     }
     setMessages([...newMessages, { role: 'assistant', content: data.reply }]);
     setLoading(false);
+  }
+
+  async function sendMessage(e) {
+    e.preventDefault();
+    if (!input.trim()) return;
+    const content = input;
+    setInput('');
+    await sendRawMessage(content);
   }
 
   // Helper: Format assistant message (bold **text** and split numbered lists)
@@ -275,6 +291,33 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
   }, [messages, activeTab]);
   // ------------------------------------------------
 
+  // Auto-send handler: when autoSendTrigger changes and autoMessage provided
+  const lastTriggerRef = useRef(undefined);
+  useEffect(() => {
+    if (activeTab !== 'Assistant GM') return;
+    if (!autoMessage) return;
+    if (autoSendTrigger === undefined || autoSendTrigger === lastTriggerRef.current) return;
+    lastTriggerRef.current = autoSendTrigger;
+    // Debounce slight delay to ensure mount
+    const t = setTimeout(() => {
+      if (!loading) {
+        if (autoStartNewConversation) {
+          const fresh = [{ role: 'system', content: systemPrompt }];
+          setMessages(fresh);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(chatKey, JSON.stringify(fresh));
+          }
+          // Auto-send initial message but hide it in the UI
+          sendRawMessage(autoMessage, fresh, { hideInUI: true });
+        } else {
+          // Auto-send initial message but hide it in the UI
+          sendRawMessage(autoMessage, undefined, { hideInUI: true });
+        }
+      }
+    }, 50);
+    return () => clearTimeout(t);
+  }, [autoSendTrigger, autoMessage, activeTab, autoStartNewConversation, systemPrompt]);
+
   return (
     <div className="bg-black/20 rounded-lg p-4 flex flex-col" style={{height:'100%', minHeight:'38rem', maxHeight:'56rem'}}>
       <div
@@ -282,7 +325,7 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
         className="flex-1 min-h-0 overflow-y-auto bg-black/10 rounded p-2 mb-2"
         style={{maxHeight:'34rem'}}
       >
-        {messages.filter(m => m.role !== 'system').flatMap((msg, i) => {
+  {messages.filter(m => m.role !== 'system' && !m.uiHidden).flatMap((msg, i) => {
           if (msg.role === 'assistant') {
             const parts = formatAssistantMessage(msg.content);
             return parts.map((part, j) => (
