@@ -6,6 +6,7 @@ import Image from 'next/image'; // Add this import
 import dynamic from 'next/dynamic';
 
 const BarChartRace = dynamic(() => import('@/components/history/BarChartRace'), { ssr: false });
+const LineGraphRace = dynamic(() => import('@/components/history/LineGraphRace'), { ssr: false });
 
 export default function LeagueHistory() {
   const [loading, setLoading] = useState(true);
@@ -1039,6 +1040,23 @@ export default function LeagueHistory() {
           ) : (
             <div className="bg-black/30 rounded-lg border border-white/10 p-6 text-white/60">
               No season data available for the bar chart race.
+            </div>
+          )}
+        </div>
+
+        {/* All-Time Points: Line Graph Race */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">All-Time Points Line Race</h2>
+          {weeklyFrames.length > 0 ? (
+            <LineGraphRace
+              weeklyFrames={weeklyFrames}
+              teams={teams}
+              topN={Math.min(8, teams.length)}
+              stepMs={1200}
+            />
+          ) : (
+            <div className="bg-black/30 rounded-lg border border-white/10 p-6 text-white/60">
+              No weekly data available for the line race.
             </div>
           )}
         </div>

@@ -21,6 +21,7 @@ export default function BarChartRace({
   topN = 12,
   stepMs = 1200,
 }) {
+  // Global tween state (drives both bar widths and numeric labels)
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(true);
   const timerRef = useRef(null);
@@ -29,6 +30,17 @@ export default function BarChartRace({
   const [showFilter, setShowFilter] = useState(false);
   const [selectedTeamIds, setSelectedTeamIds] = useState(() => new Set());
   const [loop, setLoop] = useState(true);
+  const [tweenT, setTweenT] = useState(1); // 0..1 progress between frames
+  const rafRef = useRef(null);
+  const tweenStartRef = useRef(0);
+  const tweenDurationRef = useRef(700);
+  const prevTotalsRef = useRef({});
+  const nextTotalsRef = useRef({});
+
+  function cancelTween() {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }
 
   // Build a quick lookup for team meta
   const teamMap = useMemo(() => {
@@ -56,69 +68,106 @@ export default function BarChartRace({
     return teams.filter(t => selectedTeamIds.has(t.user_id));
   }, [teams, selectedTeamIds]);
 
-  // Compute cumulative totals up to the selected frame index (weekly preferred)
-  const { rows, maxValue, label } = useMemo(() => {
-    if (!teamsUsed?.length) return { rows: [], maxValue: 0, label: '' };
-    const cumulative = {};
-    teamsUsed.forEach(t => { cumulative[t.user_id] = 0; });
+  // Helper to compute cumulative totals up to a given index
+  const computeTotalsAtIndex = useMemo(() => {
+    return (useIdx) => {
+      const totals = {};
+      teamsUsed.forEach(t => { totals[t.user_id] = 0; });
+      if (weeklyFrames?.length) {
+        const idxClamped = Math.min(useIdx, weeklyFrames.length - 1);
+        const curSeason = weeklyFrames[idxClamped]?.season;
+        const startIdx = mode === 'season'
+          ? (() => {
+              let j = idxClamped;
+              while (j > 0 && weeklyFrames[j - 1]?.season === curSeason) j--;
+              return j;
+            })()
+          : 0;
+        for (let i = startIdx; i <= idxClamped; i++) {
+          const frame = weeklyFrames[i];
+          const perUser = frame?.perUser || {};
+          teamsUsed.forEach(t => {
+            const val = perUser[t.user_id];
+            const num = typeof val === 'number' ? val : (typeof val === 'string' ? parseFloat(val) : 0);
+            totals[t.user_id] += (isFinite(num) ? num : 0);
+          });
+        }
+        return totals;
+      } else if (seasonPerformance?.length) {
+        const idxClamped = Math.min(useIdx, seasonPerformance.length - 1);
+        for (let i = 0; i <= idxClamped; i++) {
+          const entry = seasonPerformance[i];
+          teamsUsed.forEach(t => {
+            const val = entry?.[`${t.user_id}_points`];
+            const num = typeof val === 'number' ? val : (typeof val === 'string' ? parseFloat(val) : 0);
+            totals[t.user_id] += (isFinite(num) ? num : 0);
+          });
+        }
+        return totals;
+      }
+      return totals;
+    };
+  }, [teamsUsed, weeklyFrames, seasonPerformance, mode]);
 
-    // If weekly frames provided, use them. Otherwise fall back to season-level.
+  // Target label for the current idx (does not tween)
+  const label = useMemo(() => {
     if (weeklyFrames?.length) {
       const useIdx = Math.min(idx, weeklyFrames.length - 1);
-      const curSeason = weeklyFrames[useIdx]?.season;
-      const startIdx = mode === 'season'
-        ? (() => {
-            let j = useIdx;
-            while (j > 0 && weeklyFrames[j - 1]?.season === curSeason) j--;
-            return j;
-          })()
-        : 0;
-
-      for (let i = startIdx; i <= useIdx; i++) {
-        const frame = weeklyFrames[i];
-        const perUser = frame?.perUser || {};
-        teamsUsed.forEach(t => {
-          const val = perUser[t.user_id];
-          const num = typeof val === 'number' ? val : (typeof val === 'string' ? parseFloat(val) : 0);
-          cumulative[t.user_id] += (isFinite(num) ? num : 0);
-        });
-      }
-      const all = Object.entries(cumulative).map(([user_id, value]) => ({
-        user_id,
-        value,
-        name: teamMap.get(user_id)?.display_name || user_id,
-        avatar: teamMap.get(user_id)?.avatar || null,
-      }));
-      all.sort((a, b) => b.value - a.value);
-      const limited = all.slice(0, Math.max(1, Math.min(topN, all.length)));
-      const max = Math.max(1, ...limited.map(r => r.value));
       const frame = weeklyFrames[useIdx];
-      const lab = frame ? `Season ${frame.season} — Week ${frame.week}` : '';
-      return { rows: limited, maxValue: max, label: lab };
-    } else if (seasonPerformance?.length) {
-      const useIdx = Math.min(idx, seasonPerformance.length - 1);
-      for (let i = 0; i <= useIdx; i++) {
-        const entry = seasonPerformance[i];
-        teamsUsed.forEach(t => {
-          const val = entry?.[`${t.user_id}_points`];
-          const num = typeof val === 'number' ? val : (typeof val === 'string' ? parseFloat(val) : 0);
-          cumulative[t.user_id] += (isFinite(num) ? num : 0);
-        });
-      }
-      const all = Object.entries(cumulative).map(([user_id, value]) => ({
-        user_id,
-        value,
-        name: teamMap.get(user_id)?.display_name || user_id,
-        avatar: teamMap.get(user_id)?.avatar || null,
-      }));
-      all.sort((a, b) => b.value - a.value);
-      const limited = all.slice(0, Math.max(1, Math.min(topN, all.length)));
-      const max = Math.max(1, ...limited.map(r => r.value));
-      const lab = seasons?.length ? `Season ${seasons[Math.min(idx, seasons.length - 1)]}` : '';
-      return { rows: limited, maxValue: max, label: lab };
+      return frame ? `Season ${frame.season} — Week ${frame.week}` : '';
+    } else if (seasons?.length) {
+      return `Season ${seasons[Math.min(idx, seasons.length - 1)]}`;
     }
-    return { rows: [], maxValue: 0, label: '' };
-  }, [idx, weeklyFrames, seasonPerformance, seasons, teamsUsed, teamMap, topN, mode]);
+    return '';
+  }, [idx, weeklyFrames, seasons]);
+
+  // Start a tween whenever idx / filters / mode change to a new target totals map
+  useEffect(() => {
+    if (!teamsUsed?.length) return;
+    const frameCount = weeklyFrames?.length ? weeklyFrames.length : (seasons?.length || 0);
+    if (frameCount === 0) return;
+
+    const targetTotals = computeTotalsAtIndex(Math.min(idx, frameCount - 1));
+
+    // If we don't have a previous totals, initialize prev=target and set t=1
+    const havePrev = Object.keys(prevTotalsRef.current || {}).length > 0;
+    if (!havePrev) {
+      prevTotalsRef.current = { ...targetTotals };
+      nextTotalsRef.current = { ...targetTotals };
+      setTweenT(1);
+      return;
+    }
+
+    // Set prev to current interpolated snapshot to avoid any jump, then tween to target
+    const currentInterp = {};
+    const prev = prevTotalsRef.current || {};
+    const next = nextTotalsRef.current || targetTotals;
+    const curT = tweenT;
+    teamsUsed.forEach(t => {
+      const id = t.user_id;
+      const a = prev[id] ?? 0;
+      const b = next[id] ?? 0;
+      currentInterp[id] = a + (b - a) * curT;
+    });
+    prevTotalsRef.current = currentInterp;
+    nextTotalsRef.current = { ...targetTotals };
+
+    // Kick off tween
+    cancelTween();
+    const duration = Math.max(200, Math.floor(stepMs / (speed || 1)));
+    tweenDurationRef.current = duration;
+    tweenStartRef.current = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - tweenStartRef.current) / tweenDurationRef.current);
+      setTweenT(t);
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return cancelTween;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, teamsUsed, mode]);
 
   // Auto-advance timer (with 5s hold at end before loop restart)
   useEffect(() => {
@@ -153,55 +202,84 @@ export default function BarChartRace({
     setPlaying(false);
   }
 
-  // FLIP reordering animation
+  // Interpolated rows and max based on tweenT (defined before FLIP effect)
+  const { interpRows, interpMax } = useMemo(() => {
+    if (!teamsUsed?.length) return { interpRows: [], interpMax: 1 };
+    const prev = prevTotalsRef.current || {};
+    const next = nextTotalsRef.current || {};
+    const all = teamsUsed.map(t => {
+      const a = prev[t.user_id] ?? 0;
+      const b = next[t.user_id] ?? 0;
+      const value = a + (b - a) * tweenT;
+      return {
+        user_id: t.user_id,
+        value,
+        name: teamMap.get(t.user_id)?.display_name || t.user_id,
+        avatar: teamMap.get(t.user_id)?.avatar || null,
+      };
+    });
+    all.sort((a, b) => b.value - a.value);
+    const limited = all.slice(0, Math.max(1, Math.min(topN, all.length)));
+    const max = Math.max(1, ...limited.map(r => r.value));
+    return { interpRows: limited, interpMax: max };
+  }, [teamsUsed, teamMap, topN, tweenT]);
+
+  // FLIP reordering animation, measured relative to list container to avoid scroll-induced jumps
   const rowRefs = useRef({});
+  const listRef = useRef(null);
   const prevPositionsRef = useRef(null);
   useLayoutEffect(() => {
     // Measure new positions after render
     const positions = new Map();
-    rows.forEach(r => {
+    const containerTop = listRef.current?.getBoundingClientRect?.().top || 0;
+    // Measure only visible/interpolated rows by id, relative to container top
+    interpRows.forEach(r => {
       const el = rowRefs.current[r.user_id];
-      if (el) positions.set(r.user_id, el.getBoundingClientRect());
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      positions.set(r.user_id, { top: rect.top - containerTop });
     });
 
     const prev = prevPositionsRef.current;
     if (prev) {
       positions.forEach((newBox, id) => {
         const prevBox = prev.get(id);
-        const el = rowRefs.current[id];
-        if (!el) return;
+        const node = rowRefs.current[id];
+        if (!node) return;
 
         if (prevBox) {
-          const dy = prevBox.top - newBox.top;
+          const dy = (prevBox.top ?? 0) - (newBox.top ?? 0);
           if (dy) {
-            el.style.transition = 'transform 0s, opacity 0s';
-            el.style.transform = `translateY(${dy}px) translateZ(0)`;
+            node.style.transition = 'transform 0s, opacity 0s';
+            node.style.transform = `translateY(${dy}px) translateZ(0)`;
             // double rAF to ensure the browser registers the initial transform
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                el.style.transition = 'transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease-out';
-                el.style.transform = 'translateY(0) translateZ(0)';
-                el.style.opacity = '1';
+                node.style.transition = 'transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease-out';
+                node.style.transform = 'translateY(0) translateZ(0)';
+                node.style.opacity = '1';
               });
             });
           }
         } else {
           // New row entering the topN: fade and slide in slightly
-          el.style.transition = 'transform 0s, opacity 0s';
-          el.style.transform = 'translateY(12px) translateZ(0)';
-          el.style.opacity = '0';
+          node.style.transition = 'transform 0s, opacity 0s';
+          node.style.transform = 'translateY(12px) translateZ(0)';
+          node.style.opacity = '0';
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              el.style.transition = 'transform 500ms ease-out, opacity 500ms ease-out';
-              el.style.transform = 'translateY(0) translateZ(0)';
-              el.style.opacity = '1';
+              node.style.transition = 'transform 500ms ease-out, opacity 500ms ease-out';
+              node.style.transform = 'translateY(0) translateZ(0)';
+              node.style.opacity = '1';
             });
           });
         }
       });
     }
     prevPositionsRef.current = positions;
-  }, [rows]);
+  }, [interpRows]);
+
+  
 
   return (
     <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
@@ -306,15 +384,25 @@ export default function BarChartRace({
 
   <div className="text-white/70 mb-2">Through: <span className="text-white font-semibold">{label || '—'}</span></div>
 
-      <div className="space-y-3">
-        {rows.map((r, i) => {
-          const pct = maxValue > 0 ? (r.value / maxValue) * 100 : 0;
+      {/* Bars list container: fixed height and overflow hidden to prevent page scroll and jank */}
+      <div
+        ref={listRef}
+        className="space-y-3 relative overflow-hidden"
+        style={{
+          // approximate stable height per row to avoid layout thrash
+          height: `${Math.max(1, interpRows.length) * 48 + (Math.max(1, interpRows.length) - 1) * 12}px`,
+        }}
+      >
+        {interpRows.map((r, i) => {
+          const pct = interpMax > 0 ? (r.value / interpMax) * 100 : 0;
           const color = teamColorMap.get(r.user_id) || '#FF4B1F';
+          const transitionMs = Math.max(200, Math.floor(stepMs / (speed || 1)));
           return (
             <div
               key={r.user_id}
               ref={el => { if (el) rowRefs.current[r.user_id] = el; }}
-              className="flex items-center gap-3 will-change-transform"
+              data-user-id={r.user_id}
+              className="flex items-center gap-3 will-change-transform h-12"
               style={{ transform: 'translateZ(0)' }}
             >
               <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
@@ -335,12 +423,12 @@ export default function BarChartRace({
               <div className="flex-1">
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span className="font-medium">{i + 1}. {r.name}</span>
-                  <span className="text-white/70">{r.value.toFixed(1)}</span>
+                  <span className="text-white/70">{isFinite(r.value) ? r.value.toFixed(1) : '0.0'}</span>
                 </div>
                 <div className="w-full bg-white/10 rounded-full h-5 overflow-hidden">
                   <div
-                    className="h-5 rounded-full transition-all duration-700 ease-out"
-                    style={{ width: `${pct}%`, backgroundColor: color }}
+                    className="h-5 rounded-full"
+                    style={{ width: `${pct}%`, backgroundColor: color, transition: `width ${transitionMs}ms linear` }}
                   />
                 </div>
               </div>
