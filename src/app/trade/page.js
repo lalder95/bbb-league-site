@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import TradeSummary from './TradeSummary';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { AnimatePresence, motion } from 'framer-motion';
+import SleeperImportModal from './components/SleeperImportModal';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
@@ -306,6 +307,7 @@ export default function Trade() {
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [showImport, setShowImport] = useState(false);
 
   // Auto-detect league ID (copied from home page)
   useEffect(() => {
@@ -697,6 +699,24 @@ export default function Trade() {
     setShowSummary(false);
   };
 
+  // Apply handler from import modal
+  const handleApplyImport = (importParticipants) => {
+    // sanitize
+    const cleaned = (importParticipants || [])
+      .filter(p => p && p.team)
+      .map((p, idx) => ({
+        id: idx + 1,
+        team: p.team,
+        searchTerm: '',
+        selectedPlayers: Array.isArray(p.selectedPlayers) ? p.selectedPlayers : [],
+      }));
+    if (cleaned.length >= 2) {
+      setParticipants(cleaned);
+      setShowSummary(false);
+    }
+    setShowImport(false);
+  };
+
   return (
     <main className="min-h-screen bg-[#001A2B] text-white">
       <div className="bg-black/30 p-6 border-b border-white/10">
@@ -709,12 +729,20 @@ export default function Trade() {
             />
             <h1 className="text-3xl font-bold text-[#FF4B1F]">Trade Calculator</h1>
           </div>
-          <button
-            onClick={handleReset}
-            className="px-4 py-2 bg-white/10 border border-white/20 rounded text-white hover:bg-[#FF4B1F]/80 hover:text-white transition-colors"
-          >
-            Reset Trade
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="px-4 py-2 bg-white/10 border border-white/20 rounded text-white hover:bg-white/20"
+            >
+              Import Sleeper Screenshot
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 bg-white/10 border border-white/20 rounded text-white hover:bg-[#FF4B1F]/80 hover:text-white transition-colors"
+            >
+              Reset Trade
+            </button>
+          </div>
         </div>
       </div>
 
@@ -823,6 +851,14 @@ export default function Trade() {
           })}
         </div>
       </div>
+      <SleeperImportModal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        onApply={handleApplyImport}
+        allPlayers={players}
+        teamOptions={uniqueTeams}
+        teamAvatars={teamAvatars}
+      />
     </main>
   );
 }
