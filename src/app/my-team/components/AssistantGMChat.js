@@ -27,10 +27,10 @@ export default function AssistantGMChat({
   users = [],
   myDraftPicksList: propMyDraftPicksList,
   leagueWeek,  leagueYear,
-  activeTab, // <-- add this prop
-  autoMessage, // Optional: a message to auto-send
-  autoSendTrigger, // Optional: change this value to trigger auto-send
-  autoStartNewConversation = false, // Optional: start fresh when auto-sending
+  activeTab,
+  autoMessage,
+  autoSendTrigger,
+  autoStartNewConversation = false,
 }) {
   // Find user's team name
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
@@ -55,7 +55,6 @@ export default function AssistantGMChat({
   // Find user's roster_id (for draft pick ownership)
   let myRosterId = null;
   if (Array.isArray(rosters) && Array.isArray(users) && session?.user?.name) {
-    // Try to match user by display_name (case-insensitive)
     const userObj = users.find(u =>
       typeof u.display_name === 'string' &&
       u.display_name.trim().toLowerCase() === session.user.name.trim().toLowerCase()
@@ -69,7 +68,6 @@ export default function AssistantGMChat({
   // Get all picks currently owned by the user (per Sleeper API docs)
   let myDraftPicksList = [];
   if (propMyDraftPicksList) {
-    // If provided as a prop, use it
     myDraftPicksList = propMyDraftPicksList;
   } else if (myRosterId && Array.isArray(tradedPicks)) {
     myDraftPicksList = tradedPicks
@@ -92,7 +90,6 @@ export default function AssistantGMChat({
   // Format all rosters with contract status, fix years left, filter out 0 years left, and compute total salary
   const allRostersString = Object.entries(contractsByTeam).map(([team, contracts]) => {
     const isUser = team.trim().toLowerCase() === myTeamName.trim().toLowerCase();
-    // Add 1 to yearsRemaining, filter out contracts with yearsRemaining <= 0
     const filteredContracts = contracts.map(p => {
       let yearsRemaining = null;
       const currentYear = new Date().getFullYear();
@@ -102,14 +99,12 @@ export default function AssistantGMChat({
       }
       return { ...p, yearsRemaining };
     }).filter(p => p.yearsRemaining === null || p.yearsRemaining > 0);
-    // Calculate total salary for this team
     const totalSalary = filteredContracts.reduce((sum, p) => sum + (parseFloat(p.curYear) || 0), 0);
     return `--- ${isUser ? 'USER TEAM: ' : ''}${team} (Total Salary: $${totalSalary.toFixed(1)}) ---\n` + filteredContracts.map(p => {
       return `${p.playerName} (${p.position}), $${p.curYear}, KTC: ${p.ktcValue}, Age: ${p.age}, Years Left: ${p.yearsRemaining ?? '-'}, ${p.status}`;
     }).join('\n');
   }).join('\n\n');
 
-  // Memoize systemPrompt so it only changes when its dependencies change
   const systemPrompt = useMemo(() => `You're my Assistant GM for my Budget Blitz Bowl dynasty fantasy football league. Let's keep it casual—just text me advice like a friend would. Be concise and don't write essays.
 
 This is a SuperFlex league, so teams can start 2 quarterbacks each week (one in the SuperFlex spot).
@@ -187,10 +182,7 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     allRostersString
   ]);
 
-  // Use a stable chat key based only on user/team identity
   const chatKey = `assistantGMChat_${session?.user?.name || 'guest'}`;
-
-  // Only clear chat if chatKey changes (not systemPrompt)
   const [messages, setMessages] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(chatKey);
@@ -199,14 +191,12 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     return [];
   });
 
-  // Save chat to localStorage when messages change
-  React.useEffect(() => {
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem(chatKey, JSON.stringify(messages));
     }
   }, [messages, chatKey]);
 
-  // Do not auto-reset chat when systemPrompt changes; only reset on Clear Chat
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -214,7 +204,6 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     if (!content?.trim()) return;
     setLoading(true);
     const userMsg = { role: 'user', content };
-    // If this is an auto-sent seeded message, optionally mark it hidden in UI
     if (options.hideInUI) {
       userMsg.uiHidden = true;
       userMsg.auto = true;
@@ -232,7 +221,6 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
 
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok) {
-        // Try to read error json first, else text
         let errMsg = `Request failed (${res.status})`;
         try {
           if (contentType.includes('application/json')) {
@@ -248,7 +236,6 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
         return;
       }
 
-      // Happy path
       if (contentType.includes('application/json')) {
         const data = await res.json();
         setMessages([...newMessages, { role: 'assistant', content: data.reply || '' }]);
@@ -272,11 +259,8 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     await sendRawMessage(content);
   }
 
-  // Helper: Format assistant message (bold **text** and split numbered lists)
   function formatAssistantMessage(content) {
-    // Bold **text**
     let formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Try to match all numbered items (e.g., 1. text, 2. text, ...)
     const numberedRegex = /(?:^|\n)(\d+\.[\s\S]*?)(?=(?:\n\d+\.|$))/g;
     const matches = [];
     let match;
@@ -286,7 +270,6 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     if (matches.length > 1) {
       return matches;
     }
-    // Otherwise, split on line breaks for readability
     return formatted.split(/\n{2,}|\n(?=\d+\.)/g).map(s => s.trim()).filter(Boolean);
   }
 
@@ -296,33 +279,9 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
       if (typeof window !== 'undefined') {
         localStorage.setItem(chatKey, JSON.stringify([{ role: 'system', content: systemPrompt }]));
       }
-          {loading && (
-            <div className="mb-2 flex items-center gap-2 text-white/70" aria-live="polite">
-              {/* Spinning football indicator */}
-              <svg
-                className="h-5 w-5 animate-spin text-[#FF4B1F]"
-                viewBox="0 0 64 64"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                role="img"
-                aria-label="Assistant is thinking"
-              >
-                {/* Football body */}
-                <ellipse cx="32" cy="32" rx="26" ry="16" fill="currentColor" />
-                {/* Laces */}
-                <rect x="24" y="30" width="16" height="4" rx="1" fill="#fff" />
-                <rect x="26" y="26" width="2" height="12" rx="1" fill="#fff" />
-                <rect x="30" y="26" width="2" height="12" rx="1" fill="#fff" />
-                <rect x="34" y="26" width="2" height="12" rx="1" fill="#fff" />
-                <rect x="38" y="26" width="2" height="12" rx="1" fill="#fff" />
-              </svg>
-              <span className="text-sm">Assistant is thinking…</span>
-            </div>
-          )}
     }
   }
 
-  // --- Add this ref and effect for auto-scroll ---
   const messagesEndRef = useRef(null);
   const chatBoxRef = useRef(null);
 
@@ -330,20 +289,16 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     if (activeTab !== 'Assistant GM') return;
     const chatBox = chatBoxRef.current;
     if (chatBox) {
-      // Always scroll to the bottom of the chat box, but only affect the chat box
       chatBox.scrollTop = chatBox.scrollHeight;
     }
   }, [messages, activeTab]);
-  // ------------------------------------------------
 
-  // Auto-send handler: when autoSendTrigger changes and autoMessage provided
   const lastTriggerRef = useRef(undefined);
   useEffect(() => {
     if (activeTab !== 'Assistant GM') return;
     if (!autoMessage) return;
     if (autoSendTrigger === undefined || autoSendTrigger === lastTriggerRef.current) return;
     lastTriggerRef.current = autoSendTrigger;
-    // Debounce slight delay to ensure mount
     const t = setTimeout(() => {
       if (!loading) {
         if (autoStartNewConversation) {
@@ -352,10 +307,8 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
           if (typeof window !== 'undefined') {
             localStorage.setItem(chatKey, JSON.stringify(fresh));
           }
-          // Auto-send initial message but hide it in the UI
           sendRawMessage(autoMessage, fresh, { hideInUI: true });
         } else {
-          // Auto-send initial message but hide it in the UI
           sendRawMessage(autoMessage, undefined, { hideInUI: true });
         }
       }
@@ -367,10 +320,10 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     <div className="bg-black/20 rounded-lg p-4 flex flex-col" style={{height:'100%', minHeight:'38rem', maxHeight:'56rem'}}>
       <div
         ref={chatBoxRef}
-        className="flex-1 min-h-0 overflow-y-auto bg-black/10 rounded p-2 mb-2"
+        className="flex-1 min-h-0 overflow-y-auto bg-black/10 rounded p-2 mb-2 relative"
         style={{maxHeight:'34rem'}}
       >
-  {messages.filter(m => m.role !== 'system' && !m.uiHidden).flatMap((msg, i) => {
+        {messages.filter(m => m.role !== 'system' && !m.uiHidden).flatMap((msg, i) => {
           if (msg.role === 'assistant') {
             const parts = formatAssistantMessage(msg.content);
             return parts.map((part, j) => (
@@ -391,10 +344,37 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
             );
           }
         })}
-        {/* --- Add this div for scroll target --- */}
+
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center" aria-live="polite" role="status">
+            <div className="flex flex-col items-center gap-3 text-white/90">
+              <svg
+                className="h-10 w-10 animate-spin text-[#FF4B1F]"
+                style={{ animationDuration: '1200ms' }}
+                viewBox="0 0 64 64"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                role="img"
+                aria-label="Assistant is thinking"
+              >
+                <g transform="rotate(-25 32 32)">
+                  <ellipse cx="32" cy="32" rx="26" ry="16" fill="currentColor" />
+                  <rect x="12" y="29" width="8" height="6" rx="1" fill="#fff" opacity="0.9" />
+                  <rect x="44" y="29" width="8" height="6" rx="1" fill="#fff" opacity="0.9" />
+                  <rect x="24" y="30" width="16" height="4" rx="1" fill="#fff" />
+                  <rect x="28" y="26" width="2" height="12" rx="1" fill="#fff" />
+                  <rect x="32" y="26" width="2" height="12" rx="1" fill="#fff" />
+                  <rect x="36" y="26" width="2" height="12" rx="1" fill="#fff" />
+                </g>
+              </svg>
+              <span className="text-sm">Assistant is thinking…</span>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
-      {/* --- Update form className for responsive layout --- */}
+
       <form onSubmit={sendMessage} className="flex flex-col sm:flex-row gap-2 mb-2">
         <input
           className="flex-1 p-2 rounded bg-white/10 text-white"

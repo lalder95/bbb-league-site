@@ -62,6 +62,8 @@ export default function SleeperImportModal({
     });
   };
 
+  const timeout = (ms, message = 'OCR timed out') => new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms));
+
   const runOCR = async () => {
     if (!imageUrl) return;
     setBusy(true);
@@ -69,13 +71,22 @@ export default function SleeperImportModal({
     try {
       // Reduce image size to keep memory use reasonable on mobile/production
       const dataUrl = await downscaleImage(imageUrl, 1600);
-      const res = await Tesseract.recognize(dataUrl, 'eng', {
+      const recognize = () => Tesseract.recognize(dataUrl, 'eng', {
         // Explicitly set paths for production so worker/core/lang are fetched from CDN reliably
         workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
         corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core.wasm.js',
         langPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/lang-data',
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:-',
+        logger: m => {
+          // Optional: could surface progress to UI later
+          // console.debug('OCR:', m);
+        }
       });
+      // Watchdog timeout to avoid infinite processing in production
+      const res = await Promise.race([
+        recognize(),
+        timeout(45000, 'OCR timed out after 45s')
+      ]);
       const text = res?.data?.text || '';
       setOcrText(text);
   const p = parseSleeper(text);
@@ -100,7 +111,7 @@ export default function SleeperImportModal({
       setMatches(pre);
     } catch (e) {
       const msg = e && (e.message || String(e));
-      setError(`OCR failed. ${msg?.includes('wasm') ? 'WASM load issue' : ''} Try another screenshot, crop tighter, or reduce resolution.`);
+      setError(`OCR failed. ${msg?.includes('wasm') ? 'WASM load issue. ' : ''}${msg?.includes('timed out') ? ' Took too long.' : ''} Try another screenshot, crop tighter, or reduce resolution.`);
     } finally {
       setBusy(false);
     }
@@ -431,9 +442,17 @@ export default function SleeperImportModal({
           <div className="space-y-3">
             <input type="file" accept="image/*" onChange={e=>onPickFile(e.target.files?.[0])} className="block w-full text-sm" />
             {imageUrl && <img src={imageUrl} alt="preview" className="w-full rounded border border-white/10" />}
-            <button onClick={runOCR} disabled={!imageUrl || busy} className={`px-3 py-1.5 rounded ${busy? 'bg-white/10' : 'bg-[#FF4B1F]/80 hover:bg-[#FF4B1F]'}`}>
-              {busy ? 'Processing…' : 'Run OCR'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={runOCR} disabled={!imageUrl || busy} className={`px-3 py-1.5 rounded ${busy? 'bg-white/10' : 'bg-[#FF4B1F]/80 hover:bg-[#FF4B1F]'}`}>
+                {busy ? 'Processing…' : 'Scan Screenshot'}
+              </button>
+              {busy && (
+                <>
+                  <div className="h-4 w-4 rounded-full border-2 border-[#FF4B1F]/40 border-t-[#FF4B1F] animate-spin" />
+                  <button onClick={() => { setBusy(false); setError('OCR cancelled.'); }} className="text-xs text-white/70 hover:text-white">Cancel</button>
+                </>
+              )}
+            </div>
             {error && <div className="text-red-400 text-sm">{error}</div>}
             {ocrText && (
               <details className="text-xs text-white/60">
