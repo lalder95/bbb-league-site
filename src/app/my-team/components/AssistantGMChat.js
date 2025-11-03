@@ -223,23 +223,45 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     const newMessages = [...base, userMsg];
     setMessages(newMessages);
 
-    let data;
     try {
       const res = await fetch('/api/assistant-gm-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Strip any UI-only fields before sending to server
         body: JSON.stringify({ messages: newMessages.map(({ role, content }) => ({ role, content })) }),
       });
-      const text = await res.text();
-      data = JSON.parse(text);
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        // Try to read error json first, else text
+        let errMsg = `Request failed (${res.status})`;
+        try {
+          if (contentType.includes('application/json')) {
+            const j = await res.json();
+            if (j?.error) errMsg = j.error;
+          } else {
+            const t = await res.text();
+            if (t) errMsg = t.slice(0, 2000);
+          }
+        } catch {}
+        setMessages([...newMessages, { role: 'assistant', content: `Error: ${errMsg}` }]);
+        setLoading(false);
+        return;
+      }
+
+      // Happy path
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        setMessages([...newMessages, { role: 'assistant', content: data.reply || '' }]);
+      } else {
+        const text = await res.text();
+        setMessages([...newMessages, { role: 'assistant', content: text || 'Empty response' }]);
+      }
     } catch (err) {
-      setMessages([...newMessages, { role: 'assistant', content: 'Error: Could not parse response from server.' }]);
+      const msg = err && (err.message || String(err));
+      setMessages([...newMessages, { role: 'assistant', content: `Network error: ${msg}` }]);
+    } finally {
       setLoading(false);
-      return;
     }
-    setMessages([...newMessages, { role: 'assistant', content: data.reply }]);
-    setLoading(false);
   }
 
   async function sendMessage(e) {
@@ -274,6 +296,29 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
       if (typeof window !== 'undefined') {
         localStorage.setItem(chatKey, JSON.stringify([{ role: 'system', content: systemPrompt }]));
       }
+          {loading && (
+            <div className="mb-2 flex items-center gap-2 text-white/70" aria-live="polite">
+              {/* Spinning football indicator */}
+              <svg
+                className="h-5 w-5 animate-spin text-[#FF4B1F]"
+                viewBox="0 0 64 64"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                role="img"
+                aria-label="Assistant is thinking"
+              >
+                {/* Football body */}
+                <ellipse cx="32" cy="32" rx="26" ry="16" fill="currentColor" />
+                {/* Laces */}
+                <rect x="24" y="30" width="16" height="4" rx="1" fill="#fff" />
+                <rect x="26" y="26" width="2" height="12" rx="1" fill="#fff" />
+                <rect x="30" y="26" width="2" height="12" rx="1" fill="#fff" />
+                <rect x="34" y="26" width="2" height="12" rx="1" fill="#fff" />
+                <rect x="38" y="26" width="2" height="12" rx="1" fill="#fff" />
+              </svg>
+              <span className="text-sm">Assistant is thinking…</span>
+            </div>
+          )}
     }
   }
 

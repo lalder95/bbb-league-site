@@ -38,12 +38,42 @@ export default function SleeperImportModal({
     setMatches({});
   };
 
+  // Downscale large images to reduce memory pressure for OCR
+  const downscaleImage = async (srcUrl, maxDim = 1600) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          resolve(dataUrl);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = reject;
+      img.src = srcUrl;
+    });
+  };
+
   const runOCR = async () => {
     if (!imageUrl) return;
     setBusy(true);
     setError('');
     try {
-      const res = await Tesseract.recognize(imageUrl, 'eng', {
+      // Reduce image size to keep memory use reasonable on mobile/production
+      const dataUrl = await downscaleImage(imageUrl, 1600);
+      const res = await Tesseract.recognize(dataUrl, 'eng', {
+        // Explicitly set paths for production so worker/core/lang are fetched from CDN reliably
+        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
+        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core.wasm.js',
+        langPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/lang-data',
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:-',
       });
       const text = res?.data?.text || '';
@@ -69,7 +99,8 @@ export default function SleeperImportModal({
       });
       setMatches(pre);
     } catch (e) {
-      setError('OCR failed. Try another screenshot or crop to the trade area.');
+      const msg = e && (e.message || String(e));
+      setError(`OCR failed. ${msg?.includes('wasm') ? 'WASM load issue' : ''} Try another screenshot, crop tighter, or reduce resolution.`);
     } finally {
       setBusy(false);
     }

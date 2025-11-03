@@ -233,7 +233,9 @@ const TradeSummary = ({
       const rosterStr = rosterPlayers.map(p => `${p.playerName} (${p.position}, $${Number(p.curYear||0).toFixed(1)})`).join(', ') || 'None';
       parts.push(`- ${team}:\n  Sends: ${outNames}\n  Receives: ${inNames}\n  ${capStr}\n  Full Roster: ${rosterStr}`);
     });
-    return `Please evaluate this proposed multi-team trade. For each involved team, consider KTC values, contract cost and cap impact, and how it impacts the team's roster composition. Here are the details by team (including the full roster for each):\n\n${parts.join('\n\n')}`;
+    // Add strict formatting instructions so the first reply is consistently structured
+    const formatGuide = `\n\nReply using ONLY this structure (no preamble):\n1. Summary — 1–2 sentences\n2. Value delta by team — bullet per team with KTC vs contract takeaways\n3. Cap impact risks — bullets for any years/teams near or below $0 remaining\n4. Roster fit notes — short bullets by position if relevant\n5. Recommendation — Accept / Decline / Counter (bold one) + 1–2 bullets why\n6. Next actions — up to 3 terse bullets`;
+    return `Please evaluate this proposed multi-team trade. For each involved team, consider KTC values, contract cost and cap impact, and how it impacts the team's roster composition. Here are the details by team (including the full roster for each):\n\n${parts.join('\n\n')}${formatGuide}`;
   };
 
   // When opening Assistant GM, auto-compose and send the initial message
