@@ -1,6 +1,31 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
+
+class ErrorCatcher extends React.Component {
+  constructor(props){
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+  static getDerivedStateFromError(err){
+    return { hasError: true, message: err?.message || String(err) };
+  }
+  componentDidCatch(err){
+    if (this.props.onError) {
+      try { this.props.onError(err); } catch {}
+    }
+  }
+  render(){
+    if (this.state.hasError) {
+      return (
+        <div className="text-red-400 text-sm p-2 border border-red-500/30 rounded bg-red-950/30">
+          OCR panel error: {this.state.message}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import Tesseract from 'tesseract.js';
 
 /**
@@ -14,7 +39,7 @@ export default function SleeperImportModal({
   onClose,
   onApply,
   allPlayers,   // Array of active BBB players/contracts used for matching
-  teamOptions,  // BBB team names
+  teamOptions = [],  // BBB team names
   teamAvatars = {},
 }) {
   const [imageUrl, setImageUrl] = useState(null);
@@ -64,6 +89,31 @@ export default function SleeperImportModal({
 
   const timeout = (ms, message = 'OCR timed out') => new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms));
 
+  // Prefer self-hosted assets; fallback to CDN
+  const TESS_BASE = '/tesseract';
+  const CDN_BASE = 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist';
+  const CORE_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4';
+
+  const pickCorePath = () => {
+    const simd = typeof window !== 'undefined' && window.crossOriginIsolated;
+    // Try local first, CDN fallback (SIMD when isolated)
+    return simd
+      ? [`${TESS_BASE}/tesseract-core-simd.wasm.js`, `${CORE_CDN}/tesseract-core-simd.wasm.js`]
+      : [`${TESS_BASE}/tesseract-core.wasm.js`, `${CORE_CDN}/tesseract-core.wasm.js`];
+  };
+
+  const workerPaths = [
+    `${TESS_BASE}/tesseract.worker.min.js`,
+    `${CDN_BASE}/worker.min.js`,
+  ];
+
+  const langPaths = [
+    `${TESS_BASE}/lang-data`,
+    `${CDN_BASE}/lang-data`,
+  ];
+
+  const ocrControllerRef = useRef(null); // holds { cancel: () => void } during an active OCR run
+
   const runOCR = async () => {
     if (!imageUrl) return;
     setBusy(true);
@@ -71,23 +121,55 @@ export default function SleeperImportModal({
     try {
       // Reduce image size to keep memory use reasonable on mobile/production
       const dataUrl = await downscaleImage(imageUrl, 1600);
-      const recognize = () => Tesseract.recognize(dataUrl, 'eng', {
-        // Explicitly set paths for production so worker/core/lang are fetched from CDN reliably
-        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
-        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core.wasm.js',
-        langPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/lang-data',
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:-',
-        logger: m => {
-          // Optional: could surface progress to UI later
-          // console.debug('OCR:', m);
+
+      // Create worker with local-first paths and cancellation support
+      const corePaths = pickCorePath();
+      let worker;
+      let lastErr;
+      for (const wp of workerPaths) {
+        for (const cp of corePaths) {
+          for (const lp of langPaths) {
+            try {
+              worker = await Tesseract.createWorker(
+                'eng',
+                undefined,
+                {
+                  workerPath: wp,
+                  corePath: cp,
+                  langPath: lp,
+                  workerBlobURL: true,
+                  cacheMethod: 'none',
+                  gzip: true,
+                }
+              );
+              lastErr = undefined;
+              break;
+            } catch (e) {
+              lastErr = e;
+              worker = null;
+            }
+          }
+          if (worker) break;
         }
-      });
-      // Watchdog timeout to avoid infinite processing in production
-      const res = await Promise.race([
-        recognize(),
-        timeout(45000, 'OCR timed out after 45s')
-      ]);
-      const text = res?.data?.text || '';
+        if (worker) break;
+      }
+      if (!worker) throw lastErr || new Error('Failed to initialize OCR worker');
+
+      try {
+        // In tesseract.js v6, createWorker resolves after language is loaded and initialized.
+        // Do NOT call worker.loadLanguage/initialize here; they're not exposed in v6.
+        // Expose a cancel handle that terminates the worker (supported cancellation path)
+        ocrControllerRef.current = { cancel: async () => { try { await worker.terminate(); } catch {} } };
+
+        const recognizePromise = worker.recognize(dataUrl);
+        const res = await Promise.race([
+          recognizePromise,
+          new Promise((_, reject) => setTimeout(async () => {
+            try { await worker.terminate(); } catch {}
+            reject(new Error('OCR timed out after 45s'));
+          }, 45000)),
+        ]);
+        const text = res?.data?.text || '';
       setOcrText(text);
   const p = parseSleeper(text);
       setParsed(p);
@@ -109,9 +191,14 @@ export default function SleeperImportModal({
         });
       });
       setMatches(pre);
+      } finally {
+        ocrControllerRef.current = null;
+        try { await worker.terminate(); } catch {}
+      }
     } catch (e) {
       const msg = e && (e.message || String(e));
-      setError(`OCR failed. ${msg?.includes('wasm') ? 'WASM load issue. ' : ''}${msg?.includes('timed out') ? ' Took too long.' : ''} Try another screenshot, crop tighter, or reduce resolution.`);
+      // Surface the underlying error message for debugging visibility
+      setError(`OCR failed. ${msg ? `(${msg}) ` : ''}${msg?.includes('wasm') ? 'WASM load issue. ' : ''}${msg?.includes('timed out') ? ' Took too long.' : ''}Try another screenshot, crop tighter, or reduce resolution.`);
     } finally {
       setBusy(false);
     }
@@ -429,94 +516,130 @@ export default function SleeperImportModal({
   };
 
   if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
-      <div className="w-[min(980px,95vw)] max-h-[90vh] overflow-auto bg-[#0a1929] text-white border border-white/10 rounded-lg p-4" onClick={e=>e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-bold text-[#FF4B1F]">Import Sleeper Trade Screenshot</h2>
-          <button onClick={onClose} className="text-white/80 hover:text-white">✕</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3" onClick={onClose}>
+      <div className="w-[min(1100px,100vw)] max-h-[92vh] overflow-hidden bg-[#0a1929] text-white border border-white/10 rounded-xl shadow-2xl" onClick={e=>e.stopPropagation()}>
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 bg-[#0a1929]/95 backdrop-blur border-b border-white/10">
+          <div>
+            <h2 className="text-lg md:text-xl font-bold">Import Sleeper Trade Screenshot</h2>
+            <p className="text-xs text-white/60 hidden md:block">Scan a screenshot, map users to BBB teams, verify players, then apply to the trade.</p>
+          </div>
+          <button onClick={onClose} className="rounded-full w-8 h-8 grid place-items-center text-white/80 hover:text-white hover:bg-white/10" aria-label="Close modal">✕</button>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        {/* Body */}
+        <div className="grid md:grid-cols-2 gap-4 p-4 overflow-y-auto max-h-[calc(92vh-56px)]">
+          {/* Left column: Upload & OCR */}
           <div className="space-y-3">
-            <input type="file" accept="image/*" onChange={e=>onPickFile(e.target.files?.[0])} className="block w-full text-sm" />
-            {imageUrl && <img src={imageUrl} alt="preview" className="w-full rounded border border-white/10" />}
-            <div className="flex items-center gap-2">
-              <button onClick={runOCR} disabled={!imageUrl || busy} className={`px-3 py-1.5 rounded ${busy? 'bg-white/10' : 'bg-[#FF4B1F]/80 hover:bg-[#FF4B1F]'}`}>
-                {busy ? 'Processing…' : 'Scan Screenshot'}
-              </button>
-              {busy && (
-                <>
-                  <div className="h-4 w-4 rounded-full border-2 border-[#FF4B1F]/40 border-t-[#FF4B1F] animate-spin" />
-                  <button onClick={() => { setBusy(false); setError('OCR cancelled.'); }} className="text-xs text-white/70 hover:text-white">Cancel</button>
-                </>
+            {error && (
+              <div className="text-sm rounded-md border border-red-500/30 bg-red-900/20 text-red-300 px-3 py-2">{error}</div>
+            )}
+
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <label htmlFor="sleeper-upload" className="block text-sm font-medium mb-2">Upload screenshot</label>
+              <div className="flex items-center gap-2">
+                <input id="sleeper-upload" type="file" accept="image/*" onChange={e=>onPickFile(e.target.files?.[0])} className="block w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-white/10 file:text-white hover:file:bg-white/20" />
+              </div>
+              {imageUrl && (
+                <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-md border border-white/10 bg-black/30">
+                  <img src={imageUrl} alt="preview" className="h-full w-full object-contain" />
+                </div>
+              )}
+
+              <div className="mt-3 flex items-center gap-3">
+                <button onClick={runOCR} disabled={!imageUrl || busy} className={`inline-flex items-center justify-center px-3.5 py-2 rounded-md text-sm font-semibold ${busy? 'bg-white/10 text-white/60' : 'bg-[#FF4B1F] hover:bg-[#ff5f38] text-white'} transition-colors`}>
+                  {busy ? 'Processing…' : 'Scan Screenshot'}
+                </button>
+                {busy && (
+                  <>
+                    <div className="h-4 w-4 rounded-full border-2 border-[#FF4B1F]/40 border-t-[#FF4B1F] animate-spin" />
+                    <button onClick={async () => { try { await ocrControllerRef.current?.cancel?.(); } catch {}; setBusy(false); setError('OCR cancelled.'); }} className="text-xs text-white/70 hover:text-white">Cancel</button>
+                  </>
+                )}
+              </div>
+
+              {ocrText && (
+                <details className="mt-3 text-xs text-white/70">
+                  <summary className="cursor-pointer select-none">OCR text (debug)</summary>
+                  <pre className="mt-2 whitespace-pre-wrap rounded bg-black/30 p-2 border border-white/10 max-h-48 overflow-auto">{ocrText}</pre>
+                </details>
               )}
             </div>
-            {error && <div className="text-red-400 text-sm">{error}</div>}
-            {ocrText && (
-              <details className="text-xs text-white/60">
-                <summary>OCR text (debug)</summary>
-                <pre className="whitespace-pre-wrap">{ocrText}</pre>
-              </details>
-            )}
           </div>
 
+          {/* Right column: Mapping & Detected */}
           <div className="space-y-4">
-            {!parsed && <div className="text-white/60 text-sm">Upload an image and run OCR to parse the trade.</div>}
+            {!parsed && (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-white/70">Upload an image and run OCR to parse the trade.</div>
+            )}
 
-            {parsed && (
-              <>
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-white/70">Map screenshot users to BBB teams</div>
-                  {parsed.parties.map((pt, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <div className="flex items-center gap-2 flex-1">
-                        {teamAvatars[pt.name] ? (
-                          <img src={`https://sleepercdn.com/avatars/${teamAvatars[pt.name]}`} alt="" className="w-6 h-6 rounded-full" />
-                        ) : <div className="w-6 h-6 rounded-full bg-white/10" />}
-                        <span className="font-semibold">{pt.name}</span>
-                      </div>
-                      <span className="text-xs text-white/50">→</span>
-                      <select
-                        value={mapping[pt.name] || ''}
-                        onChange={e=>setMapping(m=>({ ...m, [pt.name]: e.target.value }))}
-                        className="bg-[#0a1929] text-white rounded px-2 py-1 border border-white/10"
-                      >
-                        <option value="">Select BBB team</option>
-                        {teamOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
+            <ErrorCatcher onError={(e) => setError(`UI error: ${e?.message || e}`)}>
+              {Array.isArray(parsed?.parties) && (
+                <>
+                  {/* Mapping card */}
+                  <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-white/80">Map screenshot users to BBB teams</div>
+                      <div className="text-xs text-white/50">{parsed.parties.length} users</div>
                     </div>
-                  ))}
-                </div>
-
-                <div className="pt-2 border-t border-white/10">
-                  <div className="text-sm font-semibold text-white/70 mb-2">Detected players (click to adjust)</div>
-                  <div className="space-y-3">
-                    {(displayParties || parsed.parties).map((pt, idx) => (
-                      <div key={idx} className="bg-black/30 rounded border border-white/10 p-2">
-                        <div className="font-bold text-[#FF4B1F] mb-1">{pt.name}</div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <div className="text-xs text-white/60 mb-1">Receives</div>
-                            <PlayerListEditor partyName={pt.name} list={pt.receives} allPlayers={allPlayers} matches={matches} setMatches={setMatches} />
+                    <div className="space-y-2">
+                      {parsed.parties.map((pt, idx) => (
+                        <div key={idx} className="grid grid-cols-[1fr_auto] items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {teamAvatars[pt.name] ? (
+                              <img src={`https://sleepercdn.com/avatars/${teamAvatars[pt.name]}`} alt="" className="w-6 h-6 rounded-full flex-none" />
+                            ) : <div className="w-6 h-6 rounded-full bg-white/10 flex-none" />}
+                            <span className="font-semibold truncate">{pt.name}</span>
                           </div>
-                          <div>
-                            <div className="text-xs text-white/60 mb-1">Sends</div>
-                            <PlayerListEditor partyName={pt.name} list={pt.sends} allPlayers={allPlayers} matches={matches} setMatches={setMatches} />
+                          <select
+                            value={mapping[pt.name] || ''}
+                            onChange={e=>setMapping(m=>({ ...m, [pt.name]: e.target.value }))}
+                            className="bg-[#0a1929] text-white rounded px-2 py-1 border border-white/10 w-full md:w-56"
+                          >
+                            <option value="">Select BBB team</option>
+                            {(Array.isArray(teamOptions) ? teamOptions : []).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Detected players */}
+                  <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-white/80">Detected players (click to adjust)</div>
+                      <span className="text-xs text-white/50">Unmatched: {unmatched}</span>
+                    </div>
+                    <div className="space-y-3">
+                      {(
+                        Array.isArray(displayParties)
+                          ? displayParties
+                          : (Array.isArray(parsed?.parties) ? parsed.parties : [])
+                      ).map((pt, idx) => (
+                        <div key={idx} className="bg-black/30 rounded border border-white/10 p-2">
+                          <div className="font-bold text-[#FF4B1F] mb-1">{pt.name}</div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-xs text-white/60 mb-1">Receives</div>
+                              <PlayerListEditor partyName={pt.name} list={pt.receives} allPlayers={allPlayers} matches={matches} setMatches={setMatches} />
+                            </div>
+                            <div>
+                              <div className="text-xs text-white/60 mb-1">Sends</div>
+                              <PlayerListEditor partyName={pt.name} list={pt.sends} allPlayers={allPlayers} matches={matches} setMatches={setMatches} />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                      ))}
+                    </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <div className="text-xs text-white/60">Unmatched: {unmatched}. Unmatched players will be ignored.</div>
-                  <button onClick={apply} className="px-3 py-1.5 rounded bg-emerald-600/80 hover:bg-emerald-600">Apply to Trade</button>
-                </div>
-              </>
-            )}
+                    <div className="mt-3 flex items-center justify-end">
+                      <button onClick={apply} className="px-3 py-1.5 rounded bg-emerald-600/80 hover:bg-emerald-600">Apply to Trade</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </ErrorCatcher>
           </div>
         </div>
       </div>
@@ -524,7 +647,7 @@ export default function SleeperImportModal({
   );
 }
 
-function PlayerListEditor({ partyName, list, allPlayers, matches, setMatches }) {
+function PlayerListEditor({ partyName, list = [], allPlayers, matches, setMatches }) {
   const makeKey = (ocrName) => `${partyName}::${ocrName}`;
   const onChoose = (ocrName, id) => setMatches(prev => ({ ...prev, [makeKey(ocrName)]: id || undefined }));
   return (
@@ -547,8 +670,8 @@ function PlayerListEditor({ partyName, list, allPlayers, matches, setMatches }) 
               {allPlayers
                 .filter(ap => !p.pos || ap.position?.toUpperCase() === p.pos)
                 .slice(0, 500)
-                .map(ap => (
-                  <option key={ap.id} value={ap.id}>{ap.playerName} • {ap.team}</option>
+                .map((ap, i) => (
+                  <option key={`${ap.id}-${i}`} value={ap.id}>{ap.playerName} • {ap.team}</option>
                 ))}
             </select>
           </div>

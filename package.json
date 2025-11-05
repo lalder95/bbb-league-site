@@ -7,6 +7,7 @@
     "predev": "npm run generate-image-index",
     "build": "next build",
     "prebuild": "npm run generate-image-index",
+    "setup:tesseract": "node scripts/fetchTesseractAssets.js",
     "start": "next start",
     "lint": "next lint",
     "generate-image-index": "node scripts/generateCardImageIndex.js"
