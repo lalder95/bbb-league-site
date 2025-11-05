@@ -548,7 +548,7 @@ export default function SleeperImportModal({
               )}
 
               <div className="mt-3 flex items-center gap-3">
-                <button onClick={runOCR} disabled={!imageUrl || busy} className={`inline-flex items-center justify-center px-3.5 py-2 rounded-md text-sm font-semibold ${busy? 'bg-white/10 text-white/60' : 'bg-[#FF4B1F] hover:bg-[#ff5f38] text-white'} transition-colors`}>
+                <button onClick={runOCR} disabled={!imageUrl || busy} className={`inline-flex items-center justify-center px-4 py-2.5 rounded-lg ${busy? 'bg-white/10 text-white/60' : 'bg-[#FF4B1F] hover:bg-[#ff5f38] text-white shadow-lg hover:shadow-xl'} text-base font-semibold transition-all w-full md:w-auto ring-1 ${busy? 'ring-white/10' : 'ring-[#FF4B1F]/40'}`}>
                   {busy ? 'Processing…' : 'Scan Screenshot'}
                 </button>
                 {busy && (
@@ -587,9 +587,13 @@ export default function SleeperImportModal({
                       {parsed.parties.map((pt, idx) => (
                         <div key={idx} className="grid grid-cols-[1fr_auto] items-center gap-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            {teamAvatars[pt.name] ? (
-                              <img src={`https://sleepercdn.com/avatars/${teamAvatars[pt.name]}`} alt="" className="w-6 h-6 rounded-full flex-none" />
-                            ) : <div className="w-6 h-6 rounded-full bg-white/10 flex-none" />}
+                            {teamAvatars[(pt.name||'').trim()] ? (
+                              <img src={`https://sleepercdn.com/avatars/thumbs/${teamAvatars[(pt.name||'').trim()]}`} alt="" className="w-6 h-6 rounded-full flex-none" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-white/10 flex-none grid place-items-center text-[10px] text-white/60">
+                                {(pt.name||'?').charAt(0).toUpperCase()}
+                              </div>
+                            )}
                             <span className="font-semibold truncate">{pt.name}</span>
                           </div>
                           <select
