@@ -70,7 +70,7 @@ const NavDropdown = ({ title, links, isActive }) => {
         <ChevronDown className="ml-1 h-4 w-4 transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
       </button>
       {isOpen && (
-        <div ref={dropdownRef} role="menu" onMouseEnter={handleDropdownMouseEnter} className="absolute z-50 left-0 mt-2 w-56 bg-black/80 backdrop-blur-md rounded-xl shadow-2xl border border-white/10 py-2">
+        <div ref={dropdownRef} role="menu" onMouseEnter={handleDropdownMouseEnter} className="absolute z-[70] left-0 mt-2 w-56 bg-black/80 backdrop-blur-md rounded-xl shadow-2xl border border-white/10 py-2">
           {links.map(({ href, label }, idx) => (
             <Link
               key={href}
@@ -132,10 +132,7 @@ export default function Navigation() {
   }, [isMenuOpen]);
 
   // Build page list from navGroups
-  const pageItems = (
-    []
-  );
-  // We'll populate from navGroups after it's defined below.
+  // (kept for reference) We'll populate pages from navGroups after it's defined below.
 
   const navGroups = [
     {
@@ -325,6 +322,71 @@ export default function Navigation() {
       aria-label="Main navigation"
     >
       <div className="max-w-7xl mx-auto px-4">
+        {/* Desktop search row (above nav) */}
+        <div className="hidden md:flex justify-center pt-2 mb-2">
+          <div className="relative w-full max-w-2xl">
+            <div className="flex items-center bg-white/5 rounded-full px-4 h-10 border border-white/10 focus-within:ring-2 focus-within:ring-[#FF4B1F]/40">
+              <Search className="h-4 w-4 text-white/60" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setActiveIndex(-1); setShowResults(true); }}
+                onFocus={handleSearchFocus}
+                onKeyDown={onKeyDownSearch}
+                placeholder="Search pages and players..."
+                className="ml-2 bg-transparent outline-none text-sm text-white placeholder-white/50 w-full"
+                aria-label="Search pages and players"
+              />
+            </div>
+            {showResults && (searchQuery.length > 0 || loadingPlayers) && (
+              <div ref={resultsRef} className="absolute left-0 right-0 mt-2 w-full bg-black/90 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl z-40">
+                <div className="p-2 max-h-96 overflow-auto">
+                  {pageResults.length > 0 && (
+                    <div className="mb-2">
+                      <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Pages</div>
+                      {pageResults.map((item, idx) => (
+                        <button
+                          key={item.href}
+                          onClick={() => handleResultClick({ type: 'page', href: item.href, label: item.label })}
+                          className={`w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10 ${activeIndex === idx ? 'bg-white/10' : ''}`}
+                          role="option"
+                        >
+                          <span className="text-sm">{item.label}</span>
+                          <span className="ml-2 text-xs text-white/40">{item.href}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Players</div>
+                  {loadingPlayers && (
+                    <div className="px-3 py-2 text-white/60 text-sm">Loading players…</div>
+                  )}
+                  {!loadingPlayers && playerResults.length === 0 && (
+                    <div className="px-3 py-2 text-white/60 text-sm">No matching players</div>
+                  )}
+                  {!loadingPlayers && playerResults.map((p, idx) => {
+                    const overallIndex = pageResults.length + idx;
+                    return (
+                      <button
+                        key={p.playerId}
+                        onClick={() => handleResultClick({ type: 'player', playerId: p.playerId, label: p.playerName })}
+                        className={`w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10 ${activeIndex === overallIndex ? 'bg-white/10' : ''}`}
+                        role="option"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">{p.playerName}</span>
+                          <span className="text-xs text-white/50">{p.position}{p.team ? ` • ${p.team}` : ''}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
@@ -336,7 +398,7 @@ export default function Navigation() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:justify-center md:flex-1">
-            <div className="flex space-x-2 bg-white/5 supports-[backdrop-filter]:bg-white/10 backdrop-blur-sm rounded-full p-1 border border-white/10">
+            <div className="flex space-x-3 bg-white/5 supports-[backdrop-filter]:bg-white/10 backdrop-blur-sm rounded-full p-1 border border-white/10">
               {navGroups.map((group, index) => (
                 group.type === 'single' ? (
                   group.links.map(({ href, label }) => (
@@ -368,72 +430,10 @@ export default function Navigation() {
                   />
                 )
               ))}
-              {/* Search box (desktop) */}
-              <div className="relative ml-2">
-                <div className="flex items-center bg-white/5 rounded-full px-3 py-2 border border-white/10 focus-within:ring-2 focus-within:ring-[#FF4B1F]/40">
-                  <Search className="h-4 w-4 text-white/60" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => { setSearchQuery(e.target.value); setActiveIndex(-1); setShowResults(true); }}
-                    onFocus={handleSearchFocus}
-                    onKeyDown={onKeyDownSearch}
-                    placeholder="Search pages and players..."
-                    className="ml-2 bg-transparent outline-none text-sm text-white placeholder-white/50 w-56"
-                    aria-label="Search pages and players"
-                  />
-                </div>
-                {showResults && (searchQuery.length > 0 || loadingPlayers) && (
-                  <div ref={resultsRef} className="absolute right-0 mt-2 w-[24rem] bg-black/90 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl z-50">
-                    <div className="p-2 max-h-96 overflow-auto">
-                      {pageResults.length > 0 && (
-                        <div className="mb-2">
-                          <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Pages</div>
-                          {pageResults.map((item, idx) => (
-                            <button
-                              key={item.href}
-                              onClick={() => handleResultClick({ type: 'page', href: item.href, label: item.label })}
-                              className={`w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10 ${activeIndex === idx ? 'bg-white/10' : ''}`}
-                              role="option"
-                            >
-                              <span className="text-sm">{item.label}</span>
-                              <span className="ml-2 text-xs text-white/40">{item.href}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Players</div>
-                      {loadingPlayers && (
-                        <div className="px-3 py-2 text-white/60 text-sm">Loading players…</div>
-                      )}
-                      {!loadingPlayers && playerResults.length === 0 && (
-                        <div className="px-3 py-2 text-white/60 text-sm">No matching players</div>
-                      )}
-                      {!loadingPlayers && playerResults.map((p, idx) => {
-                        const overallIndex = pageResults.length + idx;
-                        return (
-                          <button
-                            key={p.playerId}
-                            onClick={() => handleResultClick({ type: 'player', playerId: p.playerId, label: p.playerName })}
-                            className={`w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10 ${activeIndex === overallIndex ? 'bg-white/10' : ''}`}
-                            role="option"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">{p.playerName}</span>
-                              <span className="text-xs text-white/50">{p.position}{p.team ? ` • ${p.team}` : ''}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
 
-          {/* Auth Links */}
+          {/* Right side: Auth (desktop) */}
           <div className="hidden md:flex items-center gap-4">
             {session ? (
               <button
@@ -449,6 +449,8 @@ export default function Navigation() {
             )}
           </div>
 
+
+        
           {/* Mobile menu button */}
           <div className="md:hidden">
             <button
@@ -461,6 +463,8 @@ export default function Navigation() {
             </button>
           </div>
         </div>
+
+        
 
         {/* Mobile Navigation Overlay */}
         {isMenuOpen && (

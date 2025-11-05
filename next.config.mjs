@@ -1,19 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['sleepercdn.com'],
+    // Allow external images we use around the site
+    domains: [
+      'sleepercdn.com',          // Sleeper avatars
+      'res.cloudinary.com',      // Player card images on Cloudinary
+    ],
   },
   async headers() {
     return [
       {
-        // Apply to all routes; adjust if you only want OCR pages isolated
-        source: '/:path*',
+        // Only enable cross-origin isolation on the Trade tools where OCR (tesseract.js) runs
+        // Using COEP: credentialless so normal third‑party images (Cloudinary/Sleeper) still load
+        source: '/trade/:path*',
         headers: [
-          // Enable cross-origin isolation so Tesseract can use SIMD/threads
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
-          // If you later add a CSP elsewhere (middleware/vercel.json), ensure it allows:
-          // worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: blob:;
+          { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
         ],
       },
     ];
