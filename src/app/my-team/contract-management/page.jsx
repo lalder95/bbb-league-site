@@ -332,7 +332,9 @@ export default function ContractManagementPage() {
 
   function getTagValueForPlayer(p) {
     const pos = p.position || 'ALL';
-    return tagValueByPos[pos] ?? 0;
+    const positionAvg = tagValueByPos[pos] ?? 0;
+    const currentPlusTen = Math.ceil(((parseFloat(p.curYear) || 0) * 1.10) * 10) / 10; // round up to 0.1
+    return Math.max(positionAvg, currentPlusTen);
   }
 
   const extensionMap = {};
@@ -907,7 +909,7 @@ export default function ContractManagementPage() {
         {!franchiseCollapsed && (
           <div className="px-5 pb-5 pt-1">
             <div className="mb-6 text-white/80 text-base">
-              Apply one-year franchise tags during the tag window. Tag value is the average of the top 10 active contracts at the player's position (any contract type).
+              Apply one-year franchise tags during the tag window. Tag value is the higher of: (a) the average of the top 10 active contracts at the player's position (any contract type), or (b) the player's current salary + 10%.
             </div>
             <div className="mb-2 text-white/70 text-sm">
               Window: Feb 1 — Mar 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
