@@ -3,6 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import PlayerProfileCard from '../components/PlayerProfileCard';
+import EligiblePlayerCard from './EligiblePlayerCard';
+import FranchiseTagCard from './FranchiseTagCard';
+import RFATagCard from './RFATagCard';
 import Image from 'next/image';
 
 export default function ContractManagementPage() {
@@ -23,6 +26,14 @@ export default function ContractManagementPage() {
   const [finalizeError, setFinalizeError] = useState('');
   const [recentContractChanges, setRecentContractChanges] = useState([]);
   const [capModalInfo, setCapModalInfo] = useState(null);
+  const [extensionsCollapsed, setExtensionsCollapsed] = useState(true);
+  const [franchiseCollapsed, setFranchiseCollapsed] = useState(true);
+  const [franchiseTagChoices, setFranchiseTagChoices] = useState({}); // { [playerId]: { apply: boolean } }
+  const [pendingFranchiseTag, setPendingFranchiseTag] = useState(null);
+  // RFA Tags
+  const [rfaCollapsed, setRfaCollapsed] = useState(true);
+  const [rfaTagChoices, setRfaTagChoices] = useState({}); // { [playerId]: { apply: boolean } }
+  const [pendingRfaTag, setPendingRfaTag] = useState(null);
 
   // Admin
   const isAdmin = Boolean(
@@ -98,7 +109,7 @@ export default function ContractManagementPage() {
           oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
           const recent = data.filter(
             c =>
-              c.change_type === 'extension' &&
+              (c.change_type === 'extension' || c.change_type === 'franchise_tag' || c.change_type === 'rfa_tag') &&
               c.playerId &&
               c.timestamp &&
               new Date(c.timestamp) > oneYearAgo
@@ -127,9 +138,30 @@ export default function ContractManagementPage() {
   function roundUp1(num) {
     return Math.ceil(num * 10) / 10;
   }
+  function isFranchiseWindowOpen() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const feb1 = new Date(year, 1, 1, 0, 0, 0, 0); // Feb = 1
+    const mar31 = new Date(year, 2, 31, 23, 59, 59, 999);
+    return now >= feb1 && now <= mar31;
+  }
+  function isInFranchiseWindowForYear(date, year) {
+    const d = new Date(date);
+    const start = new Date(year, 1, 1, 0, 0, 0, 0); // Feb 1
+    const end = new Date(year, 2, 31, 23, 59, 59, 999); // Mar 31
+    return d >= start && d <= end;
+  }
 
   const curYear = new Date().getFullYear();
   const CAP = 300;
+
+  // Window actives for header badges (respect Admin override where applicable)
+  const extWindowActive = isExtensionWindowOpen() || (isAdmin && isAdminMode);
+  const franchiseWindowActive = isFranchiseWindowOpen() || (isAdmin && isAdminMode);
+  const rfaWindowActive = isFranchiseWindowOpen() || (isAdmin && isAdminMode);
+  const extBadgeText = `${extWindowActive ? 'Open' : 'Closed'} • May 1 — Aug 31`;
+  const franchiseBadgeText = `${franchiseWindowActive ? 'Open' : 'Closed'} • Feb 1 — Mar 31`;
+  const rfaBadgeText = `${rfaWindowActive ? 'Open' : 'Closed'} • Feb 1 — Mar 31`;
 
   const allTeamNames = Array.from(new Set(playerContracts.filter(p => p.team).map(p => p.team.trim())));
 
@@ -212,6 +244,95 @@ export default function ContractManagementPage() {
   if (recentContractChanges.length > 0) {
     const recentlyExtendedIds = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
     eligiblePlayers = eligiblePlayers.filter(p => !recentlyExtendedIds.has(String(p.playerId).trim()));
+  }
+
+  // Sort extension eligible players alphabetically by name for display
+  const eligiblePlayersSorted = [...eligiblePlayers].sort((a, b) =>
+    String(a.playerName).localeCompare(String(b.playerName), undefined, { sensitivity: 'base' })
+  );
+
+  // Franchise Tag eligibility (final year of active Base or Extension, franchise eligible true, RFA false, no Future deal)
+  let franchiseEligiblePlayers = myContractsAll.filter(p => {
+    const isActive = p.status === 'Active';
+    const type = String(p.contractType).toLowerCase();
+    const allowedTypes = ['base', 'extension', 'waiver', 'fa', 'free agent', 'freeagent'];
+    const isAllowedType = allowedTypes.includes(type);
+    const isFinalYr = String(p.contractFinalYear) === String(curYear);
+    const isFT = String(p.franchiseTagEligible).toLowerCase() === 'true' || String(p.franchiseTagEligible).toLowerCase() === 'yes';
+    const isRfa = String(p.rfaEligible).toLowerCase() === 'true';
+    const noFuture = !playerIdsWithFuture.has(p.playerId);
+    return isActive && isAllowedType && isFinalYr && isFT && !isRfa && noFuture;
+  });
+  if (recentContractChanges.length > 0) {
+    const recentlyTaggedOrExtended = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
+    franchiseEligiblePlayers = franchiseEligiblePlayers.filter(p => !recentlyTaggedOrExtended.has(String(p.playerId).trim()));
+  }
+
+  // Sort franchise eligible players alphabetically
+  const franchiseEligiblePlayersSorted = [...franchiseEligiblePlayers].sort((a, b) =>
+    String(a.playerName).localeCompare(String(b.playerName), undefined, { sensitivity: 'base' })
+  );
+
+  // Per-team per window Franchise Tag limit: 1
+  // Practical application: treat all tags within the current calendar year as counting toward the current window,
+  // so admin-applied tags outside the Feb–Mar window still enforce the single-tag limit for that year's window.
+  const nowForWindow = new Date();
+  const windowYearForLimit = nowForWindow.getFullYear();
+  const hasFranchiseTagThisYearForTeam = recentContractChanges.some(c => {
+    if (c.change_type !== 'franchise_tag') return false;
+    if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
+    if (!c.timestamp) return false;
+    return new Date(c.timestamp).getFullYear() === windowYearForLimit;
+  });
+
+  // RFA Tag eligibility: Active Waiver/FA type contracts, not already RFA
+  const rfaAllowedTypes = ['waiver', 'fa', 'free agent', 'freeagent'];
+  let rfaEligiblePlayers = myContractsAll.filter(p => {
+    const isActive = p.status === 'Active';
+    const type = String(p.contractType).toLowerCase();
+    const isAllowedType = rfaAllowedTypes.includes(type);
+    const isRfa = String(p.rfaEligible).toLowerCase() === 'true';
+    return isActive && isAllowedType && !isRfa;
+  });
+  if (recentContractChanges.length > 0) {
+    const recentlyChanged = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
+    rfaEligiblePlayers = rfaEligiblePlayers.filter(p => !recentlyChanged.has(String(p.playerId).trim()));
+  }
+  const rfaEligiblePlayersSorted = [...rfaEligiblePlayers].sort((a, b) =>
+    String(a.playerName).localeCompare(String(b.playerName), undefined, { sensitivity: 'base' })
+  );
+
+  // Per-team per window limit: 1 RFA tag (same treatment as above — count any tag in the current calendar year)
+  const hasRfaTagThisYearForTeam = recentContractChanges.some(c => {
+    if (c.change_type !== 'rfa_tag') return false;
+    if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
+    if (!c.timestamp) return false;
+    return new Date(c.timestamp).getFullYear() === windowYearForLimit;
+  });
+
+  // Compute Franchise Tag values per position: avg top 10 active Base curYear
+  const tagValueByPos = (() => {
+    const map = {};
+    const byPos = {};
+    playerContracts
+      .filter(p => p.status === 'Active')
+      .forEach(p => {
+        const pos = p.position || 'ALL';
+        if (!byPos[pos]) byPos[pos] = [];
+        const sal = parseFloat(p.curYear) || 0;
+        byPos[pos].push(sal);
+      });
+    Object.keys(byPos).forEach(pos => {
+      const arr = byPos[pos].sort((a, b) => b - a).slice(0, 10);
+      const avg = arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+      map[pos] = Math.ceil(avg * 10) / 10; // round up to 0.1
+    });
+    return map;
+  })();
+
+  function getTagValueForPlayer(p) {
+    const pos = p.position || 'ALL';
+    return tagValueByPos[pos] ?? 0;
   }
 
   const extensionMap = {};
@@ -311,307 +432,187 @@ export default function ContractManagementPage() {
         </div>
       )}
 
-      {/* Cap usage table */}
-      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 p-8 shadow-lg mb-10">
-        <h3 className="text-xl font-bold text-[#FF4B1F] mb-1">Contract Extensions</h3>
-        <div className="mb-6 text-white/80 text-base">
-          Extend players on expiring base contracts (not entering RFA). Simulate different extension scenarios and see the impact on your cap space.
-        </div>
-        <div className="mb-4 text-white/70 font-semibold">
-          Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
-        </div>
+      {/* Contract Extensions (collapsible) */}
+      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-10">
+        <button
+          type="button"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
+          aria-expanded={!extensionsCollapsed}
+          onClick={() => setExtensionsCollapsed(v => !v)}
+        >
+          <h3 className="text-xl font-bold text-[#FF4B1F]">Contract Extensions</h3>
+          <div className="flex items-center gap-3">
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                extWindowActive
+                  ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                  : 'bg-red-500/20 text-red-300 border-red-500/30'
+              } whitespace-nowrap`}
+              title={extBadgeText}
+            >
+              {extBadgeText}
+            </span>
+            <span className={`text-white transition-transform ${extensionsCollapsed ? '' : 'rotate-90'}`} aria-hidden>
+              ▸
+            </span>
+          </div>
+        </button>
 
-        <div className="mb-8">
-          <h4 className="font-semibold text-white mb-2">Simulated Cap Usage</h4>
-          <table className="w-full text-center border border-white/10 rounded bg-white/5 mb-2">
-            <thead>
-              <tr>
-                <th className="p-2 text-white/80">Year</th>
-                <th className="p-2 text-white/80 border-l border-white/10">Cap Used</th>
-                <th className="p-2 text-white/80 border-l border-white/10">Extension Cost</th>
-                <th className="p-2 text-white/80 border-l border-white/10">Cap Space</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[0, 1, 2, 3].map(i => {
-                let extensionCost = 0;
-                eligiblePlayers.forEach(p => {
-                  const ext = extensionMap[p.playerId] || { years: 0, deny: false };
-                  if (ext.deny || !ext.years) return;
-                  let base = parseFloat(p.curYear) || 0;
-                  for (let y = 1; y <= ext.years; ++y) {
-                    base = roundUp1(base * 1.10);
-                    if (i === y) extensionCost += base;
-                  }
-                });
-                const capUsed = yearSalaries[i] + yearDead[i];
-                return (
-                  <tr key={i} className="cursor-pointer hover:bg-white/10" onClick={() => openCapModal(i)}>
-                    <td className="p-2">{curYear + i}</td>
-                    <td className="p-2 border-l border-white/10">${capUsed.toFixed(1)}</td>
-                    <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">
-                      {i === 0 ? '-' : `$${extensionCost.toFixed(1)}`}
-                    </td>
-                    <td className={`p-2 border-l border-white/10 font-bold ${capUsed > CAP ? 'text-red-400' : 'text-green-400'}`}>
-                      {(CAP - capUsed).toFixed(1)}
-                    </td>
+        {!extensionsCollapsed && (
+          <div className="px-5 pb-5 pt-1">
+            <div className="mb-6 text-white/80 text-base">
+              Extend players on expiring base contracts (not entering RFA). Simulate different extension scenarios and see the impact on your cap space.
+            </div>
+            <div className="mb-4 text-white/70 font-semibold">
+              Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
+            </div>
+
+            <div className="mb-8">
+              <h4 className="font-semibold text-white mb-2">Simulated Cap Usage</h4>
+              <table className="w-full text-center border border-white/10 rounded bg-white/5 mb-2">
+                <thead>
+                  <tr>
+                    <th className="p-2 text-white/80">Year</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Used</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Extension Cost</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="text-xs text-white/60">Cap limit: ${CAP} per year</div>
-        </div>
+                </thead>
+                <tbody>
+                  {[0, 1, 2, 3].map(i => {
+                    let extensionCost = 0;
+                    eligiblePlayers.forEach(p => {
+                      const ext = extensionMap[p.playerId] || { years: 0, deny: false };
+                      if (ext.deny || !ext.years) return;
+                      let base = parseFloat(p.curYear) || 0;
+                      for (let y = 1; y <= ext.years; ++y) {
+                        base = roundUp1(base * 1.10);
+                        if (i === y) extensionCost += base;
+                      }
+                    });
+                    const capUsed = yearSalaries[i] + yearDead[i];
+                    return (
+                      <tr key={i} className="cursor-pointer hover:bg-white/10" onClick={() => openCapModal(i)}>
+                        <td className="p-2">{curYear + i}</td>
+                        <td className="p-2 border-l border-white/10">${capUsed.toFixed(1)}</td>
+                        <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">
+                          {i === 0 ? '-' : `$${extensionCost.toFixed(1)}`}
+                        </td>
+                        <td className={`p-2 border-l border-white/10 font-bold ${capUsed > CAP ? 'text-red-400' : 'text-green-400'}`}>
+                          {(CAP - capUsed).toFixed(1)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="text-xs text-white/60">Cap limit: ${CAP} per year</div>
+            </div>
 
-        {/* Eligible list */}
-        <div>
-          <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
-          {eligiblePlayers.length === 0 ? (
-            <div className="text-white/60 italic">No players eligible for extension this year.</div>
-          ) : (
-            <>
-              {/* Mobile cards */}
-              <div className="sm:hidden space-y-3">
-                {eligiblePlayers.map(player => {
-                  const ext = extensionMap[player.playerId] || { years: 0, deny: false };
-                  let base = parseFloat(player.curYear) || 0;
-                  const simYears = [];
-                  let extensionSalaries = [];
-                  for (let i = 1; i <= ext.years; ++i) {
-                    base = roundUp1(base * 1.10);
-                    simYears.push(`Year ${i + 1}: $${base.toFixed(1)}`);
-                    extensionSalaries.push(base);
-                  }
-                  const showFinalize = !ext.deny && ext.years > 0;
-                  return (
-                    <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
-                      <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                        <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
-                        <div className="min-w-0">
-                          <div className="text-white font-bold text-2xl leading-7 truncate">{player.playerName}</div>
-                        </div>
-                      </div>
-
-                      <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-white/70 text-sm">Current Salary</div>
-                          <div className="text-white font-semibold text-3xl mt-1">${parseFloat(player.curYear).toFixed(1)}</div>
-                        </div>
-                        <div>
-                          <div className="text-white/70 text-sm">Extension</div>
-                          <select
-                            className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
-                            value={ext.years}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setExtensionChoices(prev => ({
-                                ...prev,
-                                [player.playerId]: { years: Number(val), deny: false },
-                              }));
-                              if (val !== '0') {
-                                setPendingExtension({
-                                  player,
-                                  years: Number(val),
-                                  baseSalary: parseFloat(player.curYear),
-                                  extensionSalaries,
-                                });
-                              } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
-                                setPendingExtension(null);
-                              }
-                            }}
-                          >
-                            <option value={0}>No Extension</option>
-                            <option value={1}>1 Year</option>
-                            <option value={2}>2 Years</option>
-                            <option value={3}>3 Years</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="px-5 py-4 bg-[#0C1B26]">
-                        <div className="text-white/70 text-sm">Simulated Years</div>
-                        <div className="mt-2 text-lg">
-                          {ext.deny || !ext.years ? (
-                            <span className="text-white/60 italic">No extension</span>
-                          ) : (
-                            <div className="flex flex-col items-start space-y-2">
-                              {simYears.map((s, i) => (
-                                <span key={i} className="text-white">
-                                  {s}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="px-5 pb-5 bg-[#0C1B26]">
-                        {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
-                          <button
-                            className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
-                            disabled={finalizeLoading || !isExtensionWindowOpen()}
-                            onClick={async () => {
-                              const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName} (Team: ${teamNameForUI})? This cannot be undone or changed later.`;
-                              if (!window.confirm(confirmMsg)) return;
-
-                              setFinalizeLoading(true);
-                              setFinalizeMsg('');
-                              setFinalizeError('');
-                              try {
-                                let base = parseFloat(player.curYear);
-                                const extensionSalaries = [];
-                                for (let i = 1; i <= pendingExtension.years; ++i) {
-                                  base = Math.ceil(base * 1.10 * 10) / 10;
-                                  extensionSalaries.push(base);
-                                }
-                                const contractChange = {
-                                  change_type: 'extension',
-                                  user: session?.user?.name || '',
-                                  timestamp: new Date().toISOString(),
-                                  notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
-                                  ai_notes: '',
-                                  playerId: player.playerId,
-                                  playerName: player.playerName,
-                                  years: pendingExtension.years,
-                                  extensionSalaries,
-                                  team: teamNameForUI,
-                                };
-
-                                try {
-                                  const aiRes = await fetch('/api/ai/transaction_notes', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ contractChange }),
-                                  });
-                                  const aiData = await aiRes.json();
-                                  contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
-                                } catch {
-                                  contractChange.ai_notes = 'AI summary unavailable.';
-                                }
-
-                                const res = await fetch('/api/admin/contract_changes', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify(contractChange),
-                                });
-                                const data = await res.json();
-                                if (!res.ok) throw new Error(data.error || 'Failed to save extension');
-                                setFinalizeMsg('Extension finalized and saved!');
-
-                                const refreshRes = await fetch('/api/admin/contract_changes');
-                                const refreshData = await refreshRes.json();
-                                if (Array.isArray(refreshData)) {
-                                  const oneYearAgo = new Date();
-                                  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                  const recent = refreshData.filter(
-                                    c => c.change_type === 'extension' && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
-                                  );
-                                  setRecentContractChanges(recent);
-                                }
-
-                                setExtensionChoices(prev => {
-                                  const updated = { ...prev };
-                                  delete updated[player.playerId];
-                                  return updated;
-                                });
-
-                                setPendingExtension(null);
-                              } catch (err) {
-                                setFinalizeError(err.message);
-                              } finally {
-                                setFinalizeLoading(false);
-                              }
-                            }}
-                          >
-                            {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
-                          </button>
-                        )}
-                        {!isExtensionWindowOpen() && (
-                          <div className="mt-2 text-yellow-400 text-xs">Extensions can only be finalized between May 1st and August 31st.</div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Desktop table */}
-              <div className="hidden sm:block overflow-x-auto rounded">
-                <table className="min-w-[600px] w-full text-sm border border-white/10 rounded bg-white/5">
-                  <thead>
-                    <tr>
-                      <th className="p-2 text-white/80">Player</th>
-                      <th className="p-2 text-white/80">Current Salary</th>
-                      <th className="p-2 text-white/80">Extension</th>
-                      <th className="p-2 text-white/80">Simulated Years</th>
-                      <th className="p-2 text-white/80"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {eligiblePlayers.map(player => {
+            {/* Eligible list */}
+            <div>
+              <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
+              {!isExtensionWindowOpen() && !(isAdmin && isAdminMode) && (
+                <div className="text-yellow-400 text-xs mb-3">
+                  Extensions can only be finalized between May 1st and August 31st.
+                </div>
+              )}
+              {eligiblePlayers.length === 0 ? (
+                <div className="text-white/60 italic">No players eligible for extension this year.</div>
+              ) : (
+                <>
+                  {/* Mobile cards */}
+                  <div className="sm:hidden space-y-3">
+                    {eligiblePlayersSorted.map(player => {
                       const ext = extensionMap[player.playerId] || { years: 0, deny: false };
                       let base = parseFloat(player.curYear) || 0;
                       const simYears = [];
                       let extensionSalaries = [];
                       for (let i = 1; i <= ext.years; ++i) {
                         base = roundUp1(base * 1.10);
-                        simYears.push(`Year ${i + 1}: $${base}`);
+                        simYears.push(`Year ${i + 1}: $${base.toFixed(1)}`);
                         extensionSalaries.push(base);
                       }
                       const showFinalize = !ext.deny && ext.years > 0;
                       return (
-                        <tr key={player.playerId}>
-                          <td className="p-2 font-semibold text-white flex items-center gap-2">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
-                            {player.playerName}
-                          </td>
-                          <td className="p-2">${parseFloat(player.curYear).toFixed(1)}</td>
-                          <td className="p-2">
-                            <select
-                              className="bg-white/10 text-white rounded px-2 py-1"
-                              value={ext.years}
-                              onChange={e => {
-                                const val = e.target.value;
-                                setExtensionChoices(prev => ({
-                                  ...prev,
-                                  [player.playerId]: { years: Number(val), deny: false },
-                                }));
-                                if (val !== '0') {
-                                  setPendingExtension({
-                                    player,
-                                    years: Number(val),
-                                    baseSalary: parseFloat(player.curYear),
-                                    extensionSalaries,
-                                  });
-                                } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
-                                  setPendingExtension(null);
-                                }
-                              }}
-                            >
-                              <option value={0}>No Extension</option>
-                              <option value={1}>1 Year</option>
-                              <option value={2}>2 Years</option>
-                              <option value={3}>3 Years</option>
-                            </select>
-                          </td>
-                          <td className="p-2">
-                            {ext.deny || !ext.years ? (
-                              <span className="text-white/60 italic">No extension</span>
-                            ) : (
-                              <div className="flex flex-col items-start">
-                                {simYears.map((s, i) => (
-                                  <span key={i}>{s}</span>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-2">
-                            {showFinalize && pendingExtension && pendingExtension.playerId === player.playerId && (
+                        <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
+                          <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <div className="min-w-0">
+                              <div className="text-white font-bold text-2xl leading-7 truncate">{player.playerName}</div>
+                              <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
+                            </div>
+                          </div>
+
+                          <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-white/70 text-sm">Current Salary</div>
+                              <div className="text-white font-semibold text-3xl mt-1">${parseFloat(player.curYear).toFixed(1)}</div>
+                            </div>
+                            <div>
+                              <div className="text-white/70 text-sm">Extension</div>
+                              <select
+                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
+                                value={ext.years}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setExtensionChoices(prev => ({
+                                    ...prev,
+                                    [player.playerId]: { years: Number(val), deny: false },
+                                  }));
+                                  if (val !== '0') {
+                                    setPendingExtension({
+                                      player,
+                                      years: Number(val),
+                                      baseSalary: parseFloat(player.curYear),
+                                      extensionSalaries,
+                                    });
+                                  } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
+                                    setPendingExtension(null);
+                                  }
+                                }}
+                              >
+                                <option value={0}>No Extension</option>
+                                <option value={1}>1 Year</option>
+                                <option value={2}>2 Years</option>
+                                <option value={3}>3 Years</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="px-5 py-4 bg-[#0C1B26]">
+                            <div className="text-white/70 text-sm">Simulated Years</div>
+                            <div className="mt-2 text-lg">
+                              {ext.deny || !ext.years ? (
+                                <span className="text-white/60 italic">No extension</span>
+                              ) : (
+                                <div className="flex flex-col items-start space-y-2">
+                                  {simYears.map((s, i) => (
+                                    <span key={i} className="text-white">
+                                      {s}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="px-5 pb-5 bg-[#0C1B26]">
+                            {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
                               <button
-                                className="px-3 py-1 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
-                                disabled={finalizeLoading || !isExtensionWindowOpen()}
+                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
+                                disabled={finalizeLoading || (!isExtensionWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
-                                  const confirmMsg = `Are you sure you want to finalize a ${pendingExtension.years} year contract extension for ${player.playerName} (Team: ${teamNameForUI})? This cannot be undone or changed later.`;
+                                  // Build value list for confirmation
+                                  let baseC = parseFloat(player.curYear);
+                                  const extVals = [];
+                                  for (let i = 1; i <= pendingExtension.years; ++i) {
+                                    baseC = Math.ceil(baseC * 1.10 * 10) / 10;
+                                    extVals.push(baseC.toFixed(1));
+                                  }
+                                  const lengthText = pendingExtension.years === 1 ? '1 year' : `${pendingExtension.years} years`;
+                                  const valueText = `$${extVals.join(', $')}`;
+                                  const confirmMsg = `Are you sure you want to extend ${player.playerName} at ${valueText} for ${lengthText}? This cannot be undone.`;
                                   if (!window.confirm(confirmMsg)) return;
 
                                   setFinalizeLoading(true);
@@ -686,19 +687,144 @@ export default function ContractManagementPage() {
                                 {finalizeLoading ? 'Saving...' : 'Finalize Extension'}
                               </button>
                             )}
-                            {!isExtensionWindowOpen() && (
-                              <div className="mt-2 text-yellow-400 text-sm">Extensions can only be finalized between May 1st and August 31st.</div>
+                            {!isExtensionWindowOpen() && !(isAdmin && isAdminMode) && (
+                              <div className="mt-2 text-yellow-400 text-xs">Extensions can only be finalized between May 1st and August 31st.</div>
                             )}
-                          </td>
-                        </tr>
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+                  </div>
+
+                  {/* Modern desktop card list */}
+                  <div className="hidden sm:block">
+                {eligiblePlayersSorted.map(player => {
+                  const ext = extensionMap[player.playerId] || { years: 0, deny: false };
+                  let base = parseFloat(player.curYear) || 0;
+                  const simYears = [];
+                  let extensionSalaries = [];
+                  for (let i = 1; i <= ext.years; ++i) {
+                    base = roundUp1(base * 1.10);
+                    simYears.push(`Year ${i + 1}: $${base}`);
+                    extensionSalaries.push(base);
+                  }
+                  const showFinalize = !ext.deny && ext.years > 0;
+                  return (
+                    <EligiblePlayerCard
+                      key={player.playerId}
+                      player={player}
+                      ext={ext}
+                      simYears={simYears}
+                      showFinalize={showFinalize}
+                      pendingExtension={pendingExtension}
+                      finalizeLoading={finalizeLoading}
+                      isExtensionWindowOpen={isExtensionWindowOpen() || (isAdmin && isAdminMode)}
+                      onExtensionChange={e => {
+                        const val = e.target.value;
+                        setExtensionChoices(prev => ({
+                          ...prev,
+                          [player.playerId]: { years: Number(val), deny: false },
+                        }));
+                        if (val !== '0') {
+                          setPendingExtension({
+                            player,
+                            years: Number(val),
+                            baseSalary: parseFloat(player.curYear),
+                            extensionSalaries,
+                          });
+                        } else if (pendingExtension && pendingExtension.player.playerId === player.playerId) {
+                          setPendingExtension(null);
+                        }
+                      }}
+                      onFinalize={async () => {
+                        let baseC = parseFloat(player.curYear);
+                        const extVals = [];
+                        for (let i = 1; i <= pendingExtension.years; ++i) {
+                          baseC = Math.ceil(baseC * 1.10 * 10) / 10;
+                          extVals.push(baseC.toFixed(1));
+                        }
+                        const lengthText = pendingExtension.years === 1 ? '1 year' : `${pendingExtension.years} years`;
+                        const valueText = `$${extVals.join(', $')}`;
+                        const confirmMsg = `Are you sure you want to extend ${player.playerName} at ${valueText} for ${lengthText}? This cannot be undone.`;
+                        if (!window.confirm(confirmMsg)) return;
+
+                        setFinalizeLoading(true);
+                        setFinalizeMsg('');
+                        setFinalizeError('');
+                        try {
+                          let base = parseFloat(player.curYear);
+                          const extensionSalaries = [];
+                          for (let i = 1; i <= pendingExtension.years; ++i) {
+                            base = Math.ceil(base * 1.10 * 10) / 10;
+                            extensionSalaries.push(base);
+                          }
+                          const contractChange = {
+                            change_type: 'extension',
+                            user: session?.user?.name || '',
+                            timestamp: new Date().toISOString(),
+                            notes: `Extended ${player.playerName} for ${pendingExtension.years} year(s) at $${extensionSalaries.join(', $')}`,
+                            ai_notes: '',
+                            playerId: player.playerId,
+                            playerName: player.playerName,
+                            years: pendingExtension.years,
+                            extensionSalaries,
+                            team: teamNameForUI,
+                          };
+
+                          try {
+                            const aiRes = await fetch('/api/ai/transaction_notes', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ contractChange }),
+                            });
+                            const aiData = await aiRes.json();
+                            contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
+                          } catch {
+                            contractChange.ai_notes = 'AI summary unavailable.';
+                          }
+
+                          const res = await fetch('/api/admin/contract_changes', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(contractChange),
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.error || 'Failed to save extension');
+                          setFinalizeMsg('Extension finalized and saved!');
+
+                          const refreshRes = await fetch('/api/admin/contract_changes');
+                          const refreshData = await refreshRes.json();
+                          if (Array.isArray(refreshData)) {
+                            const oneYearAgo = new Date();
+                            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                            const recent = refreshData.filter(
+                              c => c.change_type === 'extension' && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
+                            );
+                            setRecentContractChanges(recent);
+                          }
+
+                          setExtensionChoices(prev => {
+                            const updated = { ...prev };
+                            delete updated[player.playerId];
+                            return updated;
+                          });
+
+                          setPendingExtension(null);
+                        } catch (err) {
+                          setFinalizeError(err.message);
+                        } finally {
+                          setFinalizeLoading(false);
+                        }
+                      }}
+                    />
+                  );
+                })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cap modal */}
@@ -751,6 +877,591 @@ export default function ContractManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Franchise Tags (collapsible) */}
+      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-10">
+        <button
+          type="button"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
+          aria-expanded={!franchiseCollapsed}
+          onClick={() => setFranchiseCollapsed(v => !v)}
+        >
+          <h3 className="text-xl font-bold text-[#1FDDFF]">Franchise Tags</h3>
+          <div className="flex items-center gap-3">
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                franchiseWindowActive
+                  ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                  : 'bg-red-500/20 text-red-300 border-red-500/30'
+              } whitespace-nowrap`}
+              title={franchiseBadgeText}
+            >
+              {franchiseBadgeText}
+            </span>
+            <span className={`text-white transition-transform ${franchiseCollapsed ? '' : 'rotate-90'}`} aria-hidden>
+              ▸
+            </span>
+          </div>
+        </button>
+
+        {!franchiseCollapsed && (
+          <div className="px-5 pb-5 pt-1">
+            <div className="mb-6 text-white/80 text-base">
+              Apply one-year franchise tags during the tag window. Tag value is the average of the top 10 active contracts at the player's position (any contract type).
+            </div>
+            <div className="mb-2 text-white/70 text-sm">
+              Window: Feb 1 — Mar 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
+            </div>
+
+            <div className="mb-8">
+              <h4 className="font-semibold text-white mb-2">Simulated Cap Usage</h4>
+              <table className="w-full text-center border border-white/10 rounded bg-white/5 mb-2">
+                <thead>
+                  <tr>
+                    <th className="p-2 text-white/80">Year</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Used</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Tag Cost</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[0, 1, 2, 3].map(i => {
+                    // Compute tag cost only in Year 1 (i === 1), limit 1 tag per team
+                    let tagCost = 0;
+                    if (i === 1) {
+                      if (!hasFranchiseTagThisYearForTeam) {
+                        if (pendingFranchiseTag?.player) {
+                          tagCost = getTagValueForPlayer(pendingFranchiseTag.player) || 0;
+                        } else {
+                          for (const p of franchiseEligiblePlayers) {
+                            const choice = franchiseTagChoices[p.playerId] || { apply: false };
+                            if (choice.apply) {
+                              tagCost = getTagValueForPlayer(p) || 0;
+                              break;
+                            }
+                          }
+                        }
+                      }
+                    }
+                    const baseCap = yearSalaries[i] + yearDead[i];
+                    const capSpace = CAP - (baseCap + tagCost);
+                    return (
+                      <tr key={i}>
+                        <td className="p-2">{curYear + i}</td>
+                        <td className="p-2 border-l border-white/10">${baseCap.toFixed(1)}</td>
+                        <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">{tagCost === 0 ? '-' : `$${tagCost.toFixed(1)}`}</td>
+                        <td className={`p-2 border-l border-white/10 font-bold ${capSpace < 0 ? 'text-red-400' : 'text-green-400'}`}>{capSpace.toFixed(1)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="text-xs text-white/60">Cap limit: ${CAP} per year</div>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
+              {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
+                <div className="text-yellow-400 text-xs mb-3">Tags can only be applied between Feb 1st and March 31st.</div>
+              )}
+              {hasFranchiseTagThisYearForTeam && (
+                <div className="text-yellow-400 text-xs mb-3">This team has already applied a Franchise Tag this year. You cannot apply another.</div>
+              )}
+              {franchiseEligiblePlayers.length === 0 ? (
+                <div className="text-white/60 italic">No players eligible for a franchise tag.</div>
+              ) : (
+                <>
+                  {/* Mobile */}
+                  <div className="sm:hidden space-y-3">
+                    {franchiseEligiblePlayersSorted.map(player => {
+                      const tagValue = getTagValueForPlayer(player) || 0;
+                      const choice = franchiseTagChoices[player.playerId] || { apply: false };
+                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam;
+                      return (
+                        <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
+                          <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <div className="min-w-0">
+                              <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
+                              <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
+                            </div>
+                          </div>
+                          <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-white/70 text-sm">Tag Value</div>
+                              <div className="text-white font-semibold text-3xl mt-1">${tagValue.toFixed(1)}</div>
+                              <div className="text-white/60 text-xs">1-year contract</div>
+                            </div>
+                            <div>
+                              <div className="text-white/70 text-sm">Apply Tag</div>
+                              <select
+                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
+                                value={choice.apply ? 'apply' : 'none'}
+                                onChange={e => {
+                                  const apply = e.target.value === 'apply';
+                                  setFranchiseTagChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
+                                  if (apply) setPendingFranchiseTag({ player, tagValue });
+                                  else if (pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId) setPendingFranchiseTag(null);
+                                }}
+                                disabled={hasFranchiseTagThisYearForTeam}
+                              >
+                                <option value="none">No Tag</option>
+                                <option value="apply">Apply Tag</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="px-5 pb-5 bg-[#0C1B26]">
+                            {showFinalize && pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId && (
+                              <button
+                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
+                                disabled={finalizeLoading || hasFranchiseTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
+                                onClick={async () => {
+                                  const confirmMsg = `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
+                                  if (!window.confirm(confirmMsg)) return;
+
+                                  setFinalizeLoading(true);
+                                  setFinalizeMsg('');
+                                  setFinalizeError('');
+                                  try {
+                                    const contractChange = {
+                                      change_type: 'franchise_tag',
+                                      user: session?.user?.name || '',
+                                      timestamp: new Date().toISOString(),
+                                      notes: `Applied franchise tag to ${player.playerName} (${player.position}) for 1 year at $${tagValue.toFixed(1)}.`,
+                                      ai_notes: '',
+                                      playerId: player.playerId,
+                                      playerName: player.playerName,
+                                      years: 1,
+                                      tagSalary: Number(tagValue.toFixed(1)),
+                                      team: teamNameForUI,
+                                      position: player.position,
+                                    };
+
+                                    try {
+                                      const aiRes = await fetch('/api/ai/transaction_notes', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ contractChange }),
+                                      });
+                                      const aiData = await aiRes.json();
+                                      contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
+                                    } catch {
+                                      contractChange.ai_notes = 'AI summary unavailable.';
+                                    }
+
+                                    const res = await fetch('/api/admin/contract_changes', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify(contractChange),
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data.error || 'Failed to save franchise tag');
+                                    setFinalizeMsg('Franchise tag applied and saved!');
+
+                                    const refreshRes = await fetch('/api/admin/contract_changes');
+                                    const refreshData = await refreshRes.json();
+                                    if (Array.isArray(refreshData)) {
+                                      const oneYearAgo = new Date();
+                                      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                      const recent = refreshData.filter(
+                                        c => (c.change_type === 'extension' || c.change_type === 'franchise_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
+                                      );
+                                      setRecentContractChanges(recent);
+                                    }
+
+                                    setFranchiseTagChoices(prev => {
+                                      const updated = { ...prev };
+                                      delete updated[player.playerId];
+                                      return updated;
+                                    });
+                                    setPendingFranchiseTag(null);
+                                  } catch (err) {
+                                    setFinalizeError(err.message);
+                                  } finally {
+                                    setFinalizeLoading(false);
+                                  }
+                                }}
+                              >
+                                {finalizeLoading ? 'Saving...' : 'Finalize Tag'}
+                              </button>
+                            )}
+                            {hasFranchiseTagThisYearForTeam && (
+                              <div className="mt-2 text-yellow-400 text-xs">Limit reached: 1 Franchise Tag per team per year.</div>
+                            )}
+                            {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
+                              <div className="mt-2 text-yellow-400 text-xs">Tags can only be applied between Feb 1st and March 31st.</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop cards */}
+                  <div className="hidden sm:block">
+                    {franchiseEligiblePlayersSorted.map(player => {
+                      const tagValue = getTagValueForPlayer(player) || 0;
+                      const choice = franchiseTagChoices[player.playerId] || { apply: false };
+                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam;
+                      return (
+                        <FranchiseTagCard
+                          key={player.playerId}
+                          player={player}
+                          tagValue={tagValue}
+                          choice={choice}
+                          showFinalize={showFinalize}
+                          pendingTag={pendingFranchiseTag}
+                          finalizeLoading={finalizeLoading}
+                          isFranchiseWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
+                          hasFranchiseLimitReached={hasFranchiseTagThisYearForTeam}
+                          onChoiceChange={apply => {
+                            setFranchiseTagChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
+                            if (apply) setPendingFranchiseTag({ player, tagValue });
+                            else if (pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId) setPendingFranchiseTag(null);
+                          }}
+                          onFinalize={async () => {
+                            const confirmMsg = `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
+                            if (!window.confirm(confirmMsg)) return;
+
+                            setFinalizeLoading(true);
+                            setFinalizeMsg('');
+                            setFinalizeError('');
+                            try {
+                              const contractChange = {
+                                change_type: 'franchise_tag',
+                                user: session?.user?.name || '',
+                                timestamp: new Date().toISOString(),
+                                notes: `Applied franchise tag to ${player.playerName} (${player.position}) for 1 year at $${tagValue.toFixed(1)}.`,
+                                ai_notes: '',
+                                playerId: player.playerId,
+                                playerName: player.playerName,
+                                years: 1,
+                                tagSalary: Number(tagValue.toFixed(1)),
+                                team: teamNameForUI,
+                                position: player.position,
+                              };
+
+                              try {
+                                const aiRes = await fetch('/api/ai/transaction_notes', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ contractChange }),
+                                });
+                                const aiData = await aiRes.json();
+                                contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
+                              } catch {
+                                contractChange.ai_notes = 'AI summary unavailable.';
+                              }
+
+                              const res = await fetch('/api/admin/contract_changes', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(contractChange),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || 'Failed to save franchise tag');
+                              setFinalizeMsg('Franchise tag applied and saved!');
+
+                              const refreshRes = await fetch('/api/admin/contract_changes');
+                              const refreshData = await refreshRes.json();
+                              if (Array.isArray(refreshData)) {
+                                const oneYearAgo = new Date();
+                                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                const recent = refreshData.filter(
+                                  c => (c.change_type === 'extension' || c.change_type === 'franchise_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
+                                );
+                                setRecentContractChanges(recent);
+                              }
+
+                              setFranchiseTagChoices(prev => {
+                                const updated = { ...prev };
+                                delete updated[player.playerId];
+                                return updated;
+                              });
+                              setPendingFranchiseTag(null);
+                            } catch (err) {
+                              setFinalizeError(err.message);
+                            } finally {
+                              setFinalizeLoading(false);
+                            }
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* RFA Tags (collapsible) */}
+      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-10">
+        <button
+          type="button"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
+          aria-expanded={!rfaCollapsed}
+          onClick={() => setRfaCollapsed(v => !v)}
+        >
+          <h3 className="text-xl font-bold text-[#9bffb7]">RFA Tags</h3>
+          <div className="flex items-center gap-3">
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                rfaWindowActive
+                  ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                  : 'bg-red-500/20 text-red-300 border-red-500/30'
+              } whitespace-nowrap`}
+              title={rfaBadgeText}
+            >
+              {rfaBadgeText}
+            </span>
+            <span className={`text-white transition-transform ${rfaCollapsed ? '' : 'rotate-90'}`} aria-hidden>
+              ▸
+            </span>
+          </div>
+        </button>
+
+        {!rfaCollapsed && (
+          <div className="px-5 pb-5 pt-1">
+            <div className="mb-6 text-white/80 text-base">
+              Convert a player's current contract to RFA status. Eligible players are on active Waiver/FA contracts and not already RFA. Limit: 1 player per team per year.
+            </div>
+            <div className="mb-2 text-white/70 text-sm">
+              Window: Feb 1 — Mar 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
+            </div>
+
+            {hasRfaTagThisYearForTeam && (
+              <div className="mb-4 text-yellow-400 text-xs">This team has already applied an RFA tag this year. You cannot apply another.</div>
+            )}
+
+            <div>
+              <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
+              {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
+                <div className="text-yellow-400 text-xs mb-3">RFA tags can only be applied between Feb 1st and March 31st.</div>
+              )}
+              {rfaEligiblePlayersSorted.length === 0 ? (
+                <div className="text-white/60 italic">No players eligible for an RFA tag.</div>
+              ) : (
+                <>
+                  {/* Mobile */}
+                  <div className="sm:hidden space-y-3">
+                    {rfaEligiblePlayersSorted.map(player => {
+                      const choice = rfaTagChoices[player.playerId] || { apply: false };
+                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam;
+                      return (
+                        <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
+                          <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <div className="min-w-0">
+                              <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
+                              <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
+                            </div>
+                          </div>
+                          <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-white/70 text-sm">Current Contract</div>
+                              <div className="text-white font-semibold text-3xl mt-1">{player.contractType}</div>
+                              <div className="text-white/60 text-xs">RFA Tag sets RFA? to TRUE</div>
+                            </div>
+                            <div>
+                              <div className="text-white/70 text-sm">Apply RFA Tag</div>
+                              <select
+                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
+                                value={choice.apply ? 'apply' : 'none'}
+                                onChange={e => {
+                                  const apply = e.target.value === 'apply';
+                                  setRfaTagChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
+                                  if (apply) setPendingRfaTag({ player });
+                                  else if (pendingRfaTag && pendingRfaTag.player.playerId === player.playerId) setPendingRfaTag(null);
+                                }}
+                              >
+                                <option value="none">No Tag</option>
+                                <option value="apply">Apply Tag</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="px-5 pb-5 bg-[#0C1B26]">
+                            {showFinalize && pendingRfaTag && pendingRfaTag.player.playerId === player.playerId && (
+                              <button
+                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow disabled:opacity-50"
+                                disabled={finalizeLoading || hasRfaTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
+                                onClick={async () => {
+                                  const confirmMsg = `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
+                                  if (!window.confirm(confirmMsg)) return;
+
+                                  setFinalizeLoading(true);
+                                  setFinalizeMsg('');
+                                  setFinalizeError('');
+                                  try {
+                                    const contractChange = {
+                                      change_type: 'rfa_tag',
+                                      user: session?.user?.name || '',
+                                      timestamp: new Date().toISOString(),
+                                      notes: `Applied RFA tag to ${player.playerName}.`,
+                                      ai_notes: '',
+                                      playerId: player.playerId,
+                                      playerName: player.playerName,
+                                      years: 0,
+                                      team: teamNameForUI,
+                                      position: player.position,
+                                    };
+
+                                    try {
+                                      const aiRes = await fetch('/api/ai/transaction_notes', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ contractChange }),
+                                      });
+                                      const aiData = await aiRes.json();
+                                      contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
+                                    } catch {
+                                      contractChange.ai_notes = 'AI summary unavailable.';
+                                    }
+
+                                    const res = await fetch('/api/admin/contract_changes', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify(contractChange),
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data.error || 'Failed to save RFA tag');
+                                    setFinalizeMsg('RFA tag applied and saved!');
+
+                                    const refreshRes = await fetch('/api/admin/contract_changes');
+                                    const refreshData = await refreshRes.json();
+                                    if (Array.isArray(refreshData)) {
+                                      const oneYearAgo = new Date();
+                                      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                      const recent = refreshData.filter(
+                                        c => (c.change_type === 'extension' || c.change_type === 'franchise_tag' || c.change_type === 'rfa_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
+                                      );
+                                      setRecentContractChanges(recent);
+                                    }
+
+                                    setRfaTagChoices(prev => {
+                                      const updated = { ...prev };
+                                      delete updated[player.playerId];
+                                      return updated;
+                                    });
+                                    setPendingRfaTag(null);
+                                  } catch (err) {
+                                    setFinalizeError(err.message);
+                                  } finally {
+                                    setFinalizeLoading(false);
+                                  }
+                                }}
+                              >
+                                {finalizeLoading ? 'Saving...' : 'Finalize RFA Tag'}
+                              </button>
+                            )}
+                            {hasRfaTagThisYearForTeam && (
+                              <div className="mt-2 text-yellow-400 text-xs">Limit reached: 1 RFA tag per team per year.</div>
+                            )}
+                            {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
+                              <div className="mt-2 text-yellow-400 text-xs">RFA tags can only be applied between Feb 1st and March 31st.</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop */}
+                  <div className="hidden sm:block">
+                    {rfaEligiblePlayersSorted.map(player => {
+                      const choice = rfaTagChoices[player.playerId] || { apply: false };
+                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam;
+                      return (
+                        <RFATagCard
+                          key={player.playerId}
+                          player={player}
+                          choice={choice}
+                          showFinalize={showFinalize}
+                          pendingTag={pendingRfaTag}
+                          finalizeLoading={finalizeLoading}
+                          hasRfaLimitReached={hasRfaTagThisYearForTeam}
+                          isRfaWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
+                          onChoiceChange={apply => {
+                            setRfaTagChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
+                            if (apply) setPendingRfaTag({ player });
+                            else if (pendingRfaTag && pendingRfaTag.player.playerId === player.playerId) setPendingRfaTag(null);
+                          }}
+                          onFinalize={async () => {
+                            const confirmMsg = `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
+                            if (!window.confirm(confirmMsg)) return;
+
+                            setFinalizeLoading(true);
+                            setFinalizeMsg('');
+                            setFinalizeError('');
+                            try {
+                              const contractChange = {
+                                change_type: 'rfa_tag',
+                                user: session?.user?.name || '',
+                                timestamp: new Date().toISOString(),
+                                notes: `Applied RFA tag to ${player.playerName}.`,
+                                ai_notes: '',
+                                playerId: player.playerId,
+                                playerName: player.playerName,
+                                years: 0,
+                                team: teamNameForUI,
+                                position: player.position,
+                              };
+
+                              try {
+                                const aiRes = await fetch('/api/ai/transaction_notes', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ contractChange }),
+                                });
+                                const aiData = await aiRes.json();
+                                contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
+                              } catch {
+                                contractChange.ai_notes = 'AI summary unavailable.';
+                              }
+
+                              const res = await fetch('/api/admin/contract_changes', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(contractChange),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || 'Failed to save RFA tag');
+                              setFinalizeMsg('RFA tag applied and saved!');
+
+                              const refreshRes = await fetch('/api/admin/contract_changes');
+                              const refreshData = await refreshRes.json();
+                              if (Array.isArray(refreshData)) {
+                                const oneYearAgo = new Date();
+                                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                                const recent = refreshData.filter(
+                                  c => (c.change_type === 'extension' || c.change_type === 'franchise_tag' || c.change_type === 'rfa_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
+                                );
+                                setRecentContractChanges(recent);
+                              }
+
+                              setRfaTagChoices(prev => {
+                                const updated = { ...prev };
+                                delete updated[player.playerId];
+                                return updated;
+                              });
+                              setPendingRfaTag(null);
+                            } catch (err) {
+                              setFinalizeError(err.message);
+                            } finally {
+                              setFinalizeLoading(false);
+                            }
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
