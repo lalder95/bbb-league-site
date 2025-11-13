@@ -14,7 +14,8 @@ export async function GET() {
     .map(p => ({
       playerId: p.player_id,
       playerName: p.full_name,
-      position: p.position
+      position: p.position,
+      team: p.team || null
     }));
 
   return new Response(JSON.stringify(players), {

@@ -33,6 +33,7 @@ This project is a fantasy football league management site, providing:
 - **Draft Tools:** Mock drafts, draft order, rookie salaries, and strategy tips
 - **Team Management:** My Team page, player contracts, salary cap, and trades
 - **League Analytics:** News ticker, analytics dashboard, and history
+ - **League Analytics & History:** News ticker, analytics dashboard, head-to-head matrix, all-time points races, and trade history
 - **Media:** Upload and view league-related media
 - **Authentication:** Secure login and password management
 - **Responsive UI:** Built with Tailwind CSS and modern UI components
@@ -56,6 +57,7 @@ bbb-league-site/
 │   │   ├── free-agency/   # Free agency management
 │   │   ├── hall-of-fame/  # Hall of Fame page
 │   │   ├── history/       # League history
+│   │   │   └── trade-history/  # Trade History page (all trades by season)
 │   │   ├── login/         # Authentication
 │   │   ├── my-team/       # Team management
 │   │   ├── offseason/     # Offseason tools

@@ -186,7 +186,8 @@ export default function Navigation() {
       title: 'League History',
       links: [
         { href: '/history', label: 'History' },
-        { href: '/hall-of-fame', label: 'Hall of Fame' }
+        { href: '/hall-of-fame', label: 'Hall of Fame' },
+        { href: '/history/trade-history', label: 'Trade History' }
       ]
     }
   ];
