@@ -20,6 +20,7 @@ export default function TradeHistoryPage() {
   const loadingPlayersRef = useRef(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [openDebug, setOpenDebug] = useState(new Set());
+  const [openPickDebug, setOpenPickDebug] = useState(new Set());
 
   // Load current NFL season for season dropdown
   useEffect(() => {
@@ -206,12 +207,37 @@ export default function TradeHistoryPage() {
                         })}
                         className={`px-2 py-1 rounded text-xs border transition-colors ${openDebug.has(trade.trade_id) ? 'bg-[#FF4B1F] border-[#FF4B1F] text-white' : 'bg-black/40 border-white/20 text-white/70 hover:border-white/50'}`}
                       >{openDebug.has(trade.trade_id) ? 'Hide Debug' : 'Debug'}</button>
+                      <button
+                        type="button"
+                        onClick={() => setOpenPickDebug(prev => {
+                          const next = new Set(prev);
+                          if (next.has(trade.trade_id)) next.delete(trade.trade_id); else next.add(trade.trade_id);
+                          return next;
+                        })}
+                        className={`px-2 py-1 rounded text-xs border transition-colors ${openPickDebug.has(trade.trade_id) ? 'bg-green-600 border-green-600 text-white' : 'bg-black/40 border-white/20 text-white/70 hover:border-white/50'}`}
+                      >{openPickDebug.has(trade.trade_id) ? 'Hide Pick Match' : 'Pick Match Debug'}</button>
                     </div>
                   </div>
                   {openDebug.has(trade.trade_id) && (
                     <pre className="text-[11px] leading-relaxed max-h-64 overflow-auto bg-black/50 border border-white/10 rounded p-3 mb-4 whitespace-pre-wrap break-all">
 {formatRaw(trade.raw)}
                     </pre>
+                  )}
+                  {openPickDebug.has(trade.trade_id) && (
+                    <div className="mb-4 bg-black/40 border border-white/10 rounded p-3">
+                      <div className="text-xs text-white/70 mb-2">Pick match details</div>
+                      <div className="space-y-1">
+                        {trade.picks.length === 0 ? (
+                          <div className="text-[11px] text-white/50">No picks in this trade.</div>
+                        ) : (
+                          trade.picks.map((pk, i) => (
+                            <pre key={i} className="text-[11px] leading-relaxed overflow-auto bg-black/30 border border-white/10 rounded p-2 whitespace-pre-wrap break-all">
+{formatRaw(pk.match_debug)}
+                            </pre>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   )}
                   {/* Teams involved */}
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -268,7 +294,7 @@ export default function TradeHistoryPage() {
                                 })}
                                 {inboundPicks.map((pk, idx) => (
                                   <span key={`pk-in-${idx}`} className="inline-flex px-2 py-1 mt-3 rounded bg-green-500/15 border border-green-500/30 text-[11px] w-auto shrink-0">
-                                    R{pk.round} {pk.season} (from {pk.slot_owner_name || pk.previous_owner_name})
+                                    R{pk.round} {pk.season} (from {pk.slot_owner_name || pk.previous_owner_name}){pk.drafted_player ? ` • ${pk.drafted_player.name} (${pk.drafted_player.position || 'N/A'})` : ''}
                                   </span>
                                 ))}
                               </div>
@@ -301,7 +327,7 @@ export default function TradeHistoryPage() {
                                 })}
                                 {outboundPicks.map((pk, idx) => (
                                   <span key={`pk-out-${idx}`} className="inline-flex px-2 py-1 mt-3 rounded bg-red-500/15 border border-red-500/30 text-[11px] w-auto shrink-0">
-                                    R{pk.round} {pk.season} (from {pk.slot_owner_name || pk.previous_owner_name})
+                                    R{pk.round} {pk.season} (from {pk.slot_owner_name || pk.previous_owner_name}){pk.drafted_player ? ` • ${pk.drafted_player.name} (${pk.drafted_player.position || 'N/A'})` : ''}
                                   </span>
                                 ))}
                               </div>
