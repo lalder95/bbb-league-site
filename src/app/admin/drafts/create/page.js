@@ -35,6 +35,10 @@ export default function CreateDraftPage() {
   // Add state for player start delays (default 1000)
   const [playerStartDelays, setPlayerStartDelays] = useState({});
 
+  // Import Player IDs state
+  const [idImportMode, setIdImportMode] = useState('select'); // 'select' | 'deselect'
+  const [idImportStats, setIdImportStats] = useState(null); // { total, matched, unmatched }
+
   // Fetch users
   useEffect(() => {
     fetch('/api/admin/users')
@@ -133,6 +137,43 @@ export default function CreateDraftPage() {
         ? prev.filter(id => id !== playerId)
         : [...prev, playerId]
     );
+  };
+
+  // Parse an uploaded text/CSV file of IDs and apply select/deselect
+  const handleIdFileImport = async (file) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      // Split on any non-alphanumeric/underscore/hyphen characters to get tokens
+      const rawTokens = text
+        .split(/[^A-Za-z0-9_-]+/)
+        .map(t => t.trim())
+        .filter(Boolean);
+      // Normalize to strings for comparison
+      const importedIds = Array.from(new Set(rawTokens.map(String)));
+
+      // Build a quick lookup for existing player IDs
+      const playerIdSet = new Set(players.map(p => String(p.playerId)));
+      const matchedIds = importedIds.filter(id => playerIdSet.has(String(id)));
+      const unmatchedCount = importedIds.length - matchedIds.length;
+
+      setSelectedPlayers(prev => {
+        const prevSet = new Set(prev.map(String));
+        if (idImportMode === 'select') {
+          // Union: add matched IDs
+          matchedIds.forEach(id => prevSet.add(String(id)));
+        } else {
+          // Deselect: remove matched IDs
+          matchedIds.forEach(id => prevSet.delete(String(id)));
+        }
+        // Convert back to original ID shape if possible (keep as string)
+        return Array.from(prevSet);
+      });
+
+      setIdImportStats({ total: importedIds.length, matched: matchedIds.length, unmatched: unmatchedCount });
+    } catch (e) {
+      setError(`Failed to import IDs: ${e.message}`);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -254,6 +295,53 @@ export default function CreateDraftPage() {
             >
               Select All
             </button>
+            <button
+              type="button"
+              className="ml-2 mb-2 px-3 py-1 bg-slate-600 rounded text-white hover:bg-slate-700 transition-colors"
+              onClick={() => setSelectedPlayers([])}
+            >
+              Deselect All
+            </button>
+
+            {/* Import Player IDs */}
+            <div className="mb-3 p-3 bg-white/5 border border-white/10 rounded">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm">Import Player IDs:</span>
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="radio"
+                      name="idImportMode"
+                      value="select"
+                      checked={idImportMode === 'select'}
+                      onChange={() => setIdImportMode('select')}
+                    />
+                    Select
+                  </label>
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="radio"
+                      name="idImportMode"
+                      value="deselect"
+                      checked={idImportMode === 'deselect'}
+                      onChange={() => setIdImportMode('deselect')}
+                    />
+                    Deselect
+                  </label>
+                </div>
+                <input
+                  type="file"
+                  accept=".txt,.csv,.tsv,.log,.list"
+                  className="text-sm"
+                  onChange={(e) => handleIdFileImport(e.target.files?.[0])}
+                />
+              </div>
+              {idImportStats && (
+                <div className="mt-2 text-xs text-white/80">
+                  Processed {idImportStats.total} IDs • Matched {idImportStats.matched} • Unmatched {idImportStats.unmatched}
+                </div>
+              )}
+            </div>
             <div className="overflow-x-auto max-h-96 border border-white/10 rounded bg-white/5">
               <table className="min-w-full text-sm">
                 <thead>
