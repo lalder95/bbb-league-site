@@ -1,4 +1,4 @@
-import next from 'eslint-config-next/flat';
+import next from 'eslint-config-next';
 
 export default [
   {

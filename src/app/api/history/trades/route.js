@@ -13,11 +13,19 @@ export async function GET(request) {
     const season = searchParams.get('season');
     if (!season) return new Response(JSON.stringify({ error: 'season query param required' }), { status: 400 });
 
+    // Cache policy: past seasons monthly, current or future hourly
+    const nowYear = new Date().getFullYear();
+    const revalidateSeconds = Number(season) < nowYear ? 30 * 24 * 60 * 60 : 60 * 60; // 30d or 1h
+    const cacheHeaders = {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, s-maxage=${revalidateSeconds}, stale-while-revalidate=${revalidateSeconds}`
+    };
+
     // Sleeper user id that owns BBB leagues (same as used in history page)
     const USER_ID = '456973480269705216';
 
     // Find BBB leagues for this season
-    const leaguesRes = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${season}`);
+  const leaguesRes = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${season}`, { next: { revalidate: revalidateSeconds } });
     if (!leaguesRes.ok) throw new Error('Failed to fetch leagues for season');
     const leagues = await leaguesRes.json();
     const bbbLeagues = leagues.filter(league => {
@@ -34,7 +42,7 @@ export async function GET(request) {
     // Helper: fetch rookie (linear) draft info for a given season, cache by season
     // Helper: fetch a league meta record
     async function getLeagueMeta(leagueId) {
-      const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`);
+      const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`, { next: { revalidate: revalidateSeconds } });
       if (!res.ok) return null;
       return res.json();
     }
@@ -96,8 +104,8 @@ export async function GET(request) {
 
       // Fetch rosters and drafts in that resolved league+season
       const [rostersRes2, draftsRes2] = await Promise.all([
-        fetch(`https://api.sleeper.app/v1/league/${leagueIdForSeason}/rosters`),
-        fetch(`https://api.sleeper.app/v1/league/${leagueIdForSeason}/drafts`)
+        fetch(`https://api.sleeper.app/v1/league/${leagueIdForSeason}/rosters`, { next: { revalidate: revalidateSeconds } }),
+        fetch(`https://api.sleeper.app/v1/league/${leagueIdForSeason}/drafts`, { next: { revalidate: revalidateSeconds } })
       ]);
       if (!rostersRes2.ok || !draftsRes2.ok) { draftInfoCache.set(key, null); return null; }
   const [rosters2, drafts2] = await Promise.all([rostersRes2.json(), draftsRes2.json()]);
@@ -109,7 +117,7 @@ export async function GET(request) {
       // Prefer fetching the full draft object to reliably get draft_order
       let draftOrder = {};
       try {
-        const draftObjRes = await fetch(`https://api.sleeper.app/v1/draft/${linearDraft.draft_id}`);
+  const draftObjRes = await fetch(`https://api.sleeper.app/v1/draft/${linearDraft.draft_id}`, { next: { revalidate: revalidateSeconds } });
         if (draftObjRes.ok) {
           const draftObj = await draftObjRes.json();
           draftOrder = draftObj?.draft_order || {};
@@ -124,7 +132,7 @@ export async function GET(request) {
       let picksLookup = new Map();
       let dpicks2 = [];
       try {
-        const picksRes2 = await fetch(`https://api.sleeper.app/v1/draft/${linearDraft.draft_id}/picks`);
+  const picksRes2 = await fetch(`https://api.sleeper.app/v1/draft/${linearDraft.draft_id}/picks`, { next: { revalidate: revalidateSeconds } });
         if (picksRes2.ok) {
           dpicks2 = await picksRes2.json();
           picksLookup = new Map(
@@ -175,8 +183,8 @@ export async function GET(request) {
     for (const league of bbbLeagues) {
       // Fetch users & rosters for name mapping
       const [usersRes, rostersRes] = await Promise.all([
-        fetch(`https://api.sleeper.app/v1/league/${league.league_id}/users`),
-        fetch(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`)
+        fetch(`https://api.sleeper.app/v1/league/${league.league_id}/users`, { next: { revalidate: revalidateSeconds } }),
+        fetch(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`, { next: { revalidate: revalidateSeconds } })
       ]);
       if (!usersRes.ok || !rostersRes.ok) continue;
       const users = await usersRes.json();
@@ -188,7 +196,7 @@ export async function GET(request) {
       // Fetch all drafts for this league and build a lookup for linear drafts by season
       const draftInfoBySeason = new Map();
       try {
-        const draftsRes = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/drafts`);
+  const draftsRes = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/drafts`, { next: { revalidate: revalidateSeconds } });
         if (draftsRes.ok) {
           const drafts = await draftsRes.json();
           const linearDrafts = Array.isArray(drafts) ? drafts.filter(d => d.type === 'linear') : [];
@@ -196,7 +204,7 @@ export async function GET(request) {
             // Build a lookup of picks for this draft keyed by (season|slot|round)
             let picksLookup = new Map();
             try {
-              const picksRes = await fetch(`https://api.sleeper.app/v1/draft/${d.draft_id}/picks`);
+              const picksRes = await fetch(`https://api.sleeper.app/v1/draft/${d.draft_id}/picks`, { next: { revalidate: revalidateSeconds } });
               if (picksRes.ok) {
                 const dpicks = await picksRes.json();
                 picksLookup = new Map(
@@ -229,7 +237,7 @@ export async function GET(request) {
   // Iterate weeks 1-18; stop early after 2 consecutive empty weeks (post-season end)
       let consecutiveEmpty = 0;
       for (let week = 1; week <= 18; week++) {
-        const txRes = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/transactions/${week}`);
+  const txRes = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/transactions/${week}`, { next: { revalidate: revalidateSeconds } });
         if (!txRes.ok) continue;
         const transactions = await txRes.json();
         const tradeTx = transactions.filter(t => t.type === 'trade');
@@ -394,7 +402,7 @@ export async function GET(request) {
       return (a.created || 0) - (b.created || 0);
     });
 
-    return new Response(JSON.stringify({ season, trades: allTrades }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ season, trades: allTrades }), { status: 200, headers: cacheHeaders });
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });
   }
