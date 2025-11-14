@@ -171,10 +171,47 @@ export default function TradeHistoryPage() {
     const salaryTotal = salaryFromPlayers + salaryFromDrafted;
     const ktcTotal = ktcFromPlayers + ktcFromDrafted;
     return (
-      <div className="text-[11px] text-white/70 mb-2">
-        <span className="text-white/60">Totals:</span> Salary {formatMoney(salaryTotal)}
-        <span className="mx-2 text-white/30">•</span>
-        KTC {formatInt(ktcTotal)}
+      <div className="inline-flex items-center gap-2 mb-2 text-[11px] rounded-full px-2 py-1 border border-white/10 bg-white/5 text-white/70">
+        <span className="uppercase tracking-wide text-white/60">Totals</span>
+        <span className="h-3 w-px bg-white/15" />
+        <span className="text-white/70">Salary <span className="text-white">{formatMoney(salaryTotal)}</span></span>
+        <span className="text-white/30">•</span>
+        <span className="text-white/70">KTC <span className="text-white">{formatInt(ktcTotal)}</span></span>
+      </div>
+    );
+  };
+
+  // Styling helpers for prettier pick badges/cards
+  function pickVisual(round) {
+    const r = Number(round);
+    // Map rounds to color themes
+    switch (r) {
+      case 1:
+        return { grad: 'from-amber-400 via-orange-500 to-pink-600', ring: 'ring-amber-400/40', pill: 'bg-gradient-to-r from-amber-500/90 to-orange-600/90 text-white', chipBorder: 'border-amber-400/40', avatarBorder: 'border-amber-400/60' };
+      case 2:
+        return { grad: 'from-violet-400 via-fuchsia-500 to-pink-600', ring: 'ring-violet-400/40', pill: 'bg-gradient-to-r from-violet-500/90 to-fuchsia-600/90 text-white', chipBorder: 'border-violet-400/40', avatarBorder: 'border-violet-400/60' };
+      case 3:
+        return { grad: 'from-cyan-400 via-sky-500 to-blue-600', ring: 'ring-cyan-400/40', pill: 'bg-gradient-to-r from-cyan-500/90 to-sky-600/90 text-white', chipBorder: 'border-cyan-400/40', avatarBorder: 'border-cyan-400/60' };
+      case 4:
+        return { grad: 'from-emerald-400 via-green-500 to-teal-600', ring: 'ring-emerald-400/40', pill: 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 text-white', chipBorder: 'border-emerald-400/40', avatarBorder: 'border-emerald-400/60' };
+      default:
+        return { grad: 'from-slate-400 via-slate-500 to-slate-700', ring: 'ring-slate-400/40', pill: 'bg-gradient-to-r from-slate-500/90 to-slate-700/90 text-white', chipBorder: 'border-slate-400/40', avatarBorder: 'border-slate-400/60' };
+    }
+  }
+
+  const DraftedPickWrapper = ({ pk, children }) => {
+    const rd = Number(pk.round);
+    const vis = pickVisual(rd);
+    return (
+      <div className={`relative w-24 sm:w-28 p-[2px] rounded-xl bg-gradient-to-br ${vis.grad} shadow-lg shadow-black/40 hover:shadow-[#FF4B1F]/30 transition-shadow`}>
+        <div className={`rounded-[10px] h-full w-full bg-black/60 backdrop-blur-sm border border-white/10 ring-1 ${vis.ring} flex flex-col items-center`}
+             title={draftedPickLabel(pk)}>
+          {/* Corner pill */}
+          <div className="absolute -top-2 left-2">
+            <div className={`text-[10px] px-2 py-0.5 rounded-full font-semibold tracking-wide shadow ${vis.pill}`}>{draftedPickLabelShort(pk)}</div>
+          </div>
+          {children}
+        </div>
       </div>
     );
   };
@@ -229,352 +266,409 @@ export default function TradeHistoryPage() {
   }, [currentSeason]);
 
   return (
-    <main className="min-h-screen bg-[#001A2B] text-white">
-      <div className="p-6 bg-black/30 border-b border-white/10">
-        <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <h1 className="text-3xl font-bold text-[#FF4B1F]">Trade History</h1>
+    <main className="relative min-h-screen text-white bg-gradient-to-br from-[#0B1220] via-[#0A1A2B] to-[#0B1220]">
+      {/* Decorative background accents */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-[#FF4B1F]/20 blur-3xl" />
+        <div className="absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
+      </div>
+
+      {/* Header */}
+      <div className="relative border-b border-white/10 bg-black/20 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-6 py-8 flex flex-col items-center text-center">
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-[#FF8A00] via-[#FF4B1F] to-[#F7007B] bg-clip-text text-transparent">
+            Trade History
+          </h1>
+          <p className="mt-2 text-sm text-white/70">Explore every move across seasons, with picks and contracts in one view.</p>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="mb-6 flex flex-col md:flex-row gap-4 md:items-end">
-          <div>
-            <label className="block text-sm mb-1">Season</label>
-            {loadingSeasonMeta ? (
-              <div className="text-white/60 text-sm">Loading seasons...</div>
-            ) : (
-              <select
-                value={season || ''}
-                onChange={e => setSeason(parseInt(e.target.value))}
-                className="bg-black/40 border border-white/10 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]/40"
-              >
-                {seasonOptions.map(opt => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-            )}
-            <div className="mt-3 flex items-center gap-2">
-              <label className="flex items-center text-xs cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={showSent}
-                  onChange={e => setShowSent(e.target.checked)}
-                  className="accent-[#FF4B1F] mr-2" aria-label="Toggle Sent Assets"
-                />
-                <span className="text-white/70">Show Sent Side</span>
-              </label>
+
+      {/* Content */}
+      <div className="relative max-w-7xl mx-auto p-6">
+        {/* Filters */}
+        <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Season + Sent toggle */}
+          <div className="lg:col-span-1">
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+              <div className="flex items-end gap-4">
+                <div className="flex-1">
+                  <label className="block text-[12px] uppercase tracking-wide text-white/60 mb-1">Season</label>
+                  {loadingSeasonMeta ? (
+                    <div className="text-white/60 text-sm">Loading seasons...</div>
+                  ) : (
+                    <select
+                      value={season || ''}
+                      onChange={e => setSeason(parseInt(e.target.value))}
+                      className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]/40"
+                    >
+                      {seasonOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="pt-6">
+                  <label className="flex items-center text-xs cursor-pointer select-none bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={showSent}
+                      onChange={e => setShowSent(e.target.checked)}
+                      className="accent-[#FF4B1F] mr-2" aria-label="Toggle Sent Assets"
+                    />
+                    <span className="text-white/80">Show Sent</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex-1">
-            <label className="block text-sm mb-1">Filter Teams (click to toggle)</label>
-            <div className="flex flex-wrap gap-2">
-              {uniqueTeams.map(t => {
-                const active = teamFilter.includes(t.owner_id);
-                return (
-                  <button
-                    key={t.owner_id}
-                    onClick={() => toggleTeam(t.owner_id)}
-                    className={`px-3 py-1 rounded-full text-xs border transition-all ${active ? 'bg-[#FF4B1F] border-[#FF4B1F] text-white' : 'bg-black/40 border-white/20 text-white/70 hover:border-white/50'}`}
-                  >
-                    {t.owner_name}
-                  </button>
-                );
-              })}
-              {teamFilter.length > 0 && (
-                <button onClick={clearFilters} className="px-3 py-1 rounded-full text-xs bg-black/50 border border-white/30 text-white/70 hover:text-white">Clear</button>
-              )}
+
+          {/* Team filter chips */}
+          <div className="lg:col-span-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[12px] uppercase tracking-wide text-white/60">Filter Teams</label>
+                {teamFilter.length > 0 && (
+                  <button onClick={clearFilters} className="text-xs text-white/70 hover:text-white underline underline-offset-2">Clear</button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {uniqueTeams.map(t => {
+                  const active = teamFilter.includes(t.owner_id);
+                  return (
+                    <button
+                      key={t.owner_id}
+                      onClick={() => toggleTeam(t.owner_id)}
+                      className={`group relative overflow-hidden px-3 py-1.5 rounded-full text-xs border transition-all ${active ? 'bg-gradient-to-r from-[#FF8A00]/90 to-[#FF4B1F]/90 border-[#FF4B1F] text-white shadow-[0_0_0_1px_rgba(255,75,31,0.3),0_8px_24px_-8px_rgba(255,75,31,0.6)]' : 'bg-black/40 border-white/15 text-white/80 hover:border-white/40 hover:bg-black/50'}`}
+                    >
+                      <span className="relative z-10">{t.owner_name}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
 
+        {/* Alerts */}
         {error && (
-          <div className="mb-4 p-4 bg-red-500/20 border border-red-700 text-sm rounded">{error}</div>
+          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
         )}
 
+        {/* Loading / Empty / List */}
         {loadingTrades ? (
-          <div className="flex items-center gap-3 text-white/70">
-            <div className="animate-spin h-8 w-8 border-4 border-[#FF4B1F] border-t-transparent rounded-full" />
+          <div className="flex items-center gap-3 text-white/80">
+            <div className="h-8 w-8 inline-flex items-center justify-center">
+              <div className="animate-spin h-6 w-6 border-2 border-[#FF4B1F] border-t-transparent rounded-full" />
+            </div>
             <span>Loading trades for {season}...</span>
           </div>
         ) : filteredTrades.length === 0 ? (
-          <div className="text-white/60">No trades found for this season{teamFilter.length ? ' (with current filters)' : ''}.</div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-white/70">No trades found for this season{teamFilter.length ? ' (with current filters)' : ''}.</div>
         ) : (
           <div className="space-y-6">
             {filteredTrades.map(trade => {
               const grouped = playersByRoster(trade);
               return (
-                <div key={trade.trade_id} className="bg-black/30 border border-white/10 rounded-lg p-4 hover:border-[#FF4B1F]/50 transition-colors">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
-                    <div className="text-sm text-white/70">
-                      <span className="font-semibold text-white">Season {trade.season}</span> • Week {trade.week} • Transaction #{trade.trade_id}
-                    </div>
-                    {isAdmin && (
-                    <div className="flex items-center gap-3">
-                      <div className="text-xs text-white/50">Status: {trade.status || 'unknown'}</div>
-                      <button
-                        type="button"
-                        onClick={() => setOpenDebug(prev => {
-                          const next = new Set(prev);
-                          if (next.has(trade.trade_id)) next.delete(trade.trade_id); else next.add(trade.trade_id);
-                          return next;
-                        })}
-                        className={`px-2 py-1 rounded text-xs border transition-colors ${openDebug.has(trade.trade_id) ? 'bg-[#FF4B1F] border-[#FF4B1F] text-white' : 'bg-black/40 border-white/20 text-white/70 hover:border-white/50'}`}
-                      >{openDebug.has(trade.trade_id) ? 'Hide Debug' : 'Debug'}</button>
-                      <button
-                        type="button"
-                        onClick={() => setOpenPickDebug(prev => {
-                          const next = new Set(prev);
-                          if (next.has(trade.trade_id)) next.delete(trade.trade_id); else next.add(trade.trade_id);
-                          return next;
-                        })}
-                        className={`px-2 py-1 rounded text-xs border transition-colors ${openPickDebug.has(trade.trade_id) ? 'bg-green-600 border-green-600 text-white' : 'bg-black/40 border-white/20 text-white/70 hover:border-white/50'}`}
-                      >{openPickDebug.has(trade.trade_id) ? 'Hide Pick Match' : 'Pick Match Debug'}</button>
-                    </div>
-                    )}
-                  </div>
-                  {openDebug.has(trade.trade_id) && (
-                    <pre className="text-[11px] leading-relaxed max-h-64 overflow-auto bg-black/50 border border-white/10 rounded p-3 mb-4 whitespace-pre-wrap break-all">
-{formatRaw(trade.raw)}
-                    </pre>
-                  )}
-                  {openPickDebug.has(trade.trade_id) && (
-                    <div className="mb-4 bg-black/40 border border-white/10 rounded p-3">
-                      <div className="text-xs text-white/70 mb-2">Pick match details</div>
-                      <div className="space-y-1">
-                        {trade.picks.length === 0 ? (
-                          <div className="text-[11px] text-white/50">No picks in this trade.</div>
-                        ) : (
-                          trade.picks.map((pk, i) => (
-                            <pre key={i} className="text-[11px] leading-relaxed overflow-auto bg-black/30 border border-white/10 rounded p-2 whitespace-pre-wrap break-all">
-{formatRaw(pk.match_debug)}
-                            </pre>
-                          ))
-                        )}
+                <div key={trade.trade_id} className="group relative rounded-2xl p-[1px] bg-gradient-to-br from-white/10 via-white/5 to-transparent">
+                  <div className="rounded-2xl bg-black/40 backdrop-blur-sm border border-white/10 p-4 sm:p-5">
+                    {/* Card header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                      <div className="text-sm text-white/80 flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-white">Season {trade.season}</span>
+                        <span className="text-white/30">•</span>
+                        <span>Week {trade.week}</span>
+                        <span className="text-white/30">•</span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/80 hidden sm:inline-flex">TX #{trade.trade_id}</span>
                       </div>
-                    </div>
-                  )}
-                  {/* Teams involved */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {trade.teams.map(tm => (
-                      <div key={`${trade.trade_id}-${tm.roster_id}`} className="px-2 py-1 rounded bg-white/5 text-xs border border-white/10">
-                        {tm.owner_name}
-                      </div>
-                    ))}
-                  </div>
-                  {/* Player movement */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {trade.teams.map(teamObj => {
-                      const rosterId = Number(teamObj.roster_id);
-                      const ownerId = teamObj.owner_id;
-                      const inboundPlayers = trade.players.filter(p => p.to_roster_id === rosterId);
-                      const outboundPlayers = trade.players.filter(p => p.from_roster_id === rosterId);
-                      // For picks, use normalized to/from roster ids; fall back to legacy fields if needed
-                      const inboundPicks = trade.picks.filter(pk => Number(pk.to_roster_id ?? pk.roster_id) === Number(rosterId));
-                      const outboundPicks = trade.picks.filter(pk => Number(pk.from_roster_id ?? pk.previous_owner_id) === Number(rosterId));
-                      const inboundDraftedPicks = inboundPicks.filter(pk => pk.drafted_player && pk.drafted_player.player_id);
-                      const inboundRawPicks = inboundPicks.filter(pk => !(pk.drafted_player && pk.drafted_player.player_id));
-                      const outboundDraftedPicks = outboundPicks.filter(pk => pk.drafted_player && pk.drafted_player.player_id);
-                      const outboundRawPicks = outboundPicks.filter(pk => !(pk.drafted_player && pk.drafted_player.player_id));
-                      const recvCount = inboundPlayers.length + inboundPicks.length;
-                      const sentCount = outboundPlayers.length + outboundPicks.length;
-                      return (
-                        <div key={rosterId} className="bg-black/20 rounded p-3 border border-white/10">
-                          <div className="text-sm font-semibold mb-3 flex items-center justify-between">
-                            <span>{teamObj.owner_name}</span>
-                            <span className="text-xs text-white/40">Received {recvCount} / Sent {sentCount}</span>
-                          </div>
-                          {/* Layout: Received always shown; Sent optional. When Sent hidden, single-column without divider. */}
-                          <div className={showSent ? 'flex flex-col sm:flex-row gap-6 sm:gap-0' : 'flex flex-col'}>
-                            <div>
-                              <div className="text-xs uppercase tracking-wide text-green-400 mb-1">Received</div>
-                              {/* Totals for received side */}
-                              <TotalsBar side="in" players={inboundPlayers} draftedPicks={inboundDraftedPicks} contractsMap={contractsMap} />
-                              {inboundPlayers.length === 0 && inboundPicks.length === 0 && <div className="text-[11px] text-white/40">None</div>}
-                              <div className="flex flex-wrap gap-3">
-                                {inboundPlayers.map(p => {
-                                  const sleeper = playersMap?.get(String(p.player_id));
-                                  const minimalContract = sleeper ? [{
-                                    playerId: String(sleeper.playerId),
-                                    playerName: sleeper.playerName,
-                                    position: sleeper.position,
-                                    team: '',
-                                    status: 'Active',
-                                    nflTeam: sleeper.team || ''
-                                  }] : [];
-                                  return (
-                                    <div key={`pl-in-${p.player_id}`} className="w-28 cursor-pointer flex flex-col items-center" onClick={() => setSelectedPlayerId(String(p.player_id))}>
-                                      {/* Reserve label space for alignment */}
-                                      <div className="h-5 w-full" />
-                                      <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
-                                      {sleeper && (
-                                        <div className="w-full mt-1 flex flex-col items-center">
-                                          <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
-                                            {sleeper.playerName} · {sleeper.position}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 mt-0.5 leading-tight">
-                                            <span className="text-white/60">Salary:</span> {formatMoney(contractsMap?.get(String(sleeper.playerId))?.salary)}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 leading-tight">
-                                            <span className="text-white/60">KTC:</span> {contractsMap?.get(String(sleeper.playerId))?.ktcValue ?? '-'}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                                {inboundDraftedPicks.map((pk, idx) => {
-                                  const drafted = pk.drafted_player;
-                                  const sleeper = playersMap?.get(String(drafted.player_id));
-                                  const playerName = drafted.name || sleeper?.playerName || `Player ${drafted.player_id}`;
-                                  const position = drafted.position || sleeper?.position || '';
-                                  const minimalContract = [{
-                                    playerId: String(drafted.player_id),
-                                    playerName,
-                                    position,
-                                    team: '',
-                                    status: 'Active',
-                                    nflTeam: drafted.team || sleeper?.team || ''
-                                  }];
-                                  return (
-                                    <div key={`pk-in-${idx}`} className="w-28 cursor-pointer flex flex-col items-center" onClick={() => setSelectedPlayerId(String(drafted.player_id))}>
-                                      <div className="w-24 sm:w-28 rounded-lg border border-orange-500/60 bg-orange-500/10 p-1 flex flex-col items-center">
-                                        {/* Label space (fixed height) */}
-                                        <div className="h-5 w-full flex items-center justify-center" title={draftedPickLabel(pk)}>
-                                          <div className="text-[11px] sm:text-[11px] text-center text-orange-300 leading-tight px-1 truncate">
-                                            {draftedPickLabelShort(pk)}
-                                          </div>
-                                        </div>
-                                        <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
-                                        <div className="w-full mt-1 flex flex-col items-center">
-                                          <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
-                                            {playerName} · {position || 'N/A'}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 mt-0.5 leading-tight">
-                                            <span className="text-white/60">Salary:</span> {formatMoney(contractsMap?.get(String(drafted.player_id))?.salary)}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 leading-tight">
-                                            <span className="text-white/60">KTC:</span> {contractsMap?.get(String(drafted.player_id))?.ktcValue ?? '-'}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {/* Raw pick chips always below cards */}
-                              {inboundRawPicks.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                  {inboundRawPicks.map((pk, idx) => (
-                                    <span key={`pk-in-chip-${idx}`} className="inline-flex max-w-fit px-2 py-1 rounded bg-green-500/15 border border-green-500/30 text-[13px] w-auto shrink-0">
-                                      {undraftedPickLabel(pk)}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            {showSent && <div className="hidden sm:block w-px bg-[#FF4B1F]/70 mx-6 self-stretch rounded-full" aria-hidden="true" />}
-                            {showSent && (
-                            <div>
-                              <div className="text-xs uppercase tracking-wide text-red-400 mb-1">Sent</div>
-                              {/* Totals for sent side */}
-                              <TotalsBar side="out" players={outboundPlayers} draftedPicks={outboundDraftedPicks} contractsMap={contractsMap} />
-                              {outboundPlayers.length === 0 && outboundPicks.length === 0 && <div className="text-[11px] text-white/40">None</div>}
-                              <div className="flex flex-wrap gap-3">
-                                {outboundPlayers.map(p => {
-                                  const sleeper = playersMap?.get(String(p.player_id));
-                                  const minimalContract = sleeper ? [{
-                                    playerId: String(sleeper.playerId),
-                                    playerName: sleeper.playerName,
-                                    position: sleeper.position,
-                                    team: '',
-                                    status: 'Active',
-                                    nflTeam: sleeper.team || ''
-                                  }] : [];
-                                  return (
-                                    <div key={`pl-out-${p.player_id}`} className="w-28 cursor-pointer flex flex-col items-center" onClick={() => setSelectedPlayerId(String(p.player_id))}>
-                                      <div className="h-5 w-full" />
-                                      <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
-                                      {sleeper && (
-                                        <div className="w-full mt-1 flex flex-col items-center">
-                                          <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
-                                            {sleeper.playerName} · {sleeper.position}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 mt-0.5 leading-tight">
-                                            <span className="text-white/60">Salary:</span> {formatMoney(contractsMap?.get(String(sleeper.playerId))?.salary)}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 leading-tight">
-                                            <span className="text-white/60">KTC:</span> {contractsMap?.get(String(sleeper.playerId))?.ktcValue ?? '-'}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                                {outboundDraftedPicks.map((pk, idx) => {
-                                  const drafted = pk.drafted_player;
-                                  const sleeper = playersMap?.get(String(drafted.player_id));
-                                  const playerName = drafted.name || sleeper?.playerName || `Player ${drafted.player_id}`;
-                                  const position = drafted.position || sleeper?.position || '';
-                                  const minimalContract = [{
-                                    playerId: String(drafted.player_id),
-                                    playerName,
-                                    position,
-                                    team: '',
-                                    status: 'Active',
-                                    nflTeam: drafted.team || sleeper?.team || ''
-                                  }];
-                                  return (
-                                    <div key={`pk-out-${idx}`} className="w-28 cursor-pointer flex flex-col items-center" onClick={() => setSelectedPlayerId(String(drafted.player_id))}>
-                                      <div className="w-24 sm:w-28 rounded-lg border border-orange-500/60 bg-orange-500/10 p-1 flex flex-col items-center">
-                                        <div className="h-5 w-full flex items-center justify-center" title={draftedPickLabel(pk)}>
-                                          <div className="text-[11px] sm:text-[11px] text-center text-orange-300 leading-tight px-1 truncate">
-                                            {draftedPickLabelShort(pk)}
-                                          </div>
-                                        </div>
-                                        <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
-                                        <div className="w-full mt-1 flex flex-col items-center">
-                                          <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
-                                            {playerName} · {position || 'N/A'}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 mt-0.5 leading-tight">
-                                            <span className="text-white/60">Salary:</span> {formatMoney(contractsMap?.get(String(drafted.player_id))?.salary)}
-                                          </div>
-                                          <div className="text-[11px] text-white/70 leading-tight">
-                                            <span className="text-white/60">KTC:</span> {contractsMap?.get(String(drafted.player_id))?.ktcValue ?? '-'}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {outboundRawPicks.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                  {outboundRawPicks.map((pk, idx) => (
-                                    <span key={`pk-out-chip-${idx}`} className="inline-flex max-w-fit px-2 py-1 rounded bg-red-500/15 border border-red-500/30 text-[13px] w-auto shrink-0">
-                                      {undraftedPickLabel(pk)}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            )}
-                          </div>
+                      {isAdmin && (
+                        <div className="hidden sm:flex items-center gap-2 sm:gap-3">
+                          <div className="text-xs text-white/60">Status: <span className="text-white">{trade.status || 'unknown'}</span></div>
+                          <button
+                            type="button"
+                            onClick={() => setOpenDebug(prev => {
+                              const next = new Set(prev);
+                              if (next.has(trade.trade_id)) next.delete(trade.trade_id); else next.add(trade.trade_id);
+                              return next;
+                            })}
+                            className={`px-2 py-1 rounded text-xs border transition-colors ${openDebug.has(trade.trade_id) ? 'bg-[#FF4B1F] border-[#FF4B1F] text-white' : 'bg-white/5 border-white/15 text-white/80 hover:border-white/40'}`}
+                          >{openDebug.has(trade.trade_id) ? 'Hide Debug' : 'Debug'}</button>
+                          <button
+                            type="button"
+                            onClick={() => setOpenPickDebug(prev => {
+                              const next = new Set(prev);
+                              if (next.has(trade.trade_id)) next.delete(trade.trade_id); else next.add(trade.trade_id);
+                              return next;
+                            })}
+                            className={`px-2 py-1 rounded text-xs border transition-colors ${openPickDebug.has(trade.trade_id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white/5 border-white/15 text-white/80 hover:border-white/40'}`}
+                          >{openPickDebug.has(trade.trade_id) ? 'Hide Pick Match' : 'Pick Match Debug'}</button>
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
+
+                    {openDebug.has(trade.trade_id) && (
+                      <pre className="text-[11px] leading-relaxed max-h-64 overflow-auto bg-black/60 border border-white/10 rounded-lg p-3 mb-4 whitespace-pre-wrap break-all">
+{formatRaw(trade.raw)}
+                      </pre>
+                    )}
+
+                    {openPickDebug.has(trade.trade_id) && (
+                      <div className="mb-4 bg-black/50 border border-white/10 rounded-lg p-3">
+                        <div className="text-xs text-white/70 mb-2">Pick match details</div>
+                        <div className="space-y-1">
+                          {trade.picks.length === 0 ? (
+                            <div className="text-[11px] text-white/50">No picks in this trade.</div>
+                          ) : (
+                            trade.picks.map((pk, i) => (
+                              <pre key={i} className="text-[11px] leading-relaxed overflow-auto bg-black/40 border border-white/10 rounded p-2 whitespace-pre-wrap break-all">
+{formatRaw(pk.match_debug)}
+                              </pre>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Teams involved */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {trade.teams.map(tm => (
+                        <div key={`${trade.trade_id}-${tm.roster_id}`} className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/5 text-xs border border-white/10">
+                          <span className="grid place-items-center h-5 w-5 rounded-full bg-white/10 text-[10px] text-white/70">{String(tm.owner_name || '?').slice(0,1)}</span>
+                          <span>{tm.owner_name}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Player movement */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {trade.teams.map(teamObj => {
+                        const rosterId = Number(teamObj.roster_id);
+                        const ownerId = teamObj.owner_id;
+                        const inboundPlayers = trade.players.filter(p => p.to_roster_id === rosterId);
+                        const outboundPlayers = trade.players.filter(p => p.from_roster_id === rosterId);
+                        // For picks, use normalized to/from roster ids; fall back to legacy fields if needed
+                        const inboundPicks = trade.picks.filter(pk => Number(pk.to_roster_id ?? pk.roster_id) === Number(rosterId));
+                        const outboundPicks = trade.picks.filter(pk => Number(pk.from_roster_id ?? pk.previous_owner_id) === Number(rosterId));
+                        const inboundDraftedPicks = inboundPicks.filter(pk => pk.drafted_player && pk.drafted_player.player_id);
+                        const inboundRawPicks = inboundPicks.filter(pk => !(pk.drafted_player && pk.drafted_player.player_id));
+                        const outboundDraftedPicks = outboundPicks.filter(pk => pk.drafted_player && pk.drafted_player.player_id);
+                        const outboundRawPicks = outboundPicks.filter(pk => !(pk.drafted_player && pk.drafted_player.player_id));
+                        const recvCount = inboundPlayers.length + inboundPicks.length;
+                        const sentCount = outboundPlayers.length + outboundPicks.length;
+                        return (
+                          <div key={rosterId} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                            <div className="text-sm font-semibold mb-3 flex items-center justify-between">
+                              <span className="truncate pr-2">{teamObj.owner_name}</span>
+                              <span className="text-xs text-white/70 inline-flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5">Received <span className="font-medium text-white">{recvCount}</span></span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 px-2 py-0.5">Sent <span className="font-medium text-white">{sentCount}</span></span>
+                              </span>
+                            </div>
+
+                            {/* Layout: Received always shown; Sent optional. When Sent hidden, single-column without divider. */}
+                            <div className={showSent ? 'flex flex-col sm:flex-row gap-6 sm:gap-8' : 'flex flex-col'}>
+                              {/* Received */}
+                              <div className="flex-1">
+                                <div className="text-[11px] uppercase tracking-wide text-emerald-300 mb-1">Received</div>
+                                {/* Totals for received side */}
+                                <TotalsBar side="in" players={inboundPlayers} draftedPicks={inboundDraftedPicks} contractsMap={contractsMap} />
+                                {inboundPlayers.length === 0 && inboundPicks.length === 0 && <div className="text-[11px] text-white/40">None</div>}
+                                <div className="flex flex-wrap gap-3 justify-center">
+                                  {inboundPlayers.map(p => {
+                                    const sleeper = playersMap?.get(String(p.player_id));
+                                    const minimalContract = sleeper ? [{
+                                      playerId: String(sleeper.playerId),
+                                      playerName: sleeper.playerName,
+                                      position: sleeper.position,
+                                      team: '',
+                                      status: 'Active',
+                                      nflTeam: sleeper.team || ''
+                                    }] : [];
+                                    return (
+                                      <div key={`pl-in-${p.player_id}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(p.player_id))}>
+                                        {/* Reserve label space for alignment */}
+                                        <div className="h-5 w-full" />
+                                        <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                        {sleeper && (
+                                          <div className="w-full mt-1 flex flex-col items-center">
+                                            <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
+                                              {sleeper.playerName} · {sleeper.position}
+                                            </div>
+                                            <div className="text-[11px] text-white/70 mt-0.5 leading-tight">
+                                              <span className="text-white/60">Salary:</span> {formatMoney(contractsMap?.get(String(sleeper.playerId))?.salary)}
+                                            </div>
+                                            <div className="text-[11px] text-white/70 leading-tight">
+                                              <span className="text-white/60">KTC:</span> {contractsMap?.get(String(sleeper.playerId))?.ktcValue ?? '-'}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {inboundDraftedPicks.map((pk, idx) => {
+                                    const drafted = pk.drafted_player;
+                                    const sleeper = playersMap?.get(String(drafted.player_id));
+                                    const playerName = drafted.name || sleeper?.playerName || `Player ${drafted.player_id}`;
+                                    const position = drafted.position || sleeper?.position || '';
+                                    const minimalContract = [{
+                                      playerId: String(drafted.player_id),
+                                      playerName,
+                                      position,
+                                      team: '',
+                                      status: 'Active',
+                                      nflTeam: drafted.team || sleeper?.team || ''
+                                    }];
+                                    return (
+                                      <div key={`pk-in-${idx}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(drafted.player_id))}>
+                                        <DraftedPickWrapper pk={pk}>
+                                          <div className="pt-5" />
+                                          <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                          <div className="w-full mt-1 flex flex-col items-center px-1 pb-2">
+                                            <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
+                                              {playerName} · {position || 'N/A'}
+                                            </div>
+                                            <div className="text-[10px] text-white/60 mt-0.5 leading-tight">
+                                              Salary <span className="text-white">{formatMoney(contractsMap?.get(String(drafted.player_id))?.salary)}</span>
+                                            </div>
+                                            <div className="text-[10px] text-white/60 leading-tight">
+                                              KTC <span className="text-white">{contractsMap?.get(String(drafted.player_id))?.ktcValue ?? '-'}</span>
+                                            </div>
+                                          </div>
+                                        </DraftedPickWrapper>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {/* Raw pick chips always below cards */}
+                                {inboundRawPicks.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mt-2 justify-center">
+                                    {inboundRawPicks.map((pk, idx) => {
+                                      const rd = Number(pk.round);
+                                      const vis = pickVisual(rd);
+                                      return (
+                                        <span key={`pk-in-chip-${idx}`} className={`relative inline-flex items-center gap-1.5 max-w-fit pl-1.5 pr-2 py-1 rounded-full border text-[11px] font-medium tracking-wide bg-black/40 backdrop-blur-sm ${vis.chipBorder} hover:border-white/50`}>
+                                          <span className={`grid place-items-center h-5 w-5 rounded-full text-[10px] font-bold bg-gradient-to-br ${vis.grad} text-white shadow border ${vis.avatarBorder}`}>
+                                            {rd}
+                                          </span>
+                                          <span className="text-white/80">{undraftedPickLabel(pk)}</span>
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Divider */}
+                              {showSent && <div className="hidden sm:block w-px bg-white/10 self-stretch" aria-hidden="true" />}
+
+                              {/* Sent */}
+                              {showSent && (
+                                <div className="flex-1">
+                                  <div className="text-[11px] uppercase tracking-wide text-rose-300 mb-1">Sent</div>
+                                  {/* Totals for sent side */}
+                                  <TotalsBar side="out" players={outboundPlayers} draftedPicks={outboundDraftedPicks} contractsMap={contractsMap} />
+                                  {outboundPlayers.length === 0 && outboundPicks.length === 0 && <div className="text-[11px] text-white/40">None</div>}
+                                  <div className="flex flex-wrap gap-3">
+                                    {outboundPlayers.map(p => {
+                                      const sleeper = playersMap?.get(String(p.player_id));
+                                      const minimalContract = sleeper ? [{
+                                        playerId: String(sleeper.playerId),
+                                        playerName: sleeper.playerName,
+                                        position: sleeper.position,
+                                        team: '',
+                                        status: 'Active',
+                                        nflTeam: sleeper.team || ''
+                                      }] : [];
+                                      return (
+                                        <div key={`pl-out-${p.player_id}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(p.player_id))}>
+                                          <div className="h-5 w-full" />
+                                          <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                          {sleeper && (
+                                            <div className="w-full mt-1 flex flex-col items-center">
+                                              <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
+                                                {sleeper.playerName} · {sleeper.position}
+                                              </div>
+                                              <div className="text-[11px] text-white/70 mt-0.5 leading-tight">
+                                                <span className="text-white/60">Salary:</span> {formatMoney(contractsMap?.get(String(sleeper.playerId))?.salary)}
+                                              </div>
+                                              <div className="text-[11px] text-white/70 leading-tight">
+                                                <span className="text-white/60">KTC:</span> {contractsMap?.get(String(sleeper.playerId))?.ktcValue ?? '-'}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {outboundDraftedPicks.map((pk, idx) => {
+                                      const drafted = pk.drafted_player;
+                                      const sleeper = playersMap?.get(String(drafted.player_id));
+                                      const playerName = drafted.name || sleeper?.playerName || `Player ${drafted.player_id}`;
+                                      const position = drafted.position || sleeper?.position || '';
+                                      const minimalContract = [{
+                                        playerId: String(drafted.player_id),
+                                        playerName,
+                                        position,
+                                        team: '',
+                                        status: 'Active',
+                                        nflTeam: drafted.team || sleeper?.team || ''
+                                      }];
+                                      return (
+                                        <div key={`pk-out-${idx}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(drafted.player_id))}>
+                                          <DraftedPickWrapper pk={pk}>
+                                            <div className="pt-5" />
+                                            <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                            <div className="w-full mt-1 flex flex-col items-center px-1 pb-2">
+                                              <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
+                                                {playerName} · {position || 'N/A'}
+                                              </div>
+                                              <div className="text-[10px] text-white/60 mt-0.5 leading-tight">
+                                                Salary <span className="text-white">{formatMoney(contractsMap?.get(String(drafted.player_id))?.salary)}</span>
+                                              </div>
+                                              <div className="text-[10px] text-white/60 leading-tight">
+                                                KTC <span className="text-white">{contractsMap?.get(String(drafted.player_id))?.ktcValue ?? '-'}</span>
+                                              </div>
+                                            </div>
+                                          </DraftedPickWrapper>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {outboundRawPicks.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2 justify-center">
+                                      {outboundRawPicks.map((pk, idx) => {
+                                        const rd = Number(pk.round);
+                                        const vis = pickVisual(rd);
+                                        return (
+                                          <span key={`pk-out-chip-${idx}`} className={`relative inline-flex items-center gap-1.5 max-w-fit pl-1.5 pr-2 py-1 rounded-full border text-[11px] font-medium tracking-wide bg-black/40 backdrop-blur-sm ${vis.chipBorder} hover:border-white/50`}>
+                                            <span className={`grid place-items-center h-5 w-5 rounded-full text-[10px] font-bold bg-gradient-to-br ${vis.grad} text-white shadow border ${vis.avatarBorder}`}>
+                                              {rd}
+                                            </span>
+                                            <span className="text-white/80">{undraftedPickLabel(pk)}</span>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Bottom Draft Picks section intentionally omitted to avoid redundancy */}
                   </div>
-                  {/* Bottom Draft Picks section removed as redundant */}
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
       {/* Player modal for stats (expanded card) */}
       {selectedPlayerId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setSelectedPlayerId(null)} aria-hidden />
-          <div className="relative z-10 w-[95vw] max-w-2xl max-h-[90vh] overflow-auto bg-black/90 border border-white/10 rounded-2xl p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedPlayerId(null)} aria-hidden />
+          <div className="relative z-10 w-[95vw] max-w-2xl max-h-[90vh] overflow-auto bg-gradient-to-b from-black/90 to-black/80 border border-white/10 rounded-2xl p-4 shadow-2xl">
             <div className="flex items-center justify-between mb-3">
               <div className="text-white/80 text-sm">Player Card</div>
               <button onClick={() => setSelectedPlayerId(null)} className="text-white/70 hover:text-white">✕</button>
