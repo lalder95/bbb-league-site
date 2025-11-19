@@ -33,6 +33,12 @@ const draftSchema = new mongoose.Schema({
     years: Number,
     contractPoints: Number,
     comments: { type: String, default: '' },
+    reactions: [{
+      name: String,
+      role: String,
+      persona: String,
+      reaction: String
+    }],
     timestamp: { type: Date, default: Date.now }
   }],
   blind: { type: Boolean, default: false } // <-- ADD THIS LINE
@@ -71,6 +77,12 @@ export async function PATCH(request, { params }) {
       years: b.years ?? 1,
       contractPoints: b.contractPoints ?? 0,
       comments: b.comments ?? '',
+      reactions: Array.isArray(b.reactions) ? b.reactions.map(r => ({
+        name: r.name ?? '',
+        role: r.role ?? '',
+        persona: r.persona ?? '',
+        reaction: r.reaction ?? ''
+      })) : [],
       timestamp: b.timestamp ? new Date(b.timestamp) : new Date()
     }));
   }

@@ -332,6 +332,29 @@ export default function FreeAgentAuctionPage() {
         expiration: '',
       };
 
+      // Generate AI reactions for NON-BLIND auctions
+      let reactions = [];
+      if (!latestDraft.blind) {
+        try {
+          const aiRes = await fetch('/api/ai/bid_reactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: session?.user?.name || 'Unknown',
+              playerName: selectedPlayer.playerName,
+              salary,
+              years
+            })
+          });
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            if (Array.isArray(aiData.reactions)) reactions = aiData.reactions;
+          }
+        } catch (e) {
+          // Silently ignore AI errors; reactions remain empty
+        }
+      }
+
       const newBid = {
         username: session?.user?.name || 'Unknown',
         playerId: selectedPlayer.playerId,
@@ -339,6 +362,7 @@ export default function FreeAgentAuctionPage() {
         years: years,
         contractPoints: contractPoints,
         comments: '', // For future use
+        reactions, // AI reactions (array of {name, role, persona, reaction})
         timestamp: new Date().toISOString()
       };
 

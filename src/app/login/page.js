@@ -17,6 +17,25 @@ function LoginInner() {
   const [isLoading, setIsLoading] = useState(false);
   const [passwordChangeRequired, setPasswordChangeRequired] = useState(false);
 
+  // Map NextAuth error codes to user-friendly messages
+  const mapAuthError = (code) => {
+    const lookup = {
+      CredentialsSignin: 'Invalid username or password. Please try again.',
+      AccessDenied: 'Access denied. You might not have permission to sign in.',
+      OAuthSignin: 'Could not start the sign-in flow. Please try again.',
+      OAuthCallback: 'Sign-in failed during provider callback. Please try again.',
+      OAuthCreateAccount: 'We could not create your account with the selected provider.',
+      EmailCreateAccount: 'We could not create your account with email sign-in.',
+      Callback: 'Sign-in failed during callback. Please try again.',
+      OAuthAccountNotLinked: 'This email is already linked with a different sign-in method. Use the original provider.',
+      EmailSignin: 'Email sign-in is not enabled.',
+      Configuration: 'Authentication is not configured correctly. Please contact an admin.',
+      Verification: 'The sign-in link is invalid or has expired.',
+      default: 'Could not sign you in. Please try again.'
+    };
+    return lookup[code] || lookup.default;
+  };
+
   // Handle session state and redirects carefully
   useEffect(() => {
     console.log("Session status:", status);
@@ -37,10 +56,26 @@ function LoginInner() {
     }
   }, [session, status, router, callbackUrl]);
 
+  // Pick up error= query param from NextAuth redirects (or other callers)
+  useEffect(() => {
+    const errCode = searchParams?.get('error');
+    if (errCode) {
+      setError(mapAuthError(errCode));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
+
+     // Basic client-side validation for clearer feedback
+    if (!username?.trim() || !password) {
+      setIsLoading(false);
+      setError('Please enter both username and password.');
+      return;
+    }
     
     try {
       const result = await signIn('credentials', {
@@ -53,17 +88,23 @@ function LoginInner() {
       console.log("SignIn result:", result || 'No result returned');
   
       if (!result) {
-        throw new Error('Authentication failed - no response');
+        throw new Error('NetworkError');
       }
   
       if (result.error) {
+        // result.error is typically a NextAuth code like "CredentialsSignin"
         throw new Error(result.error);
       }
       
       // Rest of your login logic
     } catch (err) {
       console.error("Login error:", err);
-      setError(err?.message || 'Authentication failed');
+      const message = err?.message;
+      if (message === 'NetworkError') {
+        setError('Network error. Please check your connection and try again.');
+      } else {
+        setError(mapAuthError(message));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -145,7 +186,7 @@ function LoginInner() {
           </p>
           
           {error && (
-            <div className="bg-red-500/20 border border-red-500/50 text-white p-3 rounded-lg mb-4">
+            <div className="bg-red-500/20 border border-red-500/50 text-white p-3 rounded-lg mb-4" role="alert" aria-live="assertive">
               {error}
             </div>
           )}
