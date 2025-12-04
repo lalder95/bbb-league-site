@@ -18,14 +18,75 @@ export default function FreeAgencyPage() {
       const text = await response.text();
       const rows = text.split('\n').filter(Boolean);
       if (rows.length < 2) return setPlayerContracts([]);
-      const header = rows[0].split(',').map(h => h.trim());
+      // CSV parsing that respects quoted commas
+      const parseCSVLine = (line) => {
+        const out = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              // Escaped quote
+              cur += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (ch === ',' && !inQuotes) {
+            out.push(cur.replace(/\r$/, ''));
+            cur = '';
+          } else {
+            cur += ch;
+          }
+        }
+        out.push(cur.replace(/\r$/, ''));
+        return out;
+      };
+
+      const header = parseCSVLine(rows[0]).map(h => h.trim());
       const headerMap = {};
       header.forEach((col, idx) => { headerMap[col] = idx; });
 
+      const norm = (s) => (s || '').toString().trim().toLowerCase();
+      const findRfaIndex = () => {
+        // Prefer exact case-insensitive matches
+        const candidatesExact = ['RFA?', 'Will Be RFA?', 'RFA', 'Is RFA?', 'RFA Status', 'Free Agent Type', 'FA Type'];
+        for (const c of candidatesExact) {
+          const idx = header.findIndex(h => norm(h) === norm(c));
+          if (idx !== -1) return idx;
+        }
+        // Fallback: any header containing 'rfa'
+        const containsIdx = header.findIndex(h => norm(h).includes('rfa'));
+        if (containsIdx !== -1) return containsIdx;
+        // Fallback: any header containing 'free' and 'type'
+        const faIdx = header.findIndex(h => {
+          const nh = norm(h);
+          return nh.includes('free') && nh.includes('type');
+        });
+        return faIdx !== -1 ? faIdx : null;
+      };
+
+      const toRfaBool = (raw) => {
+        const s = norm(raw);
+        if (s === '' || s === '0' || s === 'no' || s === 'n' || s === 'false' || s === 'ufa' || s === 'unrestricted') return false;
+        if (s === 'yes' || s === 'y' || s === 'true' || s === '1' || s === 'rfa' || s === 'restricted') return true;
+        if (s.includes('ufa')) return false;
+        if (s.includes('rfa')) return true;
+        return false; // default to UFA when ambiguous
+      };
+
+      const rfaIdx = findRfaIndex();
+
       const contracts = [];
       rows.slice(1).forEach((row, idx) => {
-        const values = row.split(',');
+        const values = parseCSVLine(row);
         if (values.length !== header.length) return;
+
+        // Determine RFA flag robustly; normalize to boolean
+        const rfaRaw = rfaIdx != null ? String(values[rfaIdx]).trim() : '';
+        const rfaEligibleBool = toRfaBool(rfaRaw);
+
         contracts.push({
           playerId: values[headerMap["Player ID"]],
           playerName: values[headerMap["Player Name"]],
@@ -49,7 +110,7 @@ export default function FreeAgencyPage() {
           contractFinalYear: values[headerMap["Contract Final Year"]],
           age: values[headerMap["Age"]],
           ktcValue: values[headerMap["Current KTC Value"]] ? parseInt(values[headerMap["Current KTC Value"]], 10) : null,
-          rfaEligible: values[headerMap["Will Be RFA?"]],
+          rfaEligible: rfaEligibleBool,
           franchiseTagEligible: values[headerMap["Franchise Tag Eligible?"]],
         });
       });
@@ -205,7 +266,9 @@ export default function FreeAgencyPage() {
   const freeAgentsByYear = years.map(year => {
     const players = myContracts.filter(p => playerIdToMaxFinalYear[p.playerId] === year);
     const playersWithMaxYear = players.map(p => ({ ...p, contractFinalYear: playerIdToMaxFinalYear[p.playerId] }));
-    return { year, players: playersWithMaxYear };
+    const rfa = playersWithMaxYear.filter(p => !!p.rfaEligible);
+    const ufa = playersWithMaxYear.filter(p => !p.rfaEligible);
+    return { year, rfa, ufa };
   });
 
   return (
@@ -230,25 +293,71 @@ export default function FreeAgencyPage() {
         </div>
       )}
 
-      <div className="grid gap-8" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
-        {freeAgentsByYear.map(({ year, players }) => (
-          <div key={year} className="bg-black/30 rounded-xl border border-white/10 p-6 shadow-lg">
-            <h3 className="text-xl font-bold text-[#FF4B1F] mb-4">{year + 1} Free Agents</h3>
-            {players.length > 0 ? (
-              <ul className="divide-y divide-white/10">
-                {players.map(player => (
-                  <li key={player.playerId} className="py-2 flex items-center gap-2">
-                    <div className="w-8 h-8 flex-shrink-0">
-                      <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
-                    </div>
-                    <span className="font-semibold text-white/90 text-sm cursor-pointer underline" onClick={() => setSelectedPlayerId(player.playerId)}>
-                      {player.playerName}
-                    </span>
-                    <span className="text-white/60 text-xs">({player.position})</span>
-                    <span className="ml-auto text-white/70 text-xs">${player.curYear?.toFixed(1) ?? '-'}</span>
-                  </li>
-                ))}
-              </ul>
+  {/* Two year cards per row on wider screens (2x2 for four years) */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+        {freeAgentsByYear.map(({ year, rfa, ufa }) => (
+          <div key={year} className="rounded-xl border border-white/10 p-5 bg-[#0b1c26]/60">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-white">{year + 1} Free Agents</h3>
+              <span className="text-[11px] text-white/50">Total {rfa.length + ufa.length}</span>
+            </div>
+
+            {(rfa.length + ufa.length) > 0 ? (
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="inline-flex items-center rounded-full bg-blue-500/20 text-blue-200 text-[11px] px-2.5 py-0.5">RFA</span>
+                    <span className="text-[11px] text-white/50">{rfa.length}</span>
+                  </div>
+                  {rfa.length > 0 ? (
+                    <ul className="divide-y divide-white/10">
+                      {rfa.map(player => (
+                        <li key={player.playerId} className="py-2 flex items-center gap-3 px-1">
+                          <div className="w-6 h-6 flex-shrink-0">
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-6 h-6 rounded overflow-hidden" />
+                          </div>
+                          <div className="min-w-0 flex items-center gap-2">
+                            <button className="font-medium text-white/90 text-sm hover:text-white truncate" onClick={() => setSelectedPlayerId(player.playerId)}>
+                              {player.playerName}
+                            </button>
+                            <span className="text-white/50 text-xs">{player.position}</span>
+                          </div>
+                          <span className="ml-auto inline-flex items-center rounded-full bg-white/10 text-white/80 text-[11px] px-2 py-0.5">${player.curYear?.toFixed(1) ?? '-'}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="text-white/50 text-sm">None</div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="inline-flex items-center rounded-full bg-green-500/20 text-green-200 text-[11px] px-2.5 py-0.5">UFA</span>
+                    <span className="text-[11px] text-white/50">{ufa.length}</span>
+                  </div>
+                  {ufa.length > 0 ? (
+                    <ul className="divide-y divide-white/10">
+                      {ufa.map(player => (
+                        <li key={player.playerId} className="py-2 flex items-center gap-3 px-1">
+                          <div className="w-6 h-6 flex-shrink-0">
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-6 h-6 rounded overflow-hidden" />
+                          </div>
+                          <div className="min-w-0 flex items-center gap-2">
+                            <button className="font-medium text-white/90 text-sm hover:text-white truncate" onClick={() => setSelectedPlayerId(player.playerId)}>
+                              {player.playerName}
+                            </button>
+                            <span className="text-white/50 text-xs">{player.position}</span>
+                          </div>
+                          <span className="ml-auto inline-flex items-center rounded-full bg-white/10 text-white/80 text-[11px] px-2 py-0.5">${player.curYear?.toFixed(1) ?? '-'}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="text-white/50 text-sm">None</div>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className="text-white/60 italic">No free agents for {year + 1}.</div>
             )}

@@ -161,6 +161,14 @@ export default function ContractManagementPage() {
     const mar31 = new Date(year, 2, 31, 23, 59, 59, 999);
     return now >= feb1 && now <= mar31;
   }
+  // Holdouts window: April 1 — April 30 (inclusive)
+  function isHoldoutsWindowOpen() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const apr1 = new Date(year, 3, 1, 0, 0, 0, 0); // Apr = 3
+    const apr30 = new Date(year, 3, 30, 23, 59, 59, 999);
+    return now >= apr1 && now <= apr30;
+  }
   function isInFranchiseWindowForYear(date, year) {
     const d = new Date(date);
     const start = new Date(year, 1, 1, 0, 0, 0, 0); // Feb 1
@@ -178,8 +186,8 @@ export default function ContractManagementPage() {
   const extBadgeText = `${extWindowActive ? 'Open' : 'Closed'} • May 1 — Aug 31`;
   const franchiseBadgeText = `${franchiseWindowActive ? 'Open' : 'Closed'} • Feb 1 — Mar 31`;
   const rfaBadgeText = `${rfaWindowActive ? 'Open' : 'Closed'} • Feb 1 — Mar 31`;
-  const holdoutsWindowActive = isExtensionWindowOpen() || (isAdmin && isAdminMode);
-  const holdoutsBadgeText = `${holdoutsWindowActive ? 'Open' : 'Closed'} • May 1 — Aug 31`;
+  const holdoutsWindowActive = isHoldoutsWindowOpen() || (isAdmin && isAdminMode);
+  const holdoutsBadgeText = `${holdoutsWindowActive ? 'Open' : 'Closed'} • Apr 1 — Apr 30`;
 
   const allTeamNames = Array.from(new Set(playerContracts.filter(p => p.team).map(p => p.team.trim())));
 
@@ -764,7 +772,7 @@ export default function ContractManagementPage() {
                         simYears.push(`Year ${i + 1}: $${base.toFixed(1)}`);
                         extensionSalaries.push(base);
                       }
-                      const showFinalize = !ext.deny && ext.years > 0;
+                      const showFinalize = !ext.deny && ext.years > 0 && extWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -939,7 +947,7 @@ export default function ContractManagementPage() {
                     simYears.push(`Year ${i + 1}: $${base}`);
                     extensionSalaries.push(base);
                   }
-                  const showFinalize = !ext.deny && ext.years > 0;
+                  const showFinalize = !ext.deny && ext.years > 0 && extWindowActive;
                   return (
                     <EligiblePlayerCard
                       key={player.playerId}
@@ -1207,7 +1215,7 @@ export default function ContractManagementPage() {
                     {franchiseEligiblePlayersSorted.map(player => {
                       const tagValue = getTagValueForPlayer(player) || 0;
                       const choice = franchiseTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam;
+                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam && franchiseWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -1333,7 +1341,7 @@ export default function ContractManagementPage() {
                     {franchiseEligiblePlayersSorted.map(player => {
                       const tagValue = getTagValueForPlayer(player) || 0;
                       const choice = franchiseTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam;
+                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam && franchiseWindowActive;
                       return (
                         <FranchiseTagCard
                           key={player.playerId}
@@ -1479,7 +1487,7 @@ export default function ContractManagementPage() {
                   <div className="sm:hidden space-y-3">
                     {rfaEligiblePlayersSorted.map(player => {
                       const choice = rfaTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam;
+                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam && rfaWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -1602,7 +1610,7 @@ export default function ContractManagementPage() {
                   <div className="hidden sm:block">
                     {rfaEligiblePlayersSorted.map(player => {
                       const choice = rfaTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam;
+                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam && rfaWindowActive;
                       return (
                         <RFATagCard
                           key={player.playerId}
@@ -1726,10 +1734,10 @@ export default function ContractManagementPage() {
               Manage eligible holdout players based on <span className="font-semibold">previous season</span> performance (see Holdouts page for criteria). Options: Apply a Holdout RFA Tag (does not count against normal RFA tag limit) or grant a Holdout Extension starting the year after their current contract's final season. Year 1 of a Holdout Extension is the average of the top 20 active contracts at the player's position from the previous season; later years escalate +10% (rounded up to $0.1). <span className="text-white/60 text-xs">(Assumption: annual 10% escalation for years 2-3. Metrics shown reflect {currentSeason}).</span>
             </div>
             <div className="mb-2 text-white/70 text-sm">
-              Window: May 1 — Aug 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
+              Window: Apr 1 — Apr 30. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
-            {!isExtensionWindowOpen() && !(isAdmin && isAdminMode) && (
-              <div className="text-yellow-400 text-xs mb-4">Holdout actions can only be finalized between May 1st and August 31st.</div>
+            {!holdoutsWindowActive && (
+              <div className="text-yellow-400 text-xs mb-4">Holdout actions can only be finalized between April 1st and April 30th.</div>
             )}
             <div>
               <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
@@ -1749,8 +1757,8 @@ export default function ContractManagementPage() {
                         if (y > 1) sal = Math.ceil(sal * 1.10 * 10) / 10;
                         salaries.push(sal);
                       }
-                      const showFinalizeExtension = extChoice.years > 0 && pendingHoldoutExtension?.player?.playerId === player.playerId;
-                      const showFinalizeRfa = rfaChoice.apply && pendingHoldoutRfa?.player?.playerId === player.playerId;
+                      const showFinalizeExtension = extChoice.years > 0 && pendingHoldoutExtension?.player?.playerId === player.playerId && holdoutsWindowActive;
+                      const showFinalizeRfa = rfaChoice.apply && pendingHoldoutRfa?.player?.playerId === player.playerId && holdoutsWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -1930,8 +1938,8 @@ export default function ContractManagementPage() {
                         if (y > 1) sal = Math.ceil(sal * 1.10 * 10) / 10;
                         salaries.push(sal);
                       }
-                      const showFinalizeExtension = extChoice.years > 0 && pendingHoldoutExtension?.player?.playerId === player.playerId;
-                      const showFinalizeRfa = rfaChoice.apply && pendingHoldoutRfa?.player?.playerId === player.playerId;
+                      const showFinalizeExtension = extChoice.years > 0 && pendingHoldoutExtension?.player?.playerId === player.playerId && holdoutsWindowActive;
+                      const showFinalizeRfa = rfaChoice.apply && pendingHoldoutRfa?.player?.playerId === player.playerId && holdoutsWindowActive;
                       return (
                         <div key={player.playerId} className="mb-4 bg-[#0C1B26] border border-white/10 rounded-xl p-4 shadow-lg">
                           <div className="flex items-center gap-4 mb-3">
