@@ -1,10 +1,15 @@
 'use client';
 import React from 'react';
 
-const TeamPicksModal = ({ selectedTeam, teamPicks, onClose }) => {
+const TeamPicksModal = ({ selectedTeam, teamPicks, draftYearToShow, onClose }) => {
   if (!selectedTeam) return null;
 
   const totalObligation = teamPicks.currentPicks.reduce((sum, pick) => sum + pick.salary, 0);
+  const totalPicks = teamPicks.currentPicks.length;
+  const roundCounts = teamPicks.currentPicks.reduce((acc, p) => {
+    acc[p.round] = (acc[p.round] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -26,12 +31,23 @@ const TeamPicksModal = ({ selectedTeam, teamPicks, onClose }) => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
               <div>
                 <h4 className="text-lg font-semibold">Draft Capital Summary</h4>
-                <p className="text-white/70">Showing all picks currently owned by {selectedTeam}</p>
+                <p className="text-white/70">Showing all picks currently owned by {selectedTeam} for the {draftYearToShow} draft</p>
               </div>
               <div className="mt-4 md:mt-0 text-right">
-                <div className="text-white/70">Total Cap Obligation:</div>
+                <div className="text-white/70">Total Picks:</div>
+                <div className="text-xl font-semibold">{totalPicks}</div>
+                <div className="mt-2 text-white/70">Total Cap Obligation:</div>
                 <div className="text-2xl font-bold text-green-400">${totalObligation}</div>
               </div>
+            </div>
+            {/* Per-round summary */}
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-sm">
+              {[1,2,3,4,5,6,7].map(r => (
+                <div key={r} className="bg-black/10 rounded px-2 py-1 flex items-center justify-between">
+                  <span className="text-white/70">R{r}</span>
+                  <span className="font-semibold">{roundCounts[r] || 0}</span>
+                </div>
+              ))}
             </div>
           </div>
           

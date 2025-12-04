@@ -327,6 +327,7 @@ const RookieSalaries = ({ rosters, tradedPicks, draftInfo, draftOrder, getTeamNa
         <TeamPicksModal 
           selectedTeam={selectedTeam} 
           teamPicks={teamPicks[selectedTeam]} 
+          draftYearToShow={draftYearToShow}
           onClose={() => setSelectedTeam(null)} 
         />
       )}
