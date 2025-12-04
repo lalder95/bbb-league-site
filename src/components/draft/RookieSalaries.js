@@ -10,7 +10,7 @@ const RookieSalaries = ({ rosters, tradedPicks, draftInfo, draftOrder, getTeamNa
   // For example, if you show years or filter picks by year, use:
   // const baseYear = Number(draftYearToShow) || new Date().getFullYear() + 1;
 
-  const teamPicks = estimateDraftPositions(rosters, tradedPicks, draftInfo, draftOrder, getTeamName);
+  const teamPicks = estimateDraftPositions(rosters, tradedPicks, draftInfo, draftOrder, getTeamName, draftYearToShow);
   
   // Calculate total salary obligations
   const teamObligations = {};

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { sampleMockDrafts, parseMarkdown, getNewDraftTemplate } from '@/utils/mockDraftUtils';
+import { parseMarkdown, getNewDraftTemplate } from '@/utils/mockDraftUtils';
 import { useSession } from 'next-auth/react';
 
 const MockDraft = ({ rosters, users, draftInfo, draftOrder }) => {
@@ -9,7 +9,7 @@ const MockDraft = ({ rosters, users, draftInfo, draftOrder }) => {
   const isAdmin = session?.user?.role === 'admin';
   
   // Mock draft data - in a real app, this would come from a database
-  const [mockDrafts, setMockDrafts] = useState(sampleMockDrafts);
+  const [mockDrafts, setMockDrafts] = useState([]);
 
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [isWriting, setIsWriting] = useState(false);
@@ -17,14 +17,52 @@ const MockDraft = ({ rosters, users, draftInfo, draftOrder }) => {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftDescription, setDraftDescription] = useState('');
   const [draftContent, setDraftContent] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
   // Find active mock draft on component mount
+  // Load drafts from API and showArchived preference on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const archivedPref = typeof window !== 'undefined' ? window.localStorage.getItem('bbb.mockDrafts.showArchived') : null;
+        if (archivedPref !== null) setShowArchived(archivedPref === 'true');
+        // Clean up legacy local-only drafts
+        if (typeof window !== 'undefined') {
+          try { window.localStorage.removeItem('bbb.mockDrafts'); } catch (_) {}
+        }
+        const res = await fetch('/api/mock-drafts?includeArchived=true', { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json.drafts)) setMockDrafts(json.drafts);
+        }
+      } catch (_) {}
+    })();
+  }, []);
+
+  // Auto-select active draft when drafts change
   useEffect(() => {
     const activeDraft = mockDrafts.find(draft => draft.active);
     if (activeDraft) {
       setSelectedDraft(activeDraft);
+    } else if (selectedDraft) {
+      // If the selected draft was deleted, clear selection
+      const stillExists = mockDrafts.some(d => d.id === selectedDraft.id);
+      if (!stillExists) setSelectedDraft(null);
     }
   }, [mockDrafts]);
+
+  // No longer persisting drafts locally; they live in Mongo via API
+
+  // Persist Show Archived preference
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('bbb.mockDrafts.showArchived', showArchived ? 'true' : 'false');
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+  }, [showArchived]);
 
   // Start new draft
   const handleNewDraft = () => {
@@ -52,39 +90,102 @@ const MockDraft = ({ rosters, users, draftInfo, draftOrder }) => {
     
     if (editMode && selectedDraft) {
       // Update existing draft
-      const updatedDrafts = mockDrafts.map(draft => 
-        draft.id === selectedDraft.id 
-          ? { 
-              ...draft, 
-              title: draftTitle, 
-              description: draftDescription, 
-              content: draftContent,
-              date: currentDate,
-              active: true
-            } 
-          : { ...draft, active: false }
-      );
-      setMockDrafts(updatedDrafts);
-      setSelectedDraft({ ...selectedDraft, title: draftTitle, description: draftDescription, content: draftContent, date: currentDate, active: true });
+      (async () => {
+        const res = await fetch('/api/admin/mock-drafts', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: selectedDraft._id || selectedDraft.id,
+            title: draftTitle,
+            description: draftDescription,
+            content: draftContent,
+            date: currentDate,
+            active: true,
+            archived: false,
+          }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setSelectedDraft(json.draft);
+          // refresh list
+          const list = await fetch('/api/mock-drafts?includeArchived=true', { cache: 'no-store' });
+          if (list.ok) {
+            const j = await list.json();
+            setMockDrafts(j.drafts);
+          }
+        }
+      })();
     } else {
       // Create new draft
-      const newDraft = {
-        id: Date.now().toString(),
-        title: draftTitle,
-        author: 'Commissioner', // In a real app, this would be the current user
-        date: currentDate,
-        description: draftDescription,
-        content: draftContent,
-        active: true
-      };
-      
-      const updatedDrafts = mockDrafts.map(draft => ({ ...draft, active: false }));
-      updatedDrafts.push(newDraft);
-      setMockDrafts(updatedDrafts);
-      setSelectedDraft(newDraft);
+      (async () => {
+        const res = await fetch('/api/admin/mock-drafts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: draftTitle,
+            description: draftDescription,
+            content: draftContent,
+            date: currentDate,
+            active: true,
+            archived: false,
+          }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setSelectedDraft(json.draft);
+          const list = await fetch('/api/mock-drafts?includeArchived=true', { cache: 'no-store' });
+          if (list.ok) {
+            const j = await list.json();
+            setMockDrafts(j.drafts);
+          }
+        }
+      })();
     }
     
     setIsWriting(false);
+  };
+
+  // Archive / Unarchive selected draft (admin only)
+  const handleArchiveToggle = () => {
+    if (!selectedDraft) return;
+    (async () => {
+      const res = await fetch('/api/admin/mock-drafts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedDraft._id || selectedDraft.id,
+          archived: !selectedDraft.archived,
+          // if archiving, ensure active turns off
+          active: selectedDraft.archived ? selectedDraft.active : false,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setSelectedDraft(json.draft);
+        const list = await fetch('/api/mock-drafts?includeArchived=true', { cache: 'no-store' });
+        if (list.ok) {
+          const j = await list.json();
+          setMockDrafts(j.drafts);
+        }
+      }
+    })();
+  };
+
+  // Delete selected draft (admin only)
+  const handleDeleteDraft = () => {
+    if (!selectedDraft) return;
+    (async () => {
+      const id = selectedDraft._id || selectedDraft.id;
+      const res = await fetch(`/api/admin/mock-drafts?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSelectedDraft(null);
+        const list = await fetch('/api/mock-drafts?includeArchived=true', { cache: 'no-store' });
+        if (list.ok) {
+          const j = await list.json();
+          setMockDrafts(j.drafts);
+        }
+      }
+    })();
   };
 
   // Cancel draft editing/creation
@@ -223,22 +324,32 @@ const MockDraft = ({ rosters, users, draftInfo, draftOrder }) => {
     <div className="bg-black/20 p-6 rounded-lg">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-xl font-bold text-[#FF4B1F]">Mock Draft Articles</h3>
-        {isAdmin && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={handleNewDraft}
-            className="px-4 py-2 rounded-lg bg-[#FF4B1F] text-white hover:bg-[#FF4B1F]/80 flex items-center gap-2"
+            onClick={() => setShowArchived(a => !a)}
+            className="px-3 py-1 rounded-lg bg-black/30 text-white/70 hover:text-white border border-white/10 hover:border-white/30 text-sm"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-            </svg>
-            New Mock Draft
+            {showArchived ? 'Hide Archived' : 'Show Archived'}
           </button>
-        )}
+          {isAdmin && (
+            <button
+              onClick={handleNewDraft}
+              className="px-4 py-2 rounded-lg bg-[#FF4B1F] text-white hover:bg-[#FF4B1F]/80 flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+              New Mock Draft
+            </button>
+          )}
+        </div>
       </div>
       
-      {mockDrafts.length > 0 ? (
+      {(mockDrafts.filter(d => showArchived ? true : !d.archived)).length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {mockDrafts.map(draft => (
+          {mockDrafts
+            .filter(d => showArchived ? true : !d.archived)
+            .map(draft => (
             <div 
               key={draft.id}
               className={`
@@ -259,6 +370,11 @@ const MockDraft = ({ rosters, users, draftInfo, draftOrder }) => {
               {draft.active && (
                 <div className="mt-2 text-xs inline-flex items-center px-2 py-1 rounded-full bg-[#FF4B1F]/20 text-[#FF4B1F]">
                   Current
+                </div>
+              )}
+              {draft.archived && (
+                <div className="mt-2 text-xs inline-flex items-center px-2 py-1 rounded-full bg-white/10 text-white/70">
+                  Archived
                 </div>
               )}
             </div>
@@ -287,15 +403,35 @@ const MockDraft = ({ rosters, users, draftInfo, draftOrder }) => {
             </div>
           </div>
           {isAdmin && (
-            <button
-              onClick={() => handleEditDraft(selectedDraft)}
-              className="px-3 py-1 rounded-lg bg-black/30 text-white/70 hover:text-white border border-white/10 hover:border-white/30 flex items-center gap-2"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-              </svg>
-              Edit
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleEditDraft(selectedDraft)}
+                className="px-3 py-1 rounded-lg bg-black/30 text-white/70 hover:text-white border border-white/10 hover:border-white/30 flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+                Edit
+              </button>
+              <button
+                onClick={handleArchiveToggle}
+                className="px-3 py-1 rounded-lg bg-black/30 text-white/70 hover:text-white border border-white/10 hover:border-white/30 flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M4 3a2 2 0 00-2 2v2a2 2 0 002 2v6a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 002-2V5a2 2 0 00-2-2H4zm10 6v6H6V9h8z" />
+                </svg>
+                {selectedDraft?.archived ? 'Unarchive' : 'Archive'}
+              </button>
+              <button
+                onClick={handleDeleteDraft}
+                className="px-3 py-1 rounded-lg bg-red-600/70 text-white hover:bg-red-600 flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M6 2a1 1 0 011-1h6a1 1 0 011 1h3a1 1 0 110 2h-1v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4H3a1 1 0 110-2h3zm2 5a1 1 0 112 0v8a1 1 0 11-2 0V7zm4 0a1 1 0 112 0v8a1 1 0 11-2 0V7z" clipRule="evenodd" />
+                </svg>
+                Delete
+              </button>
+            </div>
           )}
         </div>
         

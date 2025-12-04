@@ -77,10 +77,17 @@ export const getTeamName = (rosterId, rosters, users) => {
   /**
    * Estimate draft positions and salaries
    */
-  export const estimateDraftPositions = (rosters, tradedPicks, draftInfo, draftOrder, getTeamNameFn) => {
+  export const estimateDraftPositions = (rosters, tradedPicks, draftInfo, draftOrder, getTeamNameFn, targetSeason) => {
     // Group picks by team
     const teamPicks = {};
-    const currentYear = new Date().getFullYear().toString();
+    // Determine which draft season to use for pick ownership
+    const seasonToUse = String(
+      targetSeason ??
+      // Prefer explicit draftInfo season/start_time if present
+      (draftInfo?.season ?? (draftInfo?.start_time ? new Date(Number(draftInfo.start_time)).getFullYear() : undefined)) ??
+      // Fallback to next calendar year
+      new Date().getFullYear() + 1
+    );
     
     // Initialize team picks based on rosters
     rosters.forEach(roster => {
@@ -114,8 +121,8 @@ export const getTeamName = (rosterId, rosters, users) => {
       }
     });
     
-    // Update with traded picks
-    tradedPicks.filter(pick => pick.season === currentYear).forEach(pick => {
+    // Update with traded picks (for the target season only)
+    tradedPicks.filter(pick => String(pick.season) === seasonToUse).forEach(pick => {
       const originalOwner = getTeamNameFn(pick.roster_id);
       const currentOwner = getTeamNameFn(pick.owner_id);
       
@@ -161,13 +168,91 @@ export const getTeamName = (rosterId, rosters, users) => {
    * Find trade details for a given pick
    */
   export const findTradeForPick = (pick, tradeHistory) => {
-    // Look through trade history for this pick
-    return tradeHistory.find(trade => 
-      trade.draft_picks && trade.draft_picks.some(draftPick => 
-        draftPick.season === pick.season && 
-        draftPick.round === pick.round && 
-        draftPick.roster_id === pick.roster_id &&
-        draftPick.owner_id === pick.owner_id
+    // Support both our enriched API schema and raw Sleeper transaction schema.
+    // Enriched schema (/api/history/trades): trade.picks entries include slot_roster_id and to_roster_id.
+    // Raw Sleeper schema: trade.draft_picks (or raw.draft_picks) entries include roster_id (slot) and owner_id (to).
+    if (!Array.isArray(tradeHistory)) return null;
+
+    // Prefer strict match on season, round, and slot_roster_id + to_roster_id
+    const matchEnriched = (trade) => Array.isArray(trade.picks) && trade.picks.some(tp =>
+      String(tp.season) === String(pick.season) &&
+      Number(tp.round) === Number(pick.round) &&
+      Number(tp.slot_roster_id) === Number(pick.roster_id) &&
+      Number(tp.to_roster_id) === Number(pick.owner_id)
+    );
+
+    // Fallback: match only by season, round, and slot_roster_id to handle subsequent re-trades or league owner changes
+    const matchEnrichedSlotOnly = (trade) => Array.isArray(trade.picks) && trade.picks.some(tp =>
+      String(tp.season) === String(pick.season) &&
+      Number(tp.round) === Number(pick.round) &&
+      Number(tp.slot_roster_id) === Number(pick.roster_id)
+    );
+
+    const matchSleeper = (trade) => Array.isArray(trade.draft_picks) && trade.draft_picks.some(dp =>
+      String(dp.season) === String(pick.season) &&
+      Number(dp.round) === Number(pick.round) &&
+      Number(dp.roster_id) === Number(pick.roster_id) &&
+      Number(dp.owner_id) === Number(pick.owner_id)
+    );
+
+    // Also support raw.draft_picks from the original Sleeper transaction payload
+    // Consider either current slot (roster_id) or previous_owner_id to accommodate lineage differences
+    const matchSleeperRaw = (trade) => Array.isArray(trade.raw?.draft_picks) && trade.raw.draft_picks.some(dp =>
+      String(dp.season) === String(pick.season) &&
+      Number(dp.round) === Number(pick.round) &&
+      (
+        Number(dp.roster_id) === Number(pick.roster_id) ||
+        (pick.previous_owner_id != null && Number(dp.roster_id) === Number(pick.previous_owner_id)) ||
+        (dp.previous_owner_id != null && Number(dp.previous_owner_id) === Number(pick.roster_id)) ||
+        (dp.previous_owner_id != null && pick.previous_owner_id != null && Number(dp.previous_owner_id) === Number(pick.previous_owner_id))
+      ) &&
+      Number(dp.owner_id) === Number(pick.owner_id)
+    );
+
+    // Fallback that uses previous_owner_id as alternative to slot_roster_id when matching enriched picks
+    // This addresses cases where the selected Sleeper traded pick shows `previous_owner_id` for slot lineage.
+    const matchEnrichedUsingPreviousOwner = (trade) => Array.isArray(trade.picks) && trade.picks.some(tp =>
+      String(tp.season) === String(pick.season) &&
+      Number(tp.round) === Number(pick.round) &&
+      Number(tp.to_roster_id) === Number(pick.owner_id) &&
+      (
+        Number(tp.slot_roster_id) === Number(pick.roster_id) ||
+        Number(tp.previous_owner_id) === Number(pick.roster_id) ||
+        (pick.previous_owner_id != null && Number(tp.slot_roster_id) === Number(pick.previous_owner_id)) ||
+        (pick.previous_owner_id != null && Number(tp.previous_owner_id) === Number(pick.previous_owner_id))
       )
     );
+
+    // Last-resort fallback: season/round match and same destination roster, when slot lineage cannot be established
+    const matchEnrichedByToOnly = (trade) => Array.isArray(trade.picks) && trade.picks.some(tp =>
+      String(tp.season) === String(pick.season) &&
+      Number(tp.round) === Number(pick.round) &&
+      Number(tp.to_roster_id) === Number(pick.owner_id)
+    );
+    const matchSleeperByToOnly = (trade) => Array.isArray(trade.draft_picks) && trade.draft_picks.some(dp =>
+      String(dp.season) === String(pick.season) &&
+      Number(dp.round) === Number(pick.round) &&
+      Number(dp.owner_id) === Number(pick.owner_id)
+    );
+    const matchSleeperRawByToOnly = (trade) => Array.isArray(trade.raw?.draft_picks) && trade.raw.draft_picks.some(dp =>
+      String(dp.season) === String(pick.season) &&
+      Number(dp.round) === Number(pick.round) &&
+      Number(dp.owner_id) === Number(pick.owner_id)
+    );
+
+    // Ensure the trade involves any of the relevant rosters to avoid unrelated matches
+    const tradeInvolvesRelevantRoster = (trade) => {
+      const teamIds = Array.isArray(trade.roster_ids)
+        ? trade.roster_ids.map(n => Number(n))
+        : Array.isArray(trade.teams)
+          ? trade.teams.map(t => Number(t?.roster_id))
+          : [];
+      const targets = [pick.owner_id, pick.roster_id, pick.previous_owner_id].filter(v => v != null).map(Number);
+      return targets.some(tid => teamIds.includes(tid));
+    };
+
+    return tradeHistory.find(trade => matchEnriched(trade) || matchSleeper(trade) || matchSleeperRaw(trade) || matchEnrichedUsingPreviousOwner(trade))
+      || tradeHistory.find(trade => matchEnrichedSlotOnly(trade))
+      || tradeHistory.find(trade => tradeInvolvesRelevantRoster(trade) && (matchEnrichedByToOnly(trade) || matchSleeperByToOnly(trade) || matchSleeperRawByToOnly(trade)))
+      || null;
   };

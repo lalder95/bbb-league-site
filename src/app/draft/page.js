@@ -11,6 +11,8 @@ import PastDrafts from '@/components/draft/PastDrafts';
 import RookieSalaries from '@/components/draft/RookieSalaries';
 import MockDraft from '@/components/draft/MockDraft';
 import DraftResources from '@/components/draft/DraftResources';
+import calculateSeasonMaxPF from '@/utils/maxpf';
+import { buildDraftOrder } from '@/utils/draftOrderUtils';
 import DraftStrategyTips from '@/components/draft/DraftStrategyTips';
 
 export default function DraftPage() {
@@ -222,35 +224,50 @@ export default function DraftPage() {
           console.log('No upcoming draft found, using fallback year:', draftYear);
           setDraftInfo({
             draft_year: draftYear,
-            // Optionally add other fallback info here
           });
+
+          // Fallback: compute order from server debug API to avoid heavy client-side calls
+          try {
+            const resp = await fetch(`/api/debug/draft-order?leagueId=${leagueId}`, { cache: 'no-store' });
+            if (resp.ok) {
+              const json = await resp.json();
+              const uiOrder = (json.draft_order || []).map((e) => ({
+                slot: e.slot,
+                rosterId: e.roster_id,
+                userId: e.owner_id,
+                teamName: e.teamName || 'Unknown Team',
+                maxpf: typeof e.maxpf === 'number' ? e.maxpf : undefined,
+                avatarUrl: e.avatarUrl || null,
+              })).sort((a, b) => a.slot - b.slot);
+              setDraftOrder(uiOrder);
+              console.log('Computed fallback draft order via API:', uiOrder);
+            } else {
+              console.warn('Fallback API failed with status:', resp.status);
+            }
+          } catch (fallbackErr) {
+            console.warn('Failed to compute fallback draft order via API:', fallbackErr);
+          }
         }
         
         setDraftYearToShow(draftYear);
         console.log('Final draftYearToShow:', draftYear);
 
-        // Fetch transactions to get trade history
-        // Note: We'll need to iterate through weeks to get a complete history
-        const tradeTransactions = [];
-        
+        // Fetch enriched trade history via our API (aggregated across BBB leagues for the season)
         try {
-          // We'll fetch transactions for the first several weeks to find trades
-          for (let week = 1; week <= 17; week++) {
-            const transactionsResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`);
-            if (!transactionsResponse.ok) continue;
-            
-            const transactionsData = await transactionsResponse.json();
-            const trades = transactionsData.filter(transaction => 
-              transaction.type === 'trade' && transaction.status === 'complete'
-            );
-            
-            tradeTransactions.push(...trades);
+          const stateRes = await fetch('https://api.sleeper.app/v1/state/nfl');
+          const stateJson = await stateRes.json();
+          const season = stateJson?.season || new Date().getFullYear();
+          const tradesRes = await fetch(`/api/history/trades?season=${season}`);
+          if (tradesRes.ok) {
+            const tradesJson = await tradesRes.json();
+            const enrichedTrades = Array.isArray(tradesJson?.trades) ? tradesJson.trades : [];
+            console.log('Enriched trades fetched:', enrichedTrades.length);
+            setTradeHistory(enrichedTrades);
+          } else {
+            console.warn('Failed to fetch enriched trades, status:', tradesRes.status);
           }
-          
-          console.log('Trade transactions fetched:', tradeTransactions.length);
-          setTradeHistory(tradeTransactions);
         } catch (transactionsError) {
-          console.warn('Error fetching transactions:', transactionsError);
+          console.warn('Error fetching enriched trade history:', transactionsError);
           // Continue even if we can't get trade history
         }
         
