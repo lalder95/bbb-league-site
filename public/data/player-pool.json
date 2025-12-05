@@ -1,0 +1,548 @@
+[
+  {
+    "id": "1781",
+    "name": "Emeka Egbuka",
+    "position": "WR",
+    "rank": 1,
+    "value": 0
+  },
+  {
+    "id": "1742",
+    "name": "Ashton Jeanty",
+    "position": "RB",
+    "rank": 2,
+    "value": 0
+  },
+  {
+    "id": "1732",
+    "name": "Jaxson Dart",
+    "position": "QB",
+    "rank": 3,
+    "value": 0
+  },
+  {
+    "id": "1771",
+    "name": "Tetairoa McMillan",
+    "position": "WR",
+    "rank": 4,
+    "value": 0
+  },
+  {
+    "id": "1744",
+    "name": "Omarion Hampton",
+    "position": "RB",
+    "rank": 5,
+    "value": 0
+  },
+  {
+    "id": "1802",
+    "name": "Tyler Warren",
+    "position": "TE",
+    "rank": 6,
+    "value": 0
+  },
+  {
+    "id": "1743",
+    "name": "TreVeyon Henderson",
+    "position": "RB",
+    "rank": 7,
+    "value": 0
+  },
+  {
+    "id": "1751",
+    "name": "Quinshon Judkins",
+    "position": "RB",
+    "rank": 8,
+    "value": 0
+  },
+  {
+    "id": "1774",
+    "name": "Travis Hunter",
+    "position": "WR",
+    "rank": 9,
+    "value": 0
+  },
+  {
+    "id": "1745",
+    "name": "Cam Skattebo",
+    "position": "RB",
+    "rank": 10,
+    "value": 0
+  },
+  {
+    "id": "1804",
+    "name": "Colston Loveland",
+    "position": "TE",
+    "rank": 11,
+    "value": 0
+  },
+  {
+    "id": "1768",
+    "name": "RJ Harvey",
+    "position": "RB",
+    "rank": 12,
+    "value": 0
+  },
+  {
+    "id": "1799",
+    "name": "Oronde Gadsden",
+    "position": "TE",
+    "rank": 13,
+    "value": 0
+  },
+  {
+    "id": "1730",
+    "name": "Cam Ward",
+    "position": "QB",
+    "rank": 14,
+    "value": 0
+  },
+  {
+    "id": "1803",
+    "name": "Harold Fannin",
+    "position": "TE",
+    "rank": 15,
+    "value": 0
+  },
+  {
+    "id": "1770",
+    "name": "Luther Burden",
+    "position": "WR",
+    "rank": 16,
+    "value": 0
+  },
+  {
+    "id": "1766",
+    "name": "Kyle Monangai",
+    "position": "RB",
+    "rank": 17,
+    "value": 0
+  },
+  {
+    "id": "1783",
+    "name": "Jayden Higgins",
+    "position": "WR",
+    "rank": 18,
+    "value": 0
+  },
+  {
+    "id": "1753",
+    "name": "Woody Marks",
+    "position": "RB",
+    "rank": 19,
+    "value": 0
+  },
+  {
+    "id": "1775",
+    "name": "Matthew Golden",
+    "position": "WR",
+    "rank": 20,
+    "value": 0
+  },
+  {
+    "id": "1752",
+    "name": "Bhayshul Tuten",
+    "position": "RB",
+    "rank": 21,
+    "value": 0
+  },
+  {
+    "id": "1806",
+    "name": "Mason Taylor",
+    "position": "TE",
+    "rank": 22,
+    "value": 0
+  },
+  {
+    "id": "1773",
+    "name": "Elic Ayomanor",
+    "position": "WR",
+    "rank": 23,
+    "value": 0
+  },
+  {
+    "id": "1798",
+    "name": "Tory Horton",
+    "position": "WR",
+    "rank": 24,
+    "value": 0
+  },
+  {
+    "id": "1779",
+    "name": "Tez Johnson",
+    "position": "WR",
+    "rank": 25,
+    "value": 0
+  },
+  {
+    "id": "1814",
+    "name": "Chimere Dike",
+    "position": "WR",
+    "rank": 26,
+    "value": 0
+  },
+  {
+    "id": "1759",
+    "name": "Ollie Gordon",
+    "position": "RB",
+    "rank": 27,
+    "value": 0
+  },
+  {
+    "id": "1747",
+    "name": "Dylan Sampson",
+    "position": "RB",
+    "rank": 28,
+    "value": 0
+  },
+  {
+    "id": "1780",
+    "name": "Jaylin Noel",
+    "position": "WR",
+    "rank": 29,
+    "value": 0
+  },
+  {
+    "id": "1748",
+    "name": "Kaleb Johnson",
+    "position": "RB",
+    "rank": 30,
+    "value": 0
+  },
+  {
+    "id": "1832",
+    "name": "Jacory Croskey-Merritt",
+    "position": "RB",
+    "rank": 31,
+    "value": 0
+  },
+  {
+    "id": "1731",
+    "name": "Shedeur Sanders",
+    "position": "QB",
+    "rank": 32,
+    "value": 0
+  },
+  {
+    "id": "1739",
+    "name": "Tyler Shough",
+    "position": "QB",
+    "rank": 33,
+    "value": 0
+  },
+  {
+    "id": "1772",
+    "name": "Tre Harris",
+    "position": "WR",
+    "rank": 34,
+    "value": 0
+  },
+  {
+    "id": "1812",
+    "name": "Kyle Williams",
+    "position": "WR",
+    "rank": 35,
+    "value": 0
+  },
+  {
+    "id": "1807",
+    "name": "Terrance Ferguson",
+    "position": "TE",
+    "rank": 36,
+    "value": 0
+  },
+  {
+    "id": "1813",
+    "name": "Isaac TeSlaa",
+    "position": "WR",
+    "rank": 37,
+    "value": 0
+  },
+  {
+    "id": "1782",
+    "name": "Pat Bryant",
+    "position": "WR",
+    "rank": 38,
+    "value": 0
+  },
+  {
+    "id": "1746",
+    "name": "Devin Neal",
+    "position": "RB",
+    "rank": 39,
+    "value": 0
+  },
+  {
+    "id": "1808",
+    "name": "Elijah Arroyo",
+    "position": "TE",
+    "rank": 40,
+    "value": 0
+  },
+  {
+    "id": "1749",
+    "name": "Brashard Smith",
+    "position": "RB",
+    "rank": 41,
+    "value": 0
+  },
+  {
+    "id": "1733",
+    "name": "Jalen Milroe",
+    "position": "QB",
+    "rank": 42,
+    "value": 0
+  },
+  {
+    "id": "1776",
+    "name": "Isaiah Bond",
+    "position": "WR",
+    "rank": 43,
+    "value": 0
+  },
+  {
+    "id": "1778",
+    "name": "Jack Bech",
+    "position": "WR",
+    "rank": 44,
+    "value": 0
+  },
+  {
+    "id": "1805",
+    "name": "Gunnar Helm",
+    "position": "TE",
+    "rank": 45,
+    "value": 0
+  },
+  {
+    "id": "1787",
+    "name": "Dont'e Thornton",
+    "position": "WR",
+    "rank": 46,
+    "value": 0
+  },
+  {
+    "id": "1756",
+    "name": "Trevor Etienne",
+    "position": "RB",
+    "rank": 47,
+    "value": 0
+  },
+  {
+    "id": "1769",
+    "name": "Jaydon Blue",
+    "position": "RB",
+    "rank": 48,
+    "value": 0
+  },
+  {
+    "id": "1760",
+    "name": "DJ Giddens",
+    "position": "RB",
+    "rank": 49,
+    "value": 0
+  },
+  {
+    "id": "1737",
+    "name": "Dillon Gabriel",
+    "position": "QB",
+    "rank": 50,
+    "value": 0
+  },
+  {
+    "id": "1816",
+    "name": "Jaylin Lane",
+    "position": "WR",
+    "rank": 51,
+    "value": 0
+  },
+  {
+    "id": "1786",
+    "name": "Jalen Royals",
+    "position": "WR",
+    "rank": 52,
+    "value": 0
+  },
+  {
+    "id": "1764",
+    "name": "Jarquez Hunter",
+    "position": "RB",
+    "rank": 53,
+    "value": 0
+  },
+  {
+    "id": "1758",
+    "name": "Tahj Brooks",
+    "position": "RB",
+    "rank": 54,
+    "value": 0
+  },
+  {
+    "id": "1796",
+    "name": "Savion Williams",
+    "position": "WR",
+    "rank": 55,
+    "value": 0
+  },
+  {
+    "id": "1824",
+    "name": "Jimmy Horn",
+    "position": "WR",
+    "rank": 56,
+    "value": 0
+  },
+  {
+    "id": "1736",
+    "name": "Will Howard",
+    "position": "QB",
+    "rank": 57,
+    "value": 0
+  },
+  {
+    "id": "1761",
+    "name": "LeQuint Allen",
+    "position": "RB",
+    "rank": 58,
+    "value": 0
+  },
+  {
+    "id": "1818",
+    "name": "KeAndre Lambert-Smith",
+    "position": "WR",
+    "rank": 59,
+    "value": 0
+  },
+  {
+    "id": "1734",
+    "name": "Quinn Ewers",
+    "position": "QB",
+    "rank": 60,
+    "value": 0
+  },
+  {
+    "id": "1755",
+    "name": "Jordan James",
+    "position": "RB",
+    "rank": 61,
+    "value": 0
+  },
+  {
+    "id": "1777",
+    "name": "Xavier Restrepo",
+    "position": "WR",
+    "rank": 62,
+    "value": 0
+  },
+  {
+    "id": "1797",
+    "name": "Tai Felton",
+    "position": "WR",
+    "rank": 63,
+    "value": 0
+  },
+  {
+    "id": "1750",
+    "name": "Kalel Mullings",
+    "position": "RB",
+    "rank": 64,
+    "value": 0
+  },
+  {
+    "id": "1838",
+    "name": "Efton Chism",
+    "position": "WR",
+    "rank": 65,
+    "value": 0
+  },
+  {
+    "id": "1754",
+    "name": "Damien Martinez",
+    "position": "RB",
+    "rank": 66,
+    "value": 0
+  },
+  {
+    "id": "1815",
+    "name": "Arian Smith",
+    "position": "WR",
+    "rank": 67,
+    "value": 0
+  },
+  {
+    "id": "1763",
+    "name": "Phil Mafah",
+    "position": "RB",
+    "rank": 68,
+    "value": 0
+  },
+  {
+    "id": "1735",
+    "name": "Riley Leonard",
+    "position": "QB",
+    "rank": 69,
+    "value": 0
+  },
+  {
+    "id": "1809",
+    "name": "Mitchell Evans",
+    "position": "TE",
+    "rank": 70,
+    "value": 0
+  },
+  {
+    "id": "1762",
+    "name": "Raheim Sanders",
+    "position": "RB",
+    "rank": 71,
+    "value": 0
+  },
+  {
+    "id": "1757",
+    "name": "Donovan Edwards",
+    "position": "RB",
+    "rank": 72,
+    "value": 0
+  },
+  {
+    "id": "1817",
+    "name": "Jordan Watkins",
+    "position": "WR",
+    "rank": 73,
+    "value": 0
+  },
+  {
+    "id": "1830",
+    "name": "Konata Mumpfield",
+    "position": "WR",
+    "rank": 74,
+    "value": 0
+  },
+  {
+    "id": "1849",
+    "name": "Max Brosmer",
+    "position": "QB",
+    "rank": 75,
+    "value": 0
+  },
+  {
+    "id": "1823",
+    "name": "LaJohntay Wester",
+    "position": "WR",
+    "rank": 76,
+    "value": 0
+  },
+  {
+    "id": "1738",
+    "name": "Kyle McCord",
+    "position": "QB",
+    "rank": 77,
+    "value": 0
+  },
+  {
+    "id": "1827",
+    "name": "Thomas Fidone",
+    "position": "TE",
+    "rank": 78,
+    "value": 0
+  }
+]

@@ -27,6 +27,20 @@ export default function AdminPage() {
   const [missingImages, setMissingImages] = useState([]);
   const [loadingMissing, setLoadingMissing] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: "playerName", direction: "asc" });
+  const [generating, setGenerating] = useState(false);
+  const [genResult, setGenResult] = useState(null);
+  const [genError, setGenError] = useState(null);
+  const [progressText, setProgressText] = useState("");
+  const [poolPreview, setPoolPreview] = useState(null);
+  const [orderPreview, setOrderPreview] = useState(null);
+  const [approvedPool, setApprovedPool] = useState(false);
+  const [approvedOrder, setApprovedOrder] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('BBB AI Mock Draft');
+  const [draftDescription, setDraftDescription] = useState('AI-generated multi-round mock draft with per-pick reasoning.');
+  const [progressKey, setProgressKey] = useState(null);
+  const [progressPollId, setProgressPollId] = useState(null);
+  const [rounds, setRounds] = useState(7);
+  // No external URL needed anymore; we scrape internally
 
   useEffect(() => {
     async function fetchMissing() {
@@ -104,6 +118,95 @@ export default function AdminPage() {
     });
   }
 
+  async function handleApproveAndRun() {
+    try {
+      if (!approvedPool || !approvedOrder) {
+        setGenError('Please approve both the player pool and the draft order to proceed.');
+        return;
+      }
+      setGenError(null);
+      setGenerating(true);
+      // Create a progress key and start polling
+      const key = Math.random().toString(36).slice(2);
+      setProgressKey(key);
+      setProgressText('Generating AI mock draft...');
+      const pollId = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/admin/mock-drafts/progress?key=${key}`, { cache: 'no-store' });
+          const json = await res.json();
+          if (json?.ok) {
+            const msg = json.message || 'Generating AI mock draft...';
+            const pickSuffix = json.currentPickNumber ? ` (Pick ${json.currentPickNumber})` : '';
+            setProgressText(`${msg}${pickSuffix}`);
+            if (json.status === 'done') {
+              clearInterval(pollId);
+              setProgressPollId(null);
+            }
+          }
+        } catch {}
+      }, 750);
+      setProgressPollId(pollId);
+      const res = await fetch('/api/admin/mock-drafts/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, dryRun: false, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription, progressKey: key })
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json?.error || 'Generation failed');
+      }
+      setGenResult(json);
+      setProgressText('Mock draft generated and published.');
+    } catch (e) {
+      setGenError(e.message || String(e));
+    } finally {
+      setGenerating(false);
+      if (progressPollId) {
+        clearInterval(progressPollId);
+        setProgressPollId(null);
+      }
+    }
+  }
+
+  async function handleGenerateMockDraft() {
+    try {
+      setGenerating(true);
+      setGenError(null);
+      setGenResult(null);
+      setProgressText('Creating player database...');
+      setApprovedPool(false);
+      setApprovedOrder(false);
+      setPoolPreview(null);
+      setOrderPreview(null);
+      // Step 1: Scrape and generate player pool locally
+      const poolRes = await fetch('/api/admin/player-pool/scrape', { method: 'POST' });
+      const poolJson = await poolRes.json();
+      if (!poolRes.ok || !poolJson.ok) {
+        throw new Error(poolJson?.error || 'Failed to generate player pool');
+      }
+      // Load the saved pool for preview
+      const poolDataRes = await fetch('/data/player-pool.json', { cache: 'no-store' });
+      const poolData = await poolDataRes.json();
+      setPoolPreview(Array.isArray(poolData) ? poolData : []);
+
+      setProgressText('Calculating draft order (including traded picks)...');
+  const ordRes = await fetch('/api/admin/draft-order/preview', { cache: 'no-store' });
+  const ordJson = await ordRes.json();
+      if (!ordRes.ok || !ordJson.ok) {
+        throw new Error(ordJson?.error || 'Failed to compute draft order');
+      }
+  setOrderPreview(Array.isArray(ordJson.order) ? ordJson.order : []);
+  setGenResult({ ...(genResult || {}), draftOrderDebug: ordJson.debug || null });
+      setProgressText('Review the player pool and draft order below, then approve to continue.');
+      setGenerating(false);
+      return;
+    } catch (e) {
+      setGenError(e.message || String(e));
+    } finally {
+      // generating flag toggled off above on success
+    }
+  }
+
   if (status === 'loading') {
     return <div className="p-8 text-center">Loading...</div>;
   }
@@ -142,6 +245,141 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold mb-2">Drafts Overview</h2>
             <p className="text-white/70">View and manage all drafts</p>
           </Link>
+          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
+            <h2 className="text-xl font-bold mb-2">AI Mock Draft Generator</h2>
+            <p className="text-white/70 mb-4">Generate a multi-round AI mock draft and publish to the Mock Drafts tab.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div>
+                <label className="block text-sm text-white/70 mb-1">Mock Draft Title</label>
+                <input
+                  className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm"
+                  value={draftTitle}
+                  onChange={e=>setDraftTitle(e.target.value)}
+                  placeholder="BBB 2026 AI Mock Draft"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-white/70 mb-1">Description</label>
+                <input
+                  className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm"
+                  value={draftDescription}
+                  onChange={e=>setDraftDescription(e.target.value)}
+                  placeholder="AI-generated mock with per-pick reasoning"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-white/70 mb-1">Rounds (1–7)</label>
+                <select
+                  className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm"
+                  value={rounds}
+                  onChange={e=>setRounds(Math.max(1, Math.min(7, Number(e.target.value) || 1)))}
+                >
+                  {[1,2,3,4,5,6,7].map(r=> (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mb-3 text-white/70 text-sm">
+              This will scrape the latest KTC rookie rankings and store the normalized player pool locally.
+            </div>
+            {progressText && (
+              <div className="mb-3 text-white/80 text-sm">{progressText}</div>
+            )}
+            <button
+              onClick={handleGenerateMockDraft}
+              disabled={generating}
+              className={`px-4 py-2 rounded-lg ${generating ? 'bg-white/20' : 'bg-[#FF4B1F] hover:bg-[#FF4B1F]/80'} text-white`}
+            >
+              {generating ? 'Generating…' : 'Generate Mock Draft'}
+            </button>
+            {genError && (
+              <div className="mt-3 text-red-400 text-sm">{genError}</div>
+            )}
+            {(poolPreview || orderPreview) && (
+              <div className="mt-4 space-y-4">
+                {Array.isArray(poolPreview) && poolPreview.length > 0 && (
+                  <div className="bg-black/20 rounded border border-white/10 p-3">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-white">Player Pool Preview ({poolPreview.length})</h3>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={approvedPool} onChange={e=>setApprovedPool(e.target.checked)} />
+                        <span>Approve Player Pool</span>
+                      </label>
+                    </div>
+                    <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">
+                      {poolPreview.slice(0, 200).map((p, i) => (
+                        <div key={i} className="py-0.5 border-b border-white/5">
+                          {p.name} ({p.position}) rank {p.rank}
+                        </div>
+                      ))}
+                      {poolPreview.length > 200 && (
+                        <div className="text-white/50 mt-1">Showing first 200 players…</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(orderPreview) && orderPreview.length > 0 && (
+                  <div className="bg-black/20 rounded border border-white/10 p-3">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-white">Draft Order Preview (Round 1)</h3>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={approvedOrder} onChange={e=>setApprovedOrder(e.target.checked)} />
+                        <span>Approve Draft Order</span>
+                      </label>
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                      {orderPreview
+                        .sort((a,b)=>Number(a.slot)-Number(b.slot))
+                        .map((o,i)=> (
+                          <div key={i} className="bg-black/10 p-2 rounded border border-white/10">
+                            <span className="text-[#FF4B1F] font-bold">{String(o.slot).padStart(2,'0')}</span>
+                            <span className="ml-2 text-white/90">{o.teamName}</span>
+                            {o.originalOwnerId && o.rosterId && (Number(o.originalOwnerId) !== Number(o.rosterId)) && (
+                              <span className="ml-2 text-white/60 text-xs">(via trade)</span>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                    {genResult?.draftOrderDebug && (
+                      <details className="mt-3 bg-black/10 p-2 rounded border border-white/10">
+                        <summary className="cursor-pointer text-white/80 text-sm">Debug</summary>
+                        <div className="mt-2 text-xs text-white/70 whitespace-pre-wrap">
+                          {JSON.stringify(genResult.draftOrderDebug, null, 2)}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )}
+                {(approvedPool && approvedOrder) && (
+                  <div>
+                    <button
+                      onClick={handleApproveAndRun}
+                      className="px-4 py-2 rounded-lg bg-[#1FDDFF] text-black hover:bg-[#1FDDFF]/80"
+                    >
+                      Run AI Mock Draft
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {genResult && (
+              <div className="mt-3 text-sm text-white/80 space-y-2">
+                <div>Draft created: {genResult.draftId ? String(genResult.draftId) : 'Preview only (dry run)'}</div>
+                <details className="bg-black/20 p-3 rounded border border-white/10">
+                  <summary className="cursor-pointer">Debug Trace</summary>
+                  <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">
+                    {JSON.stringify(genResult.trace || [], null, 2)}
+                  </div>
+                </details>
+                <details className="bg-black/20 p-3 rounded border border-white/10">
+                  <summary className="cursor-pointer">Article Markdown</summary>
+                  <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">{genResult.article}</div>
+                </details>
+                <Link href="/draft" className="inline-block mt-1 text-[#FF4B1F] underline">View in Draft Center → Mock Draft tab</Link>
+              </div>
+            )}
+          </div>
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
             <h2 className="text-xl font-bold mb-2">League Settings</h2>
             <p className="text-white/70">Configure league settings (Coming Soon)</p>
