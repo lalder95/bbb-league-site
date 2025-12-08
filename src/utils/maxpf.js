@@ -43,7 +43,9 @@ export async function calculateSeasonMaxPF({ leagueId }) {
   const { slots, flexDefs } = buildStarterSlots(league.roster_positions || []);
   const playersMeta = await fetchJson('https://api.sleeper.app/v1/players/nfl');
   const state = await fetchJson('https://api.sleeper.app/v1/state/nfl');
-  const lastWeek = Number(state.week || 18);
+  // Cap MaxPF calculation to regular season weeks 1–14
+  const currentWeek = Number(state.week || 18);
+  const lastWeek = Math.min(14, currentWeek);
 
   const maxPf = {};
   for (let week = 1; week <= lastWeek; week++) {
