@@ -508,33 +508,29 @@ const TradeSummary = ({
                             <div className="mt-1 text-sm">
                               <span className="text-white/80 font-semibold">{player.team}</span>
                             </div>
-                            <div className="mt-1 text-xs md:text-sm text-white/70 flex items-center flex-wrap gap-3">
-                              <span>
-                                <span className="text-white/50">Age</span>
-                                <span className="ml-1 text-white/80 font-semibold">{player.age || "-"}</span>
+                            <div className="mt-2 flex flex-col gap-1">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
+                                <span className="text-white/60 mr-1">Age:</span>
+                                {player.age || "-"}
                               </span>
-                              <span className="text-white/30">•</span>
-                              <span>
-                                <span className="text-white/50">KTC</span>
-                                <span className="ml-1 text-white/80 font-semibold">{player.ktcValue ? player.ktcValue : "-"}</span>
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
+                                <span className="text-white/60 mr-1">KTC:</span>
+                                {player.ktcValue ? player.ktcValue : "-"}
                               </span>
-                              <span className="text-white/30">•</span>
-                              <span>
-                                <span className="text-white/50">BV</span>
-                                <span className="ml-1 text-white/80 font-semibold">
-                                  {(() => {
-                                    const ktc = parseFloat(player.ktcValue) || 0;
-                                    const sal = parseFloat(player.curYear) || 0;
-                                    if (!sal && !ktc) return '-';
-                                    const pos = (player.position || 'UNKNOWN').toUpperCase();
-                                    const applied = (!usePositionRatios)
-                                      ? (salaryKtcRatio || 0)
-                                      : ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0));
-                                    const avgAdd = avgKtcByPosition?.[pos] || 0;
-                                    const v = Math.round(ktc + sal * (-(applied)) + avgAdd);
-                                    return isNaN(v) ? '-' : v;
-                                  })()}
-                                </span>
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
+                                <span className="text-white/60 mr-1">BV:</span>
+                                {(() => {
+                                  const ktc = parseFloat(player.ktcValue) || 0;
+                                  const sal = parseFloat(player.curYear) || 0;
+                                  if (!sal && !ktc) return '-';
+                                  const pos = (player.position || 'UNKNOWN').toUpperCase();
+                                  const applied = (!usePositionRatios)
+                                    ? (salaryKtcRatio || 0)
+                                    : ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0));
+                                  const avgAdd = avgKtcByPosition?.[pos] || 0;
+                                  const v = Math.round(ktc + sal * (-(applied)) + avgAdd);
+                                  return isNaN(v) ? '-' : v;
+                                })()}
                               </span>
                             </div>
                           </div>
