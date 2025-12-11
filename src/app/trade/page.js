@@ -27,7 +27,8 @@ function TeamSection({
   // ratios and toggle from parent
   ktcPerDollar,
   usePositionRatios,
-  positionRatios
+  positionRatios,
+  avgKtcByPosition
 }) {
   const [justAddedId, setJustAddedId] = useState(null);
   const [expandedCardId, setExpandedCardId] = useState(null);
@@ -162,7 +163,8 @@ function TeamSection({
                               const posKey = (player.position || 'UNKNOWN').toUpperCase();
                               const posRatio = usePositionRatios ? positionRatios?.[posKey] : null;
                               const appliedRatio = (posRatio != null ? posRatio : globalRatio) || 0;
-                              const val = Math.round(ktc + sal * (-(appliedRatio)));
+                              const avgAdd = (avgKtcByPosition && avgKtcByPosition[posKey]) ? avgKtcByPosition[posKey] : 0;
+                              const val = Math.round(ktc + sal * (-(appliedRatio)) + avgAdd);
                               return isNaN(val) ? '-' : val;
                             })()}
                           </span>
@@ -337,8 +339,10 @@ export default function Trade() {
   const [ktcPerDollar, setKtcPerDollar] = useState(null);
   // Position-specific ratios (KTC per $1) for Active contracts
   const [positionRatios, setPositionRatios] = useState({});
+  // Average KTC per position across Active contracts
+  const [avgKtcByPosition, setAvgKtcByPosition] = useState({});
   // Toggle to use position-specific ratios in Budget Value calculations
-  const [usePositionRatios, setUsePositionRatios] = useState(false);
+  const [usePositionRatios, setUsePositionRatios] = useState(true);
   // Debug info for ratio calculation
   const [ratioDebug, setRatioDebug] = useState({ totalActiveSalary: 0, totalActiveKtc: 0, activeCount: 0, sample: [] });
   const [showRatioDebug, setShowRatioDebug] = useState(false);
@@ -447,6 +451,13 @@ export default function Trade() {
           return acc;
         }, {});
         setPositionRatios(posRatios);
+        // Compute average KTC per position across Active contracts
+        const posAverages = Object.keys(byPos).reduce((acc, pos) => {
+          const { ktc, count } = byPos[pos];
+          acc[pos] = count > 0 ? (ktc / count) : 0;
+          return acc;
+        }, {});
+        setAvgKtcByPosition(posAverages);
         setRatioDebug({
           totalActiveSalary,
           totalActiveKtc,
@@ -866,13 +877,19 @@ export default function Trade() {
                 <div className="text-white font-semibold">{ktcPerDollar != null ? ktcPerDollar.toFixed(6) : '-'}</div>
               </div>
             </div>
+            <div className="mt-2 text-xs text-white/70">
+              Global Avg KTC per player: {ratioDebug.activeCount > 0 ? Math.round(ratioDebug.totalActiveKtc / ratioDebug.activeCount) : 0}
+            </div>
             {/* Position ratios table */}
-            <div className="mt-3 text-xs text-white/70">Position ratios (KTC per $1):</div>
+            <div className="mt-3 text-xs text-white/70">Position metrics (Ratio & Avg KTC):</div>
             <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
               {Object.keys(positionRatios).sort().map((pos) => (
-                <div key={pos} className="bg-black/20 border border-white/10 rounded p-2 flex items-center justify-between">
-                  <div className="text-white/80 font-semibold">{pos}</div>
-                  <div className="text-white text-xs">{positionRatios[pos].toFixed(6)}</div>
+                <div key={pos} className="bg-black/20 border border-white/10 rounded p-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-white/80 font-semibold">{pos}</div>
+                    <div className="text-white text-[11px]">{positionRatios[pos] != null ? positionRatios[pos].toFixed(6) : '-'}</div>
+                  </div>
+                  <div className="mt-1 text-white/60 text-[11px]">AvgKTC: {Math.round((avgKtcByPosition && avgKtcByPosition[pos]) ? avgKtcByPosition[pos] : 0)}</div>
                 </div>
               ))}
             </div>
@@ -890,7 +907,7 @@ export default function Trade() {
               ))}
             </div>
             <div className="mt-3 text-xs text-white/60">
-              Formula: Ratio = (Σ Active KTC) / (Σ Active Year 1 Salary). Budget Value = KTC + Salary × (−Ratio).
+              Formula: Ratio = (Σ Active KTC) / (Σ Active Year 1 Salary). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).
             </div>
           </div>
         )}
@@ -959,6 +976,7 @@ export default function Trade() {
             salaryKtcRatio={ktcPerDollar}
             positionRatios={positionRatios}
             usePositionRatios={usePositionRatios}
+            avgKtcByPosition={avgKtcByPosition}
           />
         )}
 
@@ -1000,6 +1018,7 @@ export default function Trade() {
                 ktcPerDollar={ktcPerDollar}
                 usePositionRatios={usePositionRatios}
                 positionRatios={positionRatios}
+                avgKtcByPosition={avgKtcByPosition}
               />
             );
           })}

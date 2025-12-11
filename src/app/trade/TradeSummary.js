@@ -14,7 +14,8 @@ const TradeSummary = ({
   teamAvatars,
   salaryKtcRatio,
   positionRatios,
-  usePositionRatios
+  usePositionRatios,
+  avgKtcByPosition
 }) => {
   const { data: session } = useSession();
   const [showAssistantGM, setShowAssistantGM] = useState(false);
@@ -347,14 +348,15 @@ const TradeSummary = ({
             const totalSalary = allIncoming.reduce((s, p) => s + (parseFloat(p.curYear) || 0), 0);
             const totalKtc = allIncoming.reduce((s, p) => s + (parseFloat(p.ktcValue) || 0), 0);
             const totalValue = (() => {
-              if (!usePositionRatios) {
-                return Math.round(totalKtc + totalSalary * (-(salaryKtcRatio || 0)));
-              }
               const perSum = allIncoming.reduce((sum, p) => {
                 const pos = (p.position || 'UNKNOWN').toUpperCase();
-                const ratio = positionRatios?.[pos];
                 const sal = parseFloat(p.curYear) || 0;
-                return sum + (parseFloat(p.ktcValue) || 0) + sal * (-(ratio != null ? ratio : (salaryKtcRatio || 0)));
+                const ktc = parseFloat(p.ktcValue) || 0;
+                const appliedRatio = usePositionRatios
+                  ? ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0))
+                  : (salaryKtcRatio || 0);
+                const avgAdd = avgKtcByPosition?.[pos] || 0;
+                return sum + ktc + sal * (-(appliedRatio)) + avgAdd;
               }, 0);
               return Math.round(perSum);
             })();
@@ -367,9 +369,9 @@ const TradeSummary = ({
                     <span className="ml-1 relative group inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-white cursor-help">i
                       <div className="absolute -top-1 left-5 hidden group-hover:block bg-[#001A2B] border border-white/10 text-xs text-white p-2 rounded shadow-lg z-10">
                         {usePositionRatios
-                          ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)).`
+                          ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)) + AvgKTC(pos).`
                           : (salaryKtcRatio != null
-                              ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio).`
+                              ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).`
                               : 'Ratio unavailable')}
                       </div>
                     </span>
@@ -378,7 +380,7 @@ const TradeSummary = ({
                 <div className="mt-2 flex flex-wrap items-center justify-between text-sm">
                   <div className="text-white/80">KTC: {Math.round(totalKtc)}</div>
                   <div className="text-white/80">Salary: ${totalSalary.toFixed(1)}</div>
-                  <div className="text-[#FF4B1F] font-bold">Budget Value: {totalValue}</div>
+                  <div className="text-white/90">Budget Value: {totalValue}</div>
                 </div>
               </div>
             );
@@ -390,14 +392,15 @@ const TradeSummary = ({
               const totalCap = calculateTotalValue(received);
               const totalKTC = calculateTotalKTC(received);
               const totalValue = (() => {
-                if (!usePositionRatios) {
-                  return Math.round(totalKTC + totalCap * (-(salaryKtcRatio || 0)));
-                }
                 const perSum = received.reduce((sum, pl) => {
                   const pos = (pl.position || 'UNKNOWN').toUpperCase();
-                  const ratio = positionRatios?.[pos];
                   const sal = parseFloat(pl.curYear) || 0;
-                  return sum + (parseFloat(pl.ktcValue) || 0) + sal * (-(ratio != null ? ratio : (salaryKtcRatio || 0)));
+                  const ktc = parseFloat(pl.ktcValue) || 0;
+                  const appliedRatio = usePositionRatios
+                    ? ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0))
+                    : (salaryKtcRatio || 0);
+                  const avgAdd = avgKtcByPosition?.[pos] || 0;
+                  return sum + ktc + sal * (-(appliedRatio)) + avgAdd;
                 }, 0);
                 return Math.round(perSum);
               })();
@@ -412,14 +415,14 @@ const TradeSummary = ({
                       <p className="text-white/70 text-xs md:text-sm">
                         {received.length} player{received.length !== 1 ? 's' : ''} • ${totalCap.toFixed(1)} cap value • KTC: {totalKTC ? totalKTC.toFixed(0) : 0}
                       </p>
-                      <div className="text-[#FF4B1F] text-xs md:text-sm font-bold flex items-center">
+                      <div className="text-white/90 text-xs md:text-sm font-bold flex items-center">
                         Budget Value: {totalValue}
                         <span className="ml-1 relative group inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-white cursor-help">i
                           <div className="absolute -top-1 left-5 hidden group-hover:block bg-[#001A2B] border border-white/10 text-xs text-white p-2 rounded shadow-lg z-10">
                             {usePositionRatios
-                              ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)).`
+                              ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)) + AvgKTC(pos).`
                               : (salaryKtcRatio != null
-                                  ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio).`
+                                  ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).`
                                   : 'Ratio unavailable')}
                           </div>
                         </span>
@@ -502,25 +505,37 @@ const TradeSummary = ({
                               <span className="text-white/80 font-semibold">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
                               <span className="text-white/80 font-semibold">{player.contractType}</span>
                             </div>
-                            <div className="flex flex-row items-center gap-2 mt-1 text-sm">
-                              {teamAvatars && teamAvatars[player.team] ? (
-                                <Image
-                                  src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
-                                  alt={player.team}
-                                  width={48}
-                                  height={48}
-                                  className="rounded-full mr-1 inline-block"
-                                  loading="lazy"
-                                  unoptimized={player.photoUrl && player.photoUrl.startsWith('http')}
-                                />
-                              ) : (
-                                <span className="w-5 h-5 rounded-full bg-white/10 mr-1 inline-block"></span>
-                              )}
+                            <div className="mt-1 text-sm">
                               <span className="text-white/80 font-semibold">{player.team}</span>
                             </div>
-                            <div className="flex flex-row gap-6 mt-1 text-xs text-white/70">
-                              <span>Age: {player.age || "-"}</span>
-                              <span>KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                            <div className="mt-1 text-xs md:text-sm text-white/70 flex items-center flex-wrap gap-3">
+                              <span>
+                                <span className="text-white/50">Age</span>
+                                <span className="ml-1 text-white/80 font-semibold">{player.age || "-"}</span>
+                              </span>
+                              <span className="text-white/30">•</span>
+                              <span>
+                                <span className="text-white/50">KTC</span>
+                                <span className="ml-1 text-white/80 font-semibold">{player.ktcValue ? player.ktcValue : "-"}</span>
+                              </span>
+                              <span className="text-white/30">•</span>
+                              <span>
+                                <span className="text-white/50">BV</span>
+                                <span className="ml-1 text-white/80 font-semibold">
+                                  {(() => {
+                                    const ktc = parseFloat(player.ktcValue) || 0;
+                                    const sal = parseFloat(player.curYear) || 0;
+                                    if (!sal && !ktc) return '-';
+                                    const pos = (player.position || 'UNKNOWN').toUpperCase();
+                                    const applied = (!usePositionRatios)
+                                      ? (salaryKtcRatio || 0)
+                                      : ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0));
+                                    const avgAdd = avgKtcByPosition?.[pos] || 0;
+                                    const v = Math.round(ktc + sal * (-(applied)) + avgAdd);
+                                    return isNaN(v) ? '-' : v;
+                                  })()}
+                                </span>
+                              </span>
                             </div>
                           </div>
                           <div className="text-green-400 font-bold ml-4 text-lg">${parseFloat(player.curYear).toFixed(1)}</div>
