@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  eslint: {
+    // Temporarily ignore ESLint during production builds to avoid Rushstack patch errors on Vercel
+    ignoreDuringBuilds: true,
+  },
   images: {
     // Allow external images we use around the site
     domains: [
