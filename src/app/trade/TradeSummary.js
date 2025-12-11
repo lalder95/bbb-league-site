@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
+import { useBudgetRatios } from '../providers';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
 import Image from 'next/image';
 import AssistantGMChat from '../my-team/components/AssistantGMChat';
@@ -10,7 +11,10 @@ const TradeSummary = ({
   participants,
   impactsByTeam,
   onClose,
-  teamAvatars
+  teamAvatars,
+  salaryKtcRatio,
+  positionRatios,
+  usePositionRatios
 }) => {
   const { data: session } = useSession();
   const [showAssistantGM, setShowAssistantGM] = useState(false);
@@ -248,6 +252,8 @@ const TradeSummary = ({
     }
   }, [showAssistantGM]);
 
+  // Consume global ratios for fallback
+  const ratiosCtx = useBudgetRatios?.() || {};
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-2 md:px-4">
       <div className="relative bg-[#001A2B] border border-white/10 rounded-lg max-w-4xl w-full shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -319,12 +325,82 @@ const TradeSummary = ({
 
         {/* Trade Content */}
         <div className={`p-3 md:p-6`}>
+          {/* Combined Trade Totals */}
+          {(() => {
+            const teams = participants.map(p => p.team).filter(Boolean);
+            const uniqueTeams = [...new Set(teams)];
+            // Build all incoming across teams
+            const allIncoming = uniqueTeams.flatMap(t => {
+              const isTwoTeam = uniqueTeams.length === 2;
+              const received = [];
+              participants.forEach(p => {
+                p.selectedPlayers.forEach(sp => {
+                  let dest = sp.toTeam;
+                  if (!dest && isTwoTeam && p.team) {
+                    dest = uniqueTeams.find(x => x !== p.team);
+                  }
+                  if (dest === t) received.push(sp);
+                });
+              });
+              return received;
+            });
+            const totalSalary = allIncoming.reduce((s, p) => s + (parseFloat(p.curYear) || 0), 0);
+            const totalKtc = allIncoming.reduce((s, p) => s + (parseFloat(p.ktcValue) || 0), 0);
+            const totalValue = (() => {
+              if (!usePositionRatios) {
+                return Math.round(totalKtc + totalSalary * (-(salaryKtcRatio || 0)));
+              }
+              const perSum = allIncoming.reduce((sum, p) => {
+                const pos = (p.position || 'UNKNOWN').toUpperCase();
+                const ratio = positionRatios?.[pos];
+                const sal = parseFloat(p.curYear) || 0;
+                return sum + (parseFloat(p.ktcValue) || 0) + sal * (-(ratio != null ? ratio : (salaryKtcRatio || 0)));
+              }, 0);
+              return Math.round(perSum);
+            })();
+            return (
+              <div className="mb-4 bg-black/20 border border-white/10 rounded p-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold">Combined Trade Totals</div>
+                  <div className="text-xs text-white/70 inline-flex items-center">
+                    Budget Value
+                    <span className="ml-1 relative group inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-white cursor-help">i
+                      <div className="absolute -top-1 left-5 hidden group-hover:block bg-[#001A2B] border border-white/10 text-xs text-white p-2 rounded shadow-lg z-10">
+                        {usePositionRatios
+                          ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)).`
+                          : (salaryKtcRatio != null
+                              ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio).`
+                              : 'Ratio unavailable')}
+                      </div>
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between text-sm">
+                  <div className="text-white/80">KTC: {Math.round(totalKtc)}</div>
+                  <div className="text-white/80">Salary: ${totalSalary.toFixed(1)}</div>
+                  <div className="text-[#FF4B1F] font-bold">Budget Value: {totalValue}</div>
+                </div>
+              </div>
+            );
+          })()}
           <div className={`grid ${isMobile ? "grid-cols-1 gap-4" : "grid-cols-2 gap-6"}`}>
             {participants.filter(p => p.team).map((p, idx) => {
               const received = buildReceivedFor(p.team);
               const capImpact = impactsByTeam?.[p.team];
               const totalCap = calculateTotalValue(received);
               const totalKTC = calculateTotalKTC(received);
+              const totalValue = (() => {
+                if (!usePositionRatios) {
+                  return Math.round(totalKTC + totalCap * (-(salaryKtcRatio || 0)));
+                }
+                const perSum = received.reduce((sum, pl) => {
+                  const pos = (pl.position || 'UNKNOWN').toUpperCase();
+                  const ratio = positionRatios?.[pos];
+                  const sal = parseFloat(pl.curYear) || 0;
+                  return sum + (parseFloat(pl.ktcValue) || 0) + sal * (-(ratio != null ? ratio : (salaryKtcRatio || 0)));
+                }, 0);
+                return Math.round(perSum);
+              })();
               return (
                 <div key={p.team + idx} className="bg-black/30 rounded-lg border border-white/10 p-3 md:p-4">
                   <div className="flex items-center gap-3 mb-4">
@@ -336,6 +412,18 @@ const TradeSummary = ({
                       <p className="text-white/70 text-xs md:text-sm">
                         {received.length} player{received.length !== 1 ? 's' : ''} • ${totalCap.toFixed(1)} cap value • KTC: {totalKTC ? totalKTC.toFixed(0) : 0}
                       </p>
+                      <div className="text-[#FF4B1F] text-xs md:text-sm font-bold flex items-center">
+                        Budget Value: {totalValue}
+                        <span className="ml-1 relative group inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-white cursor-help">i
+                          <div className="absolute -top-1 left-5 hidden group-hover:block bg-[#001A2B] border border-white/10 text-xs text-white p-2 rounded shadow-lg z-10">
+                            {usePositionRatios
+                              ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)).`
+                              : (salaryKtcRatio != null
+                                  ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio).`
+                                  : 'Ratio unavailable')}
+                          </div>
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -397,12 +485,15 @@ const TradeSummary = ({
                           className="bg-black/20 rounded p-2 md:p-3 flex flex-row items-center gap-4"
                         >
                           <div className="flex items-center justify-center" style={{ width: 72, height: 72, minWidth: 72, minHeight: 72 }}>
-                            <PlayerProfileCard
-                              playerId={player.id}
-                              imageExtension="png"
-                              expanded={false}
-                              className="w-20 h-20 object-contain"
-                            />
+                              <PlayerProfileCard
+                                playerId={player.id}
+                                imageExtension="png"
+                                expanded={false}
+                                className="w-20 h-20 object-contain"
+                                ktcPerDollar={salaryKtcRatio ?? ratiosCtx.ktcPerDollar}
+                                usePositionRatios={usePositionRatios ?? ratiosCtx.usePositionRatios}
+                                positionRatios={positionRatios ?? ratiosCtx.positionRatios}
+                              />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-base text-white truncate">{player.playerName}</div>

@@ -23,7 +23,11 @@ function TeamSection({
   canRemove,
   onRemove,
   hideDestination = false,
-  otherTeamName = ''
+  otherTeamName = '',
+  // ratios and toggle from parent
+  ktcPerDollar,
+  usePositionRatios,
+  positionRatios
 }) {
   const [justAddedId, setJustAddedId] = useState(null);
   const [expandedCardId, setExpandedCardId] = useState(null);
@@ -102,7 +106,15 @@ function TeamSection({
                         {/* Card and info */}
                         <div className="flex flex-col items-center">
                           <div className="w-20 h-20 flex items-center justify-center relative">
-                            <PlayerProfileCard playerId={player.id} imageExtension="png" expanded={false} className="w-12 h-12" />
+                            <PlayerProfileCard
+                              playerId={player.id}
+                              imageExtension="png"
+                              expanded={false}
+                              className="w-12 h-12"
+                              ktcPerDollar={ktcPerDollar}
+                              usePositionRatios={usePositionRatios}
+                              positionRatios={positionRatios}
+                            />
                             <button
                               onClick={e => {
                                 e.stopPropagation();
@@ -141,6 +153,19 @@ function TeamSection({
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-cyan-700/50 text-white ${String(player.rfaEligible).toLowerCase() === "true" ? "animate-pulse" : ""}`}>RFA: {String(player.rfaEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-pink-700/50 text-white ${String(player.franchiseTagEligible).toLowerCase() === "false" ? "animate-pulse" : ""}`}>Tag: {String(player.franchiseTagEligible).toLowerCase() === "true" ? "✅" : "❌"}</span>
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-teal-700/50 text-white">KTC: {player.ktcValue ? player.ktcValue : "-"}</span>
+                          {/* Budget Value bubble */}
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-[#FF4B1F]/50 text-white">
+                            BV: {(() => {
+                              const ktc = parseFloat(player.ktcValue) || 0;
+                              const sal = parseFloat(player.curYear) || 0;
+                              const globalRatio = typeof ktcPerDollar === 'number' ? ktcPerDollar : 0;
+                              const posKey = (player.position || 'UNKNOWN').toUpperCase();
+                              const posRatio = usePositionRatios ? positionRatios?.[posKey] : null;
+                              const appliedRatio = (posRatio != null ? posRatio : globalRatio) || 0;
+                              const val = Math.round(ktc + sal * (-(appliedRatio)));
+                              return isNaN(val) ? '-' : val;
+                            })()}
+                          </span>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-700/50 text-white ${String(player.contractFinalYear) === String(new Date().getFullYear()) ? "animate-pulse" : ""}`}>Final Year: {player.contractFinalYear || "-"}</span>
                           {/* Destination selector for multi-team trades only */}
                           {!hideDestination ? (
@@ -308,6 +333,15 @@ export default function Trade() {
   const [leagueId, setLeagueId] = useState(null);
   const [players, setPlayers] = useState([]);
   const [showImport, setShowImport] = useState(false);
+  // KTC-to-Salary ratio (KTC points per $1 of salary), computed on refresh
+  const [ktcPerDollar, setKtcPerDollar] = useState(null);
+  // Position-specific ratios (KTC per $1) for Active contracts
+  const [positionRatios, setPositionRatios] = useState({});
+  // Toggle to use position-specific ratios in Budget Value calculations
+  const [usePositionRatios, setUsePositionRatios] = useState(false);
+  // Debug info for ratio calculation
+  const [ratioDebug, setRatioDebug] = useState({ totalActiveSalary: 0, totalActiveKtc: 0, activeCount: 0, sample: [] });
+  const [showRatioDebug, setShowRatioDebug] = useState(false);
 
   // Auto-detect league ID (copied from home page)
   useEffect(() => {
@@ -388,6 +422,46 @@ export default function Trade() {
             };
           });
       setContracts(parsedContracts);
+      // Compute KTC-per-dollar ratio using global totals across Active contracts
+      try {
+        const activeContracts = parsedContracts.filter(c => c.isActive || c.status === 'Active');
+        const totalActiveSalary = activeContracts.reduce((sum, c) => sum + (parseFloat(c.curYear) || 0), 0);
+        const totalActiveKtc = activeContracts.reduce((sum, c) => sum + (parseFloat(c.ktcValue) || 0), 0);
+        const ratio = totalActiveSalary > 0 ? (totalActiveKtc / totalActiveSalary) : 0;
+        setKtcPerDollar(ratio);
+
+        // Compute per-position ratios (KTC/$)
+        const byPos = activeContracts.reduce((acc, c) => {
+          const pos = (c.position || 'UNKNOWN').toUpperCase();
+          const sal = parseFloat(c.curYear) || 0;
+          const ktc = parseFloat(c.ktcValue) || 0;
+          if (!acc[pos]) acc[pos] = { salary: 0, ktc: 0, count: 0 };
+          acc[pos].salary += sal;
+          acc[pos].ktc += ktc;
+          acc[pos].count += 1;
+          return acc;
+        }, {});
+        const posRatios = Object.keys(byPos).reduce((acc, pos) => {
+          const { salary, ktc } = byPos[pos];
+          acc[pos] = salary > 0 ? (ktc / salary) : 0;
+          return acc;
+        }, {});
+        setPositionRatios(posRatios);
+        setRatioDebug({
+          totalActiveSalary,
+          totalActiveKtc,
+          activeCount: activeContracts.length,
+          sample: activeContracts.slice(0, 10).map(c => ({
+            playerName: c.playerName,
+            team: c.team,
+            curYear: parseFloat(c.curYear) || 0,
+            ktcValue: parseFloat(c.ktcValue) || 0,
+          })),
+        });
+      } catch (e) {
+        setKtcPerDollar(0);
+        setRatioDebug({ totalActiveSalary: 0, totalActiveKtc: 0, activeCount: 0, sample: [] });
+      }
 
       // Parse fines
       const finesRows = finesText.split('\n');
@@ -747,6 +821,79 @@ export default function Trade() {
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
+        {/* Ratio Debug Controls */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-white/60 text-xs">Ratio: {ktcPerDollar != null ? ktcPerDollar.toFixed(6) : 'n/a'}</div>
+          <button
+            onClick={() => setShowRatioDebug(v => !v)}
+            className="px-3 py-1.5 bg-white/10 border border-white/20 rounded text-white hover:bg-white/20 text-xs"
+          >
+            {showRatioDebug ? 'Hide Ratio Debug' : 'Show Ratio Debug'}
+          </button>
+        </div>
+        {/* Toggle for using position-specific ratios */}
+        <div className="mb-4 flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-white/80">
+            <input
+              type="checkbox"
+              checked={usePositionRatios}
+              onChange={(e) => setUsePositionRatios(e.target.checked)}
+            />
+            Use position-specific ratios for Budget Value
+          </label>
+          {usePositionRatios && (
+            <span className="text-[10px] text-white/60">Uses ratio by player position (e.g., QB/RB/WR/TE). Falls back to global ratio if position is missing.</span>
+          )}
+        </div>
+        {showRatioDebug && (
+          <div className="mb-6 p-4 rounded-lg bg-black/30 border border-white/10">
+            <div className="font-bold text-[#FF4B1F] mb-2">KTC-to-Salary Ratio Debug</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="bg-black/20 border border-white/10 rounded p-2">
+                <div className="text-white/70">Active Contracts</div>
+                <div className="text-white font-semibold">{ratioDebug.activeCount}</div>
+              </div>
+              <div className="bg-black/20 border border-white/10 rounded p-2">
+                <div className="text-white/70">Total Active Salary (Y1)</div>
+                <div className="text-white font-semibold">${ratioDebug.totalActiveSalary.toFixed(1)}</div>
+              </div>
+              <div className="bg-black/20 border border-white/10 rounded p-2">
+                <div className="text-white/70">Total Active KTC</div>
+                <div className="text-white font-semibold">{Math.round(ratioDebug.totalActiveKtc)}</div>
+              </div>
+              <div className="bg-black/20 border border-white/10 rounded p-2">
+                <div className="text-white/70">Ratio (KTC per $1)</div>
+                <div className="text-white font-semibold">{ktcPerDollar != null ? ktcPerDollar.toFixed(6) : '-'}</div>
+              </div>
+            </div>
+            {/* Position ratios table */}
+            <div className="mt-3 text-xs text-white/70">Position ratios (KTC per $1):</div>
+            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+              {Object.keys(positionRatios).sort().map((pos) => (
+                <div key={pos} className="bg-black/20 border border-white/10 rounded p-2 flex items-center justify-between">
+                  <div className="text-white/80 font-semibold">{pos}</div>
+                  <div className="text-white text-xs">{positionRatios[pos].toFixed(6)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-white/70">Sample rows (first 10):</div>
+            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+              {ratioDebug.sample.map((s, i) => (
+                <div key={i} className="bg-black/20 border border-white/10 rounded p-2 flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white truncate">{s.playerName}</div>
+                    <div className="text-white/60 text-xs truncate">{s.team}</div>
+                  </div>
+                  <div className="text-white text-xs">Y1: ${s.curYear.toFixed(1)}</div>
+                  <div className="text-white text-xs ml-3">KTC: {Math.round(s.ktcValue)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-white/60">
+              Formula: Ratio = (Σ Active KTC) / (Σ Active Year 1 Salary). Budget Value = KTC + Salary × (−Ratio).
+            </div>
+          </div>
+        )}
         {tradeValidation && haveAtLeastTwoTeams && (
           <div className={`mb-6 p-4 rounded-lg ${
             tradeValidation.isInvalidCurYear ? 'bg-red-500/20 border border-red-500/50' :
@@ -792,6 +939,7 @@ export default function Trade() {
                 )}
               </div>
             )}
+            {/* Trade Totals removed per request */}
             <button
               disabled={tradeValidation.unassigned}
               onClick={() => setShowSummary(true)}
@@ -808,6 +956,9 @@ export default function Trade() {
             impactsByTeam={tradeValidation.impactsByTeam}
             onClose={() => setShowSummary(false)}
             teamAvatars={teamAvatars}
+            salaryKtcRatio={ktcPerDollar}
+            positionRatios={positionRatios}
+            usePositionRatios={usePositionRatios}
           />
         )}
 
@@ -846,6 +997,9 @@ export default function Trade() {
                 onRemove={() => removeParticipant(p.id)}
                 hideDestination={isTwoTeamTrade}
                 otherTeamName={otherTeam}
+                ktcPerDollar={ktcPerDollar}
+                usePositionRatios={usePositionRatios}
+                positionRatios={positionRatios}
               />
             );
           })}
