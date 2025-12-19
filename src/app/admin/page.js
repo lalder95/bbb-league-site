@@ -40,6 +40,7 @@ export default function AdminPage() {
   const [progressKey, setProgressKey] = useState(null);
   const [progressPollId, setProgressPollId] = useState(null);
   const [jobId, setJobId] = useState(null);
+  const [jobDebug, setJobDebug] = useState(null);
   const [rounds, setRounds] = useState(7);
   // No external URL needed anymore; we scrape internally
 
@@ -140,26 +141,9 @@ export default function AdminPage() {
       setGenError(null);
       setGenerating(true);
       setJobId(null);
-      // Create a progress key and start polling
-      const key = Math.random().toString(36).slice(2);
-      setProgressKey(key);
-      setProgressText('Generating AI mock draft...');
-      const pollId = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/admin/mock-drafts/progress?key=${key}`, { cache: 'no-store' });
-          const json = await res.json();
-          if (json?.ok) {
-            const msg = json.message || 'Generating AI mock draft...';
-            const pickSuffix = json.currentPickNumber ? ` (Pick ${json.currentPickNumber})` : '';
-            setProgressText(`${msg}${pickSuffix}`);
-            if (json.status === 'done') {
-              clearInterval(pollId);
-              setProgressPollId(null);
-            }
-          }
-        } catch {}
-      }, 750);
-      setProgressPollId(pollId);
+      // For Mongo-backed jobs we don't need the old in-memory progressKey polling.
+      setProgressKey(null);
+      setProgressText('Queuing background job…');
       // Start a background job to avoid Vercel timeouts.
       const jobRes = await fetch('/api/admin/mock-drafts/jobs', {
         method: 'POST',
@@ -185,6 +169,7 @@ export default function AdminPage() {
           const j = await safeReadJson(r);
           if (!r.ok || !j.ok) return;
           const job = j.job;
+          setJobDebug(job);
           if (job?.progress?.message) {
             const pickSuffix = job?.progress?.currentPickNumber ? ` (Pick ${job.progress.currentPickNumber})` : '';
             setProgressText(`${job.progress.message}${pickSuffix}`);
@@ -351,6 +336,31 @@ export default function AdminPage() {
             </div>
             {progressText && (
               <div className="mb-3 text-white/80 text-sm">{progressText}</div>
+            )}
+
+            {jobId && jobDebug && (
+              <details className="mb-3 bg-black/20 p-3 rounded border border-white/10">
+                <summary className="cursor-pointer text-white/80 text-sm">Job Diagnostics</summary>
+                <div className="mt-2 text-xs text-white/70 space-y-2">
+                  <div><span className="text-white/80">Status:</span> {jobDebug.status}</div>
+                  <div><span className="text-white/80">Current pick:</span> {jobDebug?.progress?.currentPickNumber || '-'}</div>
+                  <div><span className="text-white/80">Heartbeat:</span> {jobDebug?.progress?.heartbeatAt ? new Date(jobDebug.progress.heartbeatAt).toLocaleString() : '-'}</div>
+                  <div><span className="text-white/80">Updated:</span> {jobDebug?.updatedAt ? new Date(jobDebug.updatedAt).toLocaleString() : '-'}</div>
+                  <div className="pt-2 border-t border-white/10">
+                    <div className="text-white/80 mb-1">Recent events</div>
+                    <div className="max-h-40 overflow-auto whitespace-pre-wrap">
+                      {(Array.isArray(jobDebug.events) ? jobDebug.events.slice(-12) : []).map((ev, idx) => (
+                        <div key={idx} className="border-b border-white/5 py-1">
+                          <span className="text-white/60">{ev?.at ? new Date(ev.at).toLocaleTimeString() : ''}</span>
+                          <span className="ml-2 text-[#1FDDFF]">[{ev?.type || 'event'}]</span>
+                          <span className="ml-2">{ev?.message || ''}</span>
+                          {ev?.pickNumber ? <span className="ml-2 text-white/60">({ev.pickNumber})</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </details>
             )}
             <button
               onClick={handleGenerateMockDraft}

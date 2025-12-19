@@ -35,6 +35,11 @@ export async function POST(request) {
 
     await markJobRunning(jobId);
 
+    await updateJobProgress(jobId, {
+      message: 'Fetching league context…',
+      event: { type: 'info', message: 'Runner started' },
+    });
+
     const result = await generateMockDraft({
       authSession: auth.session,
       rounds: job.rounds,
@@ -53,6 +58,7 @@ export async function POST(request) {
           currentPickNumber: pickNumber,
           generatedPicks: typeof generatedPicks === 'number' ? generatedPicks : undefined,
           totalPicks: typeof totalPicks === 'number' ? totalPicks : undefined,
+          event: { type: 'pick', message: message || `Progress ${pickNumber}`, pickNumber },
         });
       },
     });

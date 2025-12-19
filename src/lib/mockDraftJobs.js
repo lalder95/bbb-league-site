@@ -45,7 +45,16 @@ export async function createMockDraftJob({
       currentPickNumber: null,
       generatedPicks: 0,
       totalPicks: maxPicks,
+      heartbeatAt: now,
     },
+
+    events: [
+      {
+        at: now,
+        type: 'created',
+        message: 'Job created',
+      },
+    ],
 
     result: {
       draftId: null,
@@ -86,6 +95,13 @@ export async function markJobRunning(jobId) {
         startedAt: now,
         updatedAt: now,
         'progress.message': 'Starting generation…',
+        'progress.heartbeatAt': now,
+      },
+      $push: {
+        events: {
+          $each: [{ at: now, type: 'running', message: 'Job marked running' }],
+          $slice: -80,
+        },
       },
     }
   );
@@ -101,8 +117,20 @@ export async function updateJobProgress(jobId, patch) {
   if (patch?.message !== undefined) $set['progress.message'] = patch.message;
   if (patch?.currentPickNumber !== undefined) $set['progress.currentPickNumber'] = patch.currentPickNumber;
   if (patch?.generatedPicks !== undefined) $set['progress.generatedPicks'] = patch.generatedPicks;
+  $set['progress.heartbeatAt'] = now;
 
-  await db.collection(COLLECTION).updateOne({ _id }, { $set });
+  const event = patch?.event;
+  const update = { $set };
+  if (event) {
+    update.$push = {
+      events: {
+        $each: [{ at: now, ...event }],
+        $slice: -80,
+      },
+    };
+  }
+
+  await db.collection(COLLECTION).updateOne({ _id }, update);
 }
 
 export async function markJobDone(jobId, result) {
@@ -123,6 +151,7 @@ export async function markJobDone(jobId, result) {
           currentPickNumber: result?.progress?.currentPickNumber || null,
           generatedPicks: result?.picks?.length || 0,
           totalPicks: result?.progress?.totalPicks || (result?.picks?.length || 0),
+          heartbeatAt: now,
         },
         result: {
           draftId: result?.draftId || null,
@@ -131,6 +160,12 @@ export async function markJobDone(jobId, result) {
           trace: result?.trace || [],
         },
         error: null,
+      },
+      $push: {
+        events: {
+          $each: [{ at: now, type: 'done', message: 'Job completed' }],
+          $slice: -80,
+        },
       },
     }
   );
@@ -151,6 +186,12 @@ export async function markJobError(jobId, error) {
         error: {
           message: error?.message || String(error || 'Unknown error'),
           stack: error?.stack || null,
+        },
+      },
+      $push: {
+        events: {
+          $each: [{ at: now, type: 'error', message: error?.message || 'Job failed' }],
+          $slice: -80,
         },
       },
     }
