@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [draftDescription, setDraftDescription] = useState('AI-generated multi-round mock draft with per-pick reasoning.');
   const [progressKey, setProgressKey] = useState(null);
   const [progressPollId, setProgressPollId] = useState(null);
+  const [jobId, setJobId] = useState(null);
   const [rounds, setRounds] = useState(7);
   // No external URL needed anymore; we scrape internally
 
@@ -138,6 +139,7 @@ export default function AdminPage() {
       }
       setGenError(null);
       setGenerating(true);
+      setJobId(null);
       // Create a progress key and start polling
       const key = Math.random().toString(36).slice(2);
       setProgressKey(key);
@@ -158,17 +160,62 @@ export default function AdminPage() {
         } catch {}
       }, 750);
       setProgressPollId(pollId);
-      const res = await fetch('/api/admin/mock-drafts/generate', {
+      // Start a background job to avoid Vercel timeouts.
+      const jobRes = await fetch('/api/admin/mock-drafts/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, dryRun: false, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription, progressKey: key })
+        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription })
       });
-      const json = await safeReadJson(res);
-      if (!res.ok || !json.ok) {
-        throw new Error(json?.error || 'Generation failed');
-      }
-      setGenResult(json);
-      setProgressText('Mock draft generated and published.');
+      const jobJson = await safeReadJson(jobRes);
+      if (!jobRes.ok || !jobJson.ok) throw new Error(jobJson?.error || 'Failed to create background job');
+      setJobId(jobJson.jobId);
+
+      // Trigger the runner (best-effort). If this returns 504 on some plans, the job can still
+      // be triggered by re-running or by adding a scheduled function later.
+      fetch('/api/admin/mock-drafts/jobs/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: jobJson.jobId })
+      }).catch(() => {});
+
+      // Poll job status and hydrate UI from Mongo
+      const jobPollId = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/admin/mock-drafts/jobs?jobId=${jobJson.jobId}`, { cache: 'no-store' });
+          const j = await safeReadJson(r);
+          if (!r.ok || !j.ok) return;
+          const job = j.job;
+          if (job?.progress?.message) {
+            const pickSuffix = job?.progress?.currentPickNumber ? ` (Pick ${job.progress.currentPickNumber})` : '';
+            setProgressText(`${job.progress.message}${pickSuffix}`);
+          }
+          if (job?.status === 'done') {
+            clearInterval(jobPollId);
+            setProgressPollId(null);
+            setGenResult({
+              ok: true,
+              dryRun: false,
+              draftId: job?.result?.draftId || null,
+              picks: job?.result?.picks || [],
+              article: job?.result?.article || '',
+              trace: job?.result?.trace || [],
+              jobId: jobJson.jobId,
+            });
+            setProgressText('Mock draft generated and published.');
+          }
+          if (job?.status === 'error') {
+            clearInterval(jobPollId);
+            setProgressPollId(null);
+            throw new Error(job?.error?.message || 'Background job failed');
+          }
+        } catch (e) {
+          clearInterval(jobPollId);
+          setProgressPollId(null);
+          setGenError(e?.message || String(e));
+          setProgressText('');
+        }
+      }, 1250);
+      setProgressPollId(jobPollId);
     } catch (e) {
       setGenError(e.message || String(e));
     } finally {
@@ -385,6 +432,9 @@ export default function AdminPage() {
             {genResult && (
               <div className="mt-3 text-sm text-white/80 space-y-2">
                 <div>Draft created: {genResult.draftId ? String(genResult.draftId) : 'Preview only (dry run)'}</div>
+                {genResult.jobId && (
+                  <div className="text-white/60 text-xs">Job: {String(genResult.jobId)}</div>
+                )}
                 <details className="bg-black/20 p-3 rounded border border-white/10">
                   <summary className="cursor-pointer">Debug Trace</summary>
                   <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">
