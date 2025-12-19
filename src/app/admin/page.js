@@ -41,6 +41,8 @@ export default function AdminPage() {
   const [progressPollId, setProgressPollId] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [jobDebug, setJobDebug] = useState(null);
+  const [liveLogs, setLiveLogs] = useState([]);
+  const [liveLogSince, setLiveLogSince] = useState(null);
   const [rounds, setRounds] = useState(7);
   // No external URL needed anymore; we scrape internally
 
@@ -141,6 +143,9 @@ export default function AdminPage() {
       setGenError(null);
       setGenerating(true);
       setJobId(null);
+  setJobDebug(null);
+  setLiveLogs([]);
+  setLiveLogSince(null);
       // For Mongo-backed jobs we don't need the old in-memory progressKey polling.
       setProgressKey(null);
       setProgressText('Queuing background job…');
@@ -153,6 +158,7 @@ export default function AdminPage() {
       const jobJson = await safeReadJson(jobRes);
       if (!jobRes.ok || !jobJson.ok) throw new Error(jobJson?.error || 'Failed to create background job');
       setJobId(jobJson.jobId);
+  setLiveLogSince(null);
 
       // Trigger the runner (best-effort). If this returns 504 on some plans, the job can still
       // be triggered by re-running or by adding a scheduled function later.
@@ -201,12 +207,42 @@ export default function AdminPage() {
         }
       }, 1250);
       setProgressPollId(jobPollId);
+
+      // Poll live logs (best-effort, in-memory).
+      const logPollId = setInterval(async () => {
+        try {
+          const qs = liveLogSince ? `&since=${encodeURIComponent(liveLogSince)}` : '';
+          const r = await fetch(`/api/admin/mock-drafts/jobs/logs?jobId=${jobJson.jobId}${qs}`, { cache: 'no-store' });
+          const j = await safeReadJson(r);
+          if (!r.ok || !j.ok) return;
+          const logs = Array.isArray(j.logs) ? j.logs : [];
+          if (logs.length) {
+            setLiveLogs(prev => {
+              const merged = [...prev, ...logs];
+              return merged.slice(-200);
+            });
+            const lastAt = logs[logs.length - 1]?.at;
+            if (lastAt) setLiveLogSince(lastAt);
+          }
+        } catch {}
+      }, 1000);
+
+      // Reuse progressPollId slot for cleanup by storing both ids in an object
+      setProgressPollId({ jobPollId, logPollId });
     } catch (e) {
       setGenError(e.message || String(e));
     } finally {
       setGenerating(false);
       if (progressPollId) {
-        clearInterval(progressPollId);
+        // progressPollId may be a single id from legacy code or an object with both ids
+        if (typeof progressPollId === 'number') {
+          clearInterval(progressPollId);
+        } else {
+          try {
+            clearInterval(progressPollId.jobPollId);
+            clearInterval(progressPollId.logPollId);
+          } catch {}
+        }
         setProgressPollId(null);
       }
     }
@@ -359,6 +395,26 @@ export default function AdminPage() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </details>
+            )}
+
+            {jobId && (
+              <details open className="mb-3 bg-black/20 p-3 rounded border border-white/10">
+                <summary className="cursor-pointer text-white/80 text-sm">Live Log (best-effort)</summary>
+                <div className="mt-2 max-h-56 overflow-auto text-xs whitespace-pre-wrap font-mono">
+                  {liveLogs.length === 0 ? (
+                    <div className="text-white/50">No live logs yet. (In serverless, this only works if the polling request hits the same instance running the job.)</div>
+                  ) : (
+                    liveLogs.map((l, idx) => (
+                      <div key={idx} className="border-b border-white/5 py-1">
+                        <span className="text-white/50">{l?.at ? new Date(l.at).toLocaleTimeString() : ''}</span>
+                        <span className="ml-2 text-[#1FDDFF]">[{l?.type || 'info'}]</span>
+                        {l?.pickNumber ? <span className="ml-2 text-white/60">{l.pickNumber}</span> : null}
+                        <span className="ml-2">{l?.message || ''}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </details>
             )}

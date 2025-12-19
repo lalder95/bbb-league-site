@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { getMockDraftJob, isValidObjectId, markJobDone, markJobError, markJobRunning, updateJobProgress } from '@/lib/mockDraftJobs';
 import { generateMockDraft } from '@/lib/mockDraftGenerator';
+import { appendLiveLog, clearLiveLogs } from '@/lib/mockDraftLiveLogStore';
 
 export const runtime = 'nodejs';
 
@@ -35,10 +36,14 @@ export async function POST(request) {
 
     await markJobRunning(jobId);
 
+  clearLiveLogs(jobId);
+  appendLiveLog(jobId, { type: 'running', message: 'Runner started' });
+
     await updateJobProgress(jobId, {
       message: 'Fetching league context…',
       event: { type: 'info', message: 'Runner started' },
     });
+    appendLiveLog(jobId, { type: 'info', message: 'Fetching league context…' });
 
     const result = await generateMockDraft({
       authSession: auth.session,
@@ -53,6 +58,7 @@ export async function POST(request) {
       // we will still stop early and return a partial draft rather than 504.
       maxSeconds: 250,
       onProgress: async ({ pickNumber, message, generatedPicks, totalPicks }) => {
+        appendLiveLog(jobId, { type: 'pick', message: message || `Progress ${pickNumber}`, pickNumber });
         await updateJobProgress(jobId, {
           message,
           currentPickNumber: pickNumber,
@@ -64,9 +70,16 @@ export async function POST(request) {
     });
 
     await markJobDone(jobId, result);
+    appendLiveLog(jobId, { type: 'done', message: 'Job completed' });
     return NextResponse.json({ ok: true, status: 'done', jobId });
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e));
+    try {
+      // best-effort attempt to append logs if we can recover jobId
+      const body = await request.json().catch(() => ({}));
+      const jobId = body?.jobId;
+      if (jobId) appendLiveLog(jobId, { type: 'error', message: err.message || 'Job failed' });
+    } catch {}
     try {
       const body = await request.json().catch(() => ({}));
       const jobId = body?.jobId;
