@@ -44,6 +44,7 @@ export default function AdminPage() {
   const [liveLogs, setLiveLogs] = useState([]);
   const [liveLogSince, setLiveLogSince] = useState(null);
   const [rounds, setRounds] = useState(7);
+  const [mongoJobLogging, setMongoJobLogging] = useState(false);
   // No external URL needed anymore; we scrape internally
 
   async function safeReadJson(res) {
@@ -154,7 +155,7 @@ export default function AdminPage() {
       const jobRes = await fetch('/api/admin/mock-drafts/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription })
+        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription, mongoLogging: mongoJobLogging })
       });
       const jobJson = await safeReadJson(jobRes);
       if (!jobRes.ok || !jobJson.ok) throw new Error(jobJson?.error || 'Failed to create background job');
@@ -163,11 +164,16 @@ export default function AdminPage() {
 
       // Trigger the runner (best-effort). If this returns 504 on some plans, the job can still
       // be triggered by re-running or by adding a scheduled function later.
-      fetch('/api/admin/mock-drafts/jobs/run', {
+      // Trigger the runner (best-effort). Await once locally so we can show errors if it can't start.
+      const runRes = await fetch('/api/admin/mock-drafts/jobs/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId: jobJson.jobId })
-      }).catch(() => {});
+      });
+      const runJson = await safeReadJson(runRes);
+      if (!runRes.ok || !runJson.ok) {
+        throw new Error(runJson?.error || 'Failed to start runner');
+      }
 
       // Poll job status and hydrate UI from Mongo
       const jobPollId = setInterval(async () => {
@@ -297,6 +303,21 @@ export default function AdminPage() {
     }
   }
 
+  // --- UI helpers ---
+  function renderJobLoggingToggle() {
+    return (
+      <label className="flex items-center gap-2 text-sm text-gray-200">
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          checked={mongoJobLogging}
+          onChange={(e) => setMongoJobLogging(e.target.checked)}
+        />
+        Log job events to MongoDB (durable, for debugging)
+      </label>
+    );
+  }
+
   if (status === 'loading') {
     return <div className="p-8 text-center">Loading...</div>;
   }
@@ -372,6 +393,10 @@ export default function AdminPage() {
             </div>
             <div className="mb-3 text-white/70 text-sm">
               This will scrape the latest KTC rookie rankings and store the normalized player pool locally.
+            </div>
+
+            <div className="mb-3">
+              {renderJobLoggingToggle()}
             </div>
             {progressText && (
               <div className="mb-3 text-white/80 text-sm">{progressText}</div>

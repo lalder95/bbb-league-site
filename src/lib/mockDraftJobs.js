@@ -21,6 +21,7 @@ export async function createMockDraftJob({
   maxPicks,
   model,
   trace,
+  mongoLogging,
 }) {
   const client = await clientPromise;
   const db = client.db();
@@ -35,10 +36,15 @@ export async function createMockDraftJob({
     maxPicks,
     model,
     trace: !!trace,
+    mongoLogging: !!mongoLogging,
     createdAt: now,
     updatedAt: now,
     startedAt: null,
     finishedAt: null,
+
+    nextPickIndex: 0,
+    leaseId: null,
+    leaseUntil: null,
 
     progress: {
       message: 'Queued…',
@@ -87,24 +93,29 @@ export async function markJobRunning(jobId) {
   const db = client.db();
   const _id = new ObjectId(jobId);
   const now = new Date();
-  await db.collection(COLLECTION).updateOne(
-    { _id },
-    {
-      $set: {
-        status: 'running',
-        startedAt: now,
-        updatedAt: now,
-        'progress.message': 'Starting generation…',
-        'progress.heartbeatAt': now,
+  const job = await db.collection(COLLECTION).findOne({ _id }, { projection: { mongoLogging: 1 } });
+  const mongoLogging = !!job?.mongoLogging;
+
+  const update = {
+    $set: {
+      status: 'running',
+      // only set startedAt once
+      startedAt: job?.startedAt || now,
+      updatedAt: now,
+      'progress.message': 'Starting generation…',
+      'progress.heartbeatAt': now,
+    },
+  };
+  if (mongoLogging) {
+    update.$push = {
+      events: {
+        $each: [{ at: now, type: 'running', message: 'Job marked running' }],
+        $slice: -400,
       },
-      $push: {
-        events: {
-          $each: [{ at: now, type: 'running', message: 'Job marked running' }],
-          $slice: -80,
-        },
-      },
-    }
-  );
+    };
+  }
+
+  await db.collection(COLLECTION).updateOne({ _id }, update);
 }
 
 // Acquire a short lease/lock for this job to prevent overlapping runners.
@@ -189,6 +200,9 @@ export async function updateJobProgress(jobId, patch) {
   const now = new Date();
   const $set = { updatedAt: now };
 
+  const job = await db.collection(COLLECTION).findOne({ _id }, { projection: { mongoLogging: 1 } });
+  const mongoLogging = !!job?.mongoLogging;
+
   if (patch?.message !== undefined) $set['progress.message'] = patch.message;
   if (patch?.currentPickNumber !== undefined) $set['progress.currentPickNumber'] = patch.currentPickNumber;
   if (patch?.generatedPicks !== undefined) $set['progress.generatedPicks'] = patch.generatedPicks;
@@ -196,11 +210,11 @@ export async function updateJobProgress(jobId, patch) {
 
   const event = patch?.event;
   const update = { $set };
-  if (event) {
+  if (event && mongoLogging) {
     update.$push = {
       events: {
         $each: [{ at: now, ...event }],
-        $slice: -80,
+        $slice: -400,
       },
     };
   }
@@ -214,36 +228,40 @@ export async function markJobDone(jobId, result) {
   const _id = new ObjectId(jobId);
   const now = new Date();
 
-  await db.collection(COLLECTION).updateOne(
-    { _id },
-    {
-      $set: {
-        status: 'done',
-        finishedAt: now,
-        updatedAt: now,
-        progress: {
-          message: 'Complete.',
-          currentPickNumber: result?.progress?.currentPickNumber || null,
-          generatedPicks: result?.picks?.length || 0,
-          totalPicks: result?.progress?.totalPicks || (result?.picks?.length || 0),
-          heartbeatAt: now,
-        },
-        result: {
-          draftId: result?.draftId || null,
-          picks: result?.picks || [],
-          article: result?.article || '',
-          trace: result?.trace || [],
-        },
-        error: null,
+  const job = await db.collection(COLLECTION).findOne({ _id }, { projection: { mongoLogging: 1 } });
+  const mongoLogging = !!job?.mongoLogging;
+
+  const update = {
+    $set: {
+      status: 'done',
+      finishedAt: now,
+      updatedAt: now,
+      progress: {
+        message: 'Complete.',
+        currentPickNumber: result?.progress?.currentPickNumber || null,
+        generatedPicks: result?.picks?.length || 0,
+        totalPicks: result?.progress?.totalPicks || (result?.picks?.length || 0),
+        heartbeatAt: now,
       },
-      $push: {
-        events: {
-          $each: [{ at: now, type: 'done', message: 'Job completed' }],
-          $slice: -80,
-        },
+      result: {
+        draftId: result?.draftId || null,
+        picks: result?.picks || [],
+        article: result?.article || '',
+        trace: result?.trace || [],
       },
-    }
-  );
+      error: null,
+    },
+  };
+  if (mongoLogging) {
+    update.$push = {
+      events: {
+        $each: [{ at: now, type: 'done', message: 'Job completed' }],
+        $slice: -400,
+      },
+    };
+  }
+
+  await db.collection(COLLECTION).updateOne({ _id }, update);
 }
 
 export async function markJobError(jobId, error) {
@@ -251,24 +269,28 @@ export async function markJobError(jobId, error) {
   const db = client.db();
   const _id = new ObjectId(jobId);
   const now = new Date();
-  await db.collection(COLLECTION).updateOne(
-    { _id },
-    {
-      $set: {
-        status: 'error',
-        finishedAt: now,
-        updatedAt: now,
-        error: {
-          message: error?.message || String(error || 'Unknown error'),
-          stack: error?.stack || null,
-        },
+  const job = await db.collection(COLLECTION).findOne({ _id }, { projection: { mongoLogging: 1 } });
+  const mongoLogging = !!job?.mongoLogging;
+
+  const update = {
+    $set: {
+      status: 'error',
+      finishedAt: now,
+      updatedAt: now,
+      error: {
+        message: error?.message || String(error || 'Unknown error'),
+        stack: error?.stack || null,
       },
-      $push: {
-        events: {
-          $each: [{ at: now, type: 'error', message: error?.message || 'Job failed' }],
-          $slice: -80,
-        },
+    },
+  };
+  if (mongoLogging) {
+    update.$push = {
+      events: {
+        $each: [{ at: now, type: 'error', message: error?.message || 'Job failed' }],
+        $slice: -400,
       },
-    }
-  );
+    };
+  }
+
+  await db.collection(COLLECTION).updateOne({ _id }, update);
 }

@@ -25,6 +25,7 @@ export async function POST(request) {
       model = 'gpt-4o-mini',
       title = 'BBB AI Mock Draft',
       description = 'AI-generated mock draft with per-pick reasoning.',
+      mongoLogging = false,
     } = body || {};
 
     const safeRounds = Math.max(1, Math.min(7, Number(rounds) || 1));
@@ -38,6 +39,7 @@ export async function POST(request) {
       maxPicks: safeMaxPicks,
       model,
       trace,
+      mongoLogging: !!mongoLogging,
     });
 
     return NextResponse.json({ ok: true, jobId });
