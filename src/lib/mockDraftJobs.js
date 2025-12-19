@@ -107,6 +107,81 @@ export async function markJobRunning(jobId) {
   );
 }
 
+// Acquire a short lease/lock for this job to prevent overlapping runners.
+// Returns { ok: true, lockId, lockedUntil } when acquired.
+// Returns { ok: false } when another runner holds the lease.
+export async function tryAcquireJobLease(jobId, { leaseMs = 45000 } = {}) {
+  const client = await clientPromise;
+  const db = client.db();
+  const _id = new ObjectId(jobId);
+  const now = new Date();
+  const lockedUntil = new Date(now.getTime() + Math.max(5000, Number(leaseMs) || 45000));
+  const lockId = new ObjectId();
+
+  const res = await db.collection(COLLECTION).findOneAndUpdate(
+    {
+      _id,
+      status: { $in: ['queued', 'running'] },
+      $or: [
+        { leaseUntil: { $exists: false } },
+        { leaseUntil: null },
+        { leaseUntil: { $lte: now } },
+      ],
+    },
+    {
+      $set: {
+        leaseId: lockId,
+        leaseUntil: lockedUntil,
+        updatedAt: now,
+        'progress.heartbeatAt': now,
+      },
+    },
+    { returnDocument: 'after' }
+  );
+
+  if (!res?.value) return { ok: false };
+  return { ok: true, lockId: String(lockId), lockedUntil };
+}
+
+export async function renewJobLease(jobId, { lockId, leaseMs = 45000 } = {}) {
+  if (!lockId) return { ok: false };
+  const client = await clientPromise;
+  const db = client.db();
+  const _id = new ObjectId(jobId);
+  const now = new Date();
+  const lockedUntil = new Date(now.getTime() + Math.max(5000, Number(leaseMs) || 45000));
+
+  const res = await db.collection(COLLECTION).updateOne(
+    { _id, leaseId: new ObjectId(lockId) },
+    {
+      $set: {
+        leaseUntil: lockedUntil,
+        updatedAt: now,
+        'progress.heartbeatAt': now,
+      },
+    }
+  );
+  return { ok: res?.modifiedCount === 1, lockedUntil };
+}
+
+export async function releaseJobLease(jobId, { lockId } = {}) {
+  if (!lockId) return;
+  const client = await clientPromise;
+  const db = client.db();
+  const _id = new ObjectId(jobId);
+  const now = new Date();
+  await db.collection(COLLECTION).updateOne(
+    { _id, leaseId: new ObjectId(lockId) },
+    {
+      $set: {
+        leaseId: null,
+        leaseUntil: null,
+        updatedAt: now,
+      },
+    }
+  );
+}
+
 export async function updateJobProgress(jobId, patch) {
   const client = await clientPromise;
   const db = client.db();

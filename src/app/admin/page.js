@@ -135,6 +135,7 @@ export default function AdminPage() {
   }
 
   async function handleApproveAndRun() {
+    let intervals = null;
     try {
       if (!approvedPool || !approvedOrder) {
         setGenError('Please approve both the player pool and the draft order to proceed.');
@@ -206,7 +207,8 @@ export default function AdminPage() {
           setProgressText('');
         }
       }, 1250);
-      setProgressPollId(jobPollId);
+  // Store interval IDs for cleanup.
+  intervals = { jobPollId };
 
       // Poll live logs (best-effort, in-memory).
       const logPollId = setInterval(async () => {
@@ -227,14 +229,15 @@ export default function AdminPage() {
         } catch {}
       }, 1000);
 
-      // Reuse progressPollId slot for cleanup by storing both ids in an object
-      setProgressPollId({ jobPollId, logPollId });
+      intervals = { jobPollId, logPollId };
+      setProgressPollId(intervals);
     } catch (e) {
       setGenError(e.message || String(e));
     } finally {
+      // Background generation continues after this function returns.
       setGenerating(false);
-      if (progressPollId) {
-        // progressPollId may be a single id from legacy code or an object with both ids
+      // Only clear intervals if we failed before starting them.
+      if (!intervals && progressPollId) {
         if (typeof progressPollId === 'number') {
           clearInterval(progressPollId);
         } else {

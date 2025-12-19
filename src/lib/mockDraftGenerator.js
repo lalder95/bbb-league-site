@@ -146,6 +146,33 @@ function toMarkdownArticle({ title, picks, leagueName }) {
   return lines.join('\n');
 }
 
+export async function publishMockDraft({ authSession, title, description, picks, article, trace, leagueId, model }) {
+  const client = await clientPromise;
+  const db = client.db();
+
+  const doc = {
+    title,
+    description,
+    content: article,
+    author: authSession?.user?.username || 'Commissioner',
+    date: new Date().toISOString().split('T')[0],
+    active: true,
+    archived: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    meta: {
+      leagueId: leagueId || null,
+      model: model || null,
+      picks: picks || [],
+      trace: trace || undefined,
+    },
+  };
+
+  await db.collection('mockDrafts').updateMany({ active: true }, { $set: { active: false } });
+  const result = await db.collection('mockDrafts').insertOne(doc);
+  return { id: result.insertedId };
+}
+
 export async function generateMockDraft({
   authSession,
   rounds = 7,
@@ -157,6 +184,11 @@ export async function generateMockDraft({
   title = 'BBB AI Mock Draft',
   description = 'AI-generated mock draft with per-pick reasoning.',
   maxSeconds = 50,
+  // For background jobs: resume draft generation from a specific index.
+  // Index is 0-based into the computed draft order.
+  startIndex = 0,
+  // For background jobs: limit how many picks to generate in this invocation.
+  maxPicksToGenerate = null,
   // Prevent a single OpenAI call from hanging the whole job.
   perPickTimeoutMs = 25000,
   perPickMaxRetries = 2,
@@ -317,10 +349,22 @@ export async function generateMockDraft({
 
   const startedAt = Date.now();
 
-  for (let i = 0; i < order.length && pool.length > 0; i++) {
+  const safeStartIndex = Math.max(0, Math.min(order.length, Number(startIndex) || 0));
+  const safeMaxInThisRun =
+    maxPicksToGenerate === null || maxPicksToGenerate === undefined
+      ? null
+      : Math.max(1, Number(maxPicksToGenerate) || 1);
+
+  for (let i = safeStartIndex; i < order.length && pool.length > 0; i++) {
     const elapsedSeconds = (Date.now() - startedAt) / 1000;
     if (Number(maxSeconds) > 0 && elapsedSeconds > Number(maxSeconds)) {
       trace && traceLog.push({ warning: 'Stopped early to avoid timeout', elapsedSeconds, generatedPicks: picks.length });
+      break;
+    }
+
+    // Stop after a limited batch size (for serverless background job runner).
+    if (safeMaxInThisRun !== null && picks.length >= safeMaxInThisRun) {
+      trace && traceLog.push({ warning: 'Stopped after batch limit', generatedPicks: picks.length });
       break;
     }
 
@@ -415,29 +459,16 @@ export async function generateMockDraft({
 
   let saved = null;
   if (!dryRun) {
-    const client = await clientPromise;
-    const db = client.db();
-    const doc = {
+    saved = await publishMockDraft({
+      authSession,
       title,
       description,
-      content: article,
-      author: authSession?.user?.username || 'Commissioner',
-      date: new Date().toISOString().split('T')[0],
-      active: true,
-      archived: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      meta: {
-        leagueId,
-        model,
-        picks,
-        trace: trace ? traceLog : undefined,
-      },
-    };
-
-    await db.collection('mockDrafts').updateMany({ active: true }, { $set: { active: false } });
-    const result = await db.collection('mockDrafts').insertOne(doc);
-    saved = { id: result.insertedId };
+      picks,
+      article,
+      trace: trace ? traceLog : undefined,
+      leagueId,
+      model,
+    });
   }
 
   return {
