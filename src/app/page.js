@@ -27,6 +27,10 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [currentWeek, setCurrentWeek] = useState(null);
 
+  // Sleeper User ID - your actual Sleeper user ID
+  const USER_ID = '456973480269705216';
+  const [leagueId, setLeagueId] = useState(null);
+
   // NEW: Add selectedWeek state for week navigation
   const [selectedWeek, setSelectedWeek] = useState(null);
 
@@ -40,6 +44,134 @@ export default function Home() {
   const [playerGameStates, setPlayerGameStates] = useState({});
   // Announcements
   const [announcements, setAnnouncements] = useState([]);
+  const [playoffMode, setPlayoffMode] = useState(false);
+  const [winnersBracket, setWinnersBracket] = useState([]);
+  const [bracketLoading, setBracketLoading] = useState(false);
+  const [bracketError, setBracketError] = useState(null);
+  const [selectedBracketMatch, setSelectedBracketMatch] = useState(null); // { match, matchupPair }
+  const [playoffMatchupsByWeek, setPlayoffMatchupsByWeek] = useState({}); // week -> processed matchups pairs
+  const [bracketMatchupsLoading, setBracketMatchupsLoading] = useState(false);
+  const [leagueUsers, setLeagueUsers] = useState([]);
+  const [leagueRosters, setLeagueRosters] = useState([]);
+
+  function flattenTeamsFromPairs(pairs) {
+    return Array.isArray(pairs) ? pairs.flat() : [];
+  }
+
+  function getPlayoffWeekForRound(round) {
+    const start = Number(leagueData?.settings?.playoff_week_start);
+    const r = Number(round);
+    if (!Number.isFinite(start) || !Number.isFinite(r) || r <= 0) return null;
+    return start + (r - 1);
+  }
+
+  function getTeamMetaFromPairs(pairs, rosterId) {
+    const allTeams = flattenTeamsFromPairs(pairs);
+    const hit = allTeams.find(t => Number(t?.roster_id) === Number(rosterId));
+    return {
+      teamName: hit?.teamName || `Team ${rosterId}`,
+      avatar: hit?.avatar || null
+    };
+  }
+
+  function getScoreFromPairs(pairs, rosterId) {
+    const allTeams = flattenTeamsFromPairs(pairs);
+    const hit = allTeams.find(t => Number(t?.roster_id) === Number(rosterId));
+    const pts = hit?.points;
+    if (typeof pts !== 'number') return null;
+    // For future games, Sleeper often returns 0 points and an empty starters list.
+    // Use starters as the signal so completed/active games that legitimately have 0.00 don't get hidden.
+    const starters = Array.isArray(hit?.starters) ? hit.starters : [];
+    const appearsNotStarted = starters.length === 0 && pts === 0;
+    return appearsNotStarted ? null : pts;
+  }
+
+  function resolveMatchupPairForRostersFromPairs(pairs, rosterIdA, rosterIdB) {
+    const a = Number(rosterIdA);
+    const b = Number(rosterIdB);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    const found = (pairs || []).find(pair => {
+      if (!Array.isArray(pair) || pair.length !== 2) return false;
+      const ids = [Number(pair[0]?.roster_id), Number(pair[1]?.roster_id)];
+      return ids.includes(a) && ids.includes(b);
+    });
+    return found || null;
+  }
+
+  async function ensurePlayoffMatchupsForWeek(weekToFetch, usersArg, rostersArg) {
+    const w = Number(weekToFetch);
+    if (!leagueId || !Number.isFinite(w)) return null;
+    if (playoffMatchupsByWeek?.[w]) return playoffMatchupsByWeek[w];
+
+    const users = Array.isArray(leagueUsers) && leagueUsers.length ? leagueUsers : usersArg;
+    const rosters = Array.isArray(leagueRosters) && leagueRosters.length ? leagueRosters : rostersArg;
+
+    const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${w}`);
+    if (!res.ok) throw new Error('Failed to fetch matchups');
+    const matchupsData = await res.json();
+    const processedMatchups = processMatchups(
+      matchupsData,
+      Array.isArray(users) ? users : [],
+      Array.isArray(rosters) ? rosters : []
+    );
+
+    setPlayoffMatchupsByWeek(prev => ({ ...prev, [w]: processedMatchups }));
+    return processedMatchups;
+  }
+
+  // Preload all playoff weeks referenced by the winners bracket so bracket tiles show correct scores immediately.
+  useEffect(() => {
+    if (!playoffMode) return;
+    if (!leagueId) return;
+    if (!leagueData?.settings) return;
+    if (!Array.isArray(winnersBracket) || winnersBracket.length === 0) return;
+
+    const start = Number(leagueData.settings.playoff_week_start);
+    if (!Number.isFinite(start) || start <= 0) return;
+
+    const rounds = new Set(
+      winnersBracket
+        .map(r => Number(r?.r))
+        .filter(r => Number.isFinite(r) && r > 0)
+    );
+    if (!rounds.size) return;
+
+    const weeks = [...rounds]
+      .map(r => start + (r - 1))
+      .filter(w => Number.isFinite(w));
+
+    let cancelled = false;
+    (async () => {
+      try {
+        // Ensure we have roster/user caches available.
+        let users = Array.isArray(leagueUsers) ? leagueUsers : [];
+        let rosters = Array.isArray(leagueRosters) ? leagueRosters : [];
+        if (!users.length || !rosters.length) {
+          const [usersRes, rostersRes] = await Promise.all([
+            fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+            fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`)
+          ]);
+          users = usersRes.ok ? await usersRes.json() : users;
+          rosters = rostersRes.ok ? await rostersRes.json() : rosters;
+          if (Array.isArray(users) && users.length) setLeagueUsers(users);
+          if (Array.isArray(rosters) && rosters.length) setLeagueRosters(rosters);
+        }
+
+        // Fetch each playoff week once.
+        for (const w of weeks) {
+          if (cancelled) return;
+          if (playoffMatchupsByWeek?.[w]) continue;
+          await ensurePlayoffMatchupsForWeek(w, users, rosters);
+        }
+      } catch {
+        // Ignore preload errors; modal click will still attempt on-demand.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playoffMode, winnersBracket, leagueId, leagueData, leagueUsers, leagueRosters]);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,10 +198,6 @@ export default function Home() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  // Sleeper User ID - your actual Sleeper user ID
-  const USER_ID = '456973480269705216';
-  const [leagueId, setLeagueId] = useState(null);
 
   // Add timeout to prevent infinite loading
   useEffect(() => {
@@ -232,6 +360,7 @@ export default function Home() {
         if (!usersResponse.ok) throw new Error('Failed to fetch users');
         const users = await usersResponse.json();
         console.log('Users fetched:', users.length);
+  setLeagueUsers(users);
 
         // NEW: build team avatar map for PlayerProfileCard
         const avatarMap = {};
@@ -246,6 +375,7 @@ export default function Home() {
         if (!rostersResponse.ok) throw new Error('Failed to fetch rosters');
         const rosters = await rostersResponse.json();
         console.log('Rosters fetched:', rosters.length);
+  setLeagueRosters(rosters);
         
         // Fetch matchups for selectedWeek (not week)
         console.log('Fetching matchups for week:', selectedWeek ?? week);
@@ -257,6 +387,17 @@ export default function Home() {
         // Process matchups data to include team names & starters
         const processedMatchups = processMatchups(matchupsData, users, rosters);
         setMatchups(processedMatchups);
+
+        // Also seed playoff matchups cache for the current week once playoffs are underway.
+        // This avoids selectedWeek affecting bracket tile labels/scores during Playoff Mode.
+        const playoffStart = Number(leagueInfo?.settings?.playoff_week_start);
+        if (Number.isFinite(playoffStart) && playoffStart > 0 && Number(selectedWeek ?? week) >= playoffStart) {
+          setPlayoffMatchupsByWeek(prev => {
+            const wk = Number(selectedWeek ?? week);
+            if (prev?.[wk]) return prev;
+            return { ...prev, [wk]: processedMatchups };
+          });
+        }
 
         // Collect unique starter IDs
         const starterIds = [...new Set(
@@ -302,6 +443,51 @@ export default function Home() {
     
     fetchData();
   }, [leagueId, selectedWeek]); // <-- Add selectedWeek as dependency
+  // Auto-enable Playoff Mode when league settings indicate playoffs have started.
+  // Best method per Sleeper: league.settings.playoff_week_start (integer nfl week).
+  useEffect(() => {
+    if (!leagueData?.settings) return;
+    const start = Number(leagueData.settings.playoff_week_start);
+    if (!Number.isFinite(start) || start <= 0) {
+      setPlayoffMode(false);
+      return;
+    }
+    const weekToUse = Number(selectedWeek ?? currentWeek);
+    if (!Number.isFinite(weekToUse) || weekToUse <= 0) {
+      setPlayoffMode(false);
+      return;
+    }
+    setPlayoffMode(weekToUse >= start);
+  }, [leagueData, selectedWeek, currentWeek]);
+
+  // Fetch winners bracket when playoff mode is active
+  useEffect(() => {
+    if (!playoffMode || !leagueId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setBracketLoading(true);
+        setBracketError(null);
+
+        const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to fetch winners bracket');
+        const data = await res.json();
+        if (!cancelled) setWinnersBracket(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (!cancelled) {
+          setBracketError(e?.message || 'Failed to load playoff bracket');
+          setWinnersBracket([]);
+        }
+      } finally {
+        if (!cancelled) setBracketLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playoffMode, leagueId]);
 
   // Helper: fetch player info from BBB_Contracts.csv
   async function fetchStarterPlayerInfo(neededIds = []) {
@@ -632,6 +818,86 @@ export default function Home() {
   function renderMainContent() {
     if (!leagueData?.status) return <OffseasonContent />;
 
+    // Playoffs can overlap with statuses other than "in_season" depending on league configuration
+    // (and some leagues may flip status earlier than expected). If we have triggered playoffMode,
+    // show the bracket regardless of status.
+    if (playoffMode) {
+      return (
+        <PlayoffMode
+          isMobile={isMobile}
+          leagueData={leagueData}
+          winnersBracket={winnersBracket}
+          bracketLoading={bracketLoading}
+          bracketError={bracketError}
+          resolveTeamMeta={(rosterId, round) => {
+            const start = Number(leagueData?.settings?.playoff_week_start);
+            const r = Number(round);
+            const wk = Number.isFinite(start) && Number.isFinite(r) && r > 0 ? (start + (r - 1)) : (Number.isFinite(start) ? start : null);
+            const pairs = wk != null ? playoffMatchupsByWeek?.[wk] : null;
+            return getTeamMetaFromPairs(pairs || matchups, rosterId);
+          }}
+          resolveTeamScore={(rosterId, round) => {
+            const start = Number(leagueData?.settings?.playoff_week_start);
+            const r = Number(round);
+            const wk = Number.isFinite(start) && Number.isFinite(r) && r > 0 ? (start + (r - 1)) : (Number.isFinite(start) ? start : null);
+            const pairs = wk != null ? playoffMatchupsByWeek?.[wk] : null;
+            return getScoreFromPairs(pairs || matchups, rosterId);
+          }}
+          onPickMatch={(payload) => {
+            const match = payload?.match;
+            const t1 = match?.t1;
+            const t2 = match?.t2;
+            const round = Number(match?.r) || null;
+            const weekForMatch = round != null ? getPlayoffWeekForRound(round) : null;
+
+            (async () => {
+              try {
+                if (!leagueData || !leagueId) {
+                  setSelectedBracketMatch({ ...payload, matchupPair: null, week: weekForMatch });
+                  return;
+                }
+
+                setBracketMatchupsLoading(true);
+
+                // Prefer cached league users/rosters to avoid refetching on every click.
+                // Fallback to fetching only if cache is empty.
+                let users = Array.isArray(leagueUsers) ? leagueUsers : [];
+                let rosters = Array.isArray(leagueRosters) ? leagueRosters : [];
+                if (!users.length || !rosters.length) {
+                  const [usersRes, rostersRes] = await Promise.all([
+                    fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+                    fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`)
+                  ]);
+                  users = usersRes.ok ? await usersRes.json() : users;
+                  rosters = rostersRes.ok ? await rostersRes.json() : rosters;
+                  if (Array.isArray(users) && users.length) setLeagueUsers(users);
+                  if (Array.isArray(rosters) && rosters.length) setLeagueRosters(rosters);
+                }
+
+                const pairsForWeek = weekForMatch != null
+                  ? await ensurePlayoffMatchupsForWeek(weekForMatch, users, rosters)
+                  : null;
+
+                const resolvedPair = (typeof t1 === 'number' && typeof t2 === 'number')
+                  ? resolveMatchupPairForRostersFromPairs(pairsForWeek || matchups, t1, t2)
+                  : null;
+
+                setSelectedBracketMatch({
+                  ...payload,
+                  matchupPair: resolvedPair,
+                  week: weekForMatch
+                });
+              } catch (e) {
+                setSelectedBracketMatch({ ...payload, matchupPair: null, week: weekForMatch, error: e?.message || 'Failed to load matchup' });
+              } finally {
+                setBracketMatchupsLoading(false);
+              }
+            })();
+          }}
+        />
+      );
+    }
+
     switch (leagueData.status) {
       case "in_season":
         return (
@@ -807,6 +1073,10 @@ export default function Home() {
       default:
         return <OffseasonContent />;
     }
+  }
+
+  function closeBracketModal() {
+    setSelectedBracketMatch(null);
   }
 
   const [tweets, setTweets] = useState([]);
@@ -1134,6 +1404,23 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
                 {currentWeek ? `Week ${currentWeek} Matchups` : 'Current Matchups'}
               </h2>
               {renderMainContent()}
+      {/* Bracket Matchup Modal */}
+      {selectedBracketMatch && (
+        <BracketMatchupModal
+          isMobile={isMobile}
+          payload={selectedBracketMatch}
+          onClose={closeBracketModal}
+          matchupPair={selectedBracketMatch?.matchupPair}
+          loadingMatchup={bracketMatchupsLoading}
+          playerInfoMap={playerInfoMap}
+          selectedWeek={selectedBracketMatch?.week ?? selectedWeek}
+          expandedPlayerId={expandedPlayerId}
+          setExpandedPlayerId={setExpandedPlayerId}
+          playerGameStates={playerGameStates}
+          setPlayerGameStates={setPlayerGameStates}
+          playersLoading={playersLoading}
+        />
+      )}
             </div>
             
             <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
@@ -1289,6 +1576,588 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
         }
       `}</style>
     </main>
+  );
+}
+
+function getPlayoffSettingsSummary(leagueData) {
+  const start = Number(leagueData?.settings?.playoff_week_start);
+  const teams = Number(leagueData?.settings?.playoff_teams);
+  return {
+    playoffWeekStart: Number.isFinite(start) ? start : null,
+    playoffTeams: Number.isFinite(teams) ? teams : null
+  };
+}
+
+function buildRosterMetaMap(leagueData) {
+  return {
+    leagueAvatar: leagueData?.avatar ? `https://sleepercdn.com/avatars/${leagueData.avatar}` : null
+  };
+}
+
+function goldifyTeamName(name) {
+  return String(name || '').trim() || 'TBD';
+}
+
+function PlayoffMode({
+  isMobile,
+  leagueData,
+  winnersBracket,
+  bracketLoading,
+  bracketError,
+  resolveTeamMeta,
+  resolveTeamScore,
+  onPickMatch
+}) {
+  const { playoffWeekStart, playoffTeams } = getPlayoffSettingsSummary(leagueData);
+  const meta = buildRosterMetaMap(leagueData);
+
+  // Remove placement games (3rd/5th) for 6-team playoffs.
+  // Sleeper's winners_bracket includes extra placement games; we keep the main championship path.
+  const canonicalBracket = React.useMemo(() => {
+    const rows = Array.isArray(winnersBracket) ? winnersBracket.slice() : [];
+    if (!rows.length) return rows;
+
+    const teams = Number(playoffTeams);
+    // BBB manual filter (per observed bracket numbering): hide placement games.
+    // - M5: 5th-place style game
+    // - M7: 3rd-place style game
+    // Keep the rest of the winners bracket intact.
+    if (teams === 6) {
+      return rows.filter(row => {
+        const m = Number(row?.m);
+        return m !== 5 && m !== 7;
+      });
+    }
+
+    return rows;
+  }, [winnersBracket, playoffTeams]);
+
+  const maxRound = React.useMemo(() => {
+    if (!Array.isArray(canonicalBracket) || canonicalBracket.length === 0) return 0;
+    return canonicalBracket.reduce((m, row) => Math.max(m, Number(row?.r) || 0), 0);
+  }, [canonicalBracket]);
+
+  const rowsByRound = React.useMemo(() => {
+    const map = new Map();
+    (canonicalBracket || []).forEach(row => {
+      const r = Number(row?.r) || 0;
+      if (!map.has(r)) map.set(r, []);
+      map.get(r).push(row);
+    });
+    for (const [r, rows] of map.entries()) {
+      rows.sort((a, b) => (Number(a?.m) || 0) - (Number(b?.m) || 0));
+      map.set(r, rows);
+    }
+    return map;
+  }, [canonicalBracket]);
+
+  function teamLabelFromSource(src) {
+    if (src == null) return null;
+    if (typeof src === 'number') return `Roster ${src}`;
+    if (typeof src === 'object') {
+      if (src.w != null) return `Winner of M${src.w}`;
+      if (src.l != null) return `Loser of M${src.l}`;
+    }
+    return null;
+  }
+
+  function resolveTeamStub(rosterIdOrFrom, round) {
+    const directRosterId = typeof rosterIdOrFrom === 'number' ? rosterIdOrFrom : null;
+    const meta = (directRosterId != null && typeof resolveTeamMeta === 'function')
+      ? resolveTeamMeta(directRosterId, round)
+      : null;
+
+    const score = (directRosterId != null && typeof resolveTeamScore === 'function')
+      ? resolveTeamScore(directRosterId, round)
+      : null;
+
+    const label = directRosterId != null
+      ? (meta?.teamName || `Roster ${directRosterId}`)
+      : (teamLabelFromSource(rosterIdOrFrom) || 'TBD');
+
+    return {
+      label,
+      rosterId: directRosterId,
+      avatar: meta?.avatar || null,
+      score
+    };
+  }
+
+  function buildMatchupPairForBracketMatch(match) {
+    return {
+      match,
+      t1: match?.t1 ?? match?.t1_from,
+      t2: match?.t2 ?? match?.t2_from
+    };
+  }
+
+  const title = 'Playoff Mode';
+  const subtitle = playoffWeekStart ? `Playoffs started Week ${playoffWeekStart}` : 'Championship race is on';
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-yellow-400/25 bg-gradient-to-b from-[#1a1200] via-black to-black p-4 md:p-6">
+      <div className="pointer-events-none absolute inset-0 opacity-40">
+        <div className="absolute -top-24 left-0 right-0 h-48 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent animate-[goldSweep_4.5s_linear_infinite]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,215,0,0.16),transparent_35%),radial-gradient(circle_at_80%_30%,rgba(255,215,0,0.12),transparent_40%),radial-gradient(circle_at_50%_90%,rgba(255,215,0,0.10),transparent_45%)]" />
+      </div>
+
+      <div className="relative">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-yellow-400/30 bg-yellow-400/10 px-3 py-1 text-xs font-semibold tracking-wide text-yellow-200">
+              <span className="inline-block h-2 w-2 rounded-full bg-yellow-300 shadow-[0_0_16px_rgba(255,215,0,0.8)]" />
+              {title}
+            </div>
+            <h2 className="mt-3 text-2xl md:text-3xl font-extrabold text-yellow-100 drop-shadow">
+              Champions Bracket
+            </h2>
+            <p className="mt-1 text-sm md:text-base text-yellow-200/70">{subtitle}</p>
+            {Number.isFinite(playoffTeams) && playoffTeams ? (
+              <p className="mt-1 text-xs text-yellow-200/60">Format: {playoffTeams}-team playoffs (auto-detected)</p>
+            ) : null}
+          </div>
+
+          {meta?.leagueAvatar ? (
+            <img
+              src={meta.leagueAvatar}
+              alt="League"
+              className="hidden md:block w-14 h-14 rounded-xl border border-yellow-400/30 bg-yellow-400/10 object-cover"
+            />
+          ) : null}
+        </div>
+
+        <div className="mt-5">
+          {bracketLoading && (
+            <div className="text-yellow-200/70 text-sm">Loading bracket…</div>
+          )}
+          {bracketError && (
+            <div className="text-red-300 text-sm">{bracketError}</div>
+          )}
+          {!bracketLoading && !bracketError && (!winnersBracket || winnersBracket.length === 0) && (
+            <div className="text-yellow-200/70 text-sm">Bracket not available yet.</div>
+          )}
+
+          {!bracketLoading && !bracketError && Array.isArray(winnersBracket) && winnersBracket.length > 0 && (
+            <>
+              {isMobile ? (
+                <MobileVerticalBracket
+                  maxRound={maxRound}
+                  rowsByRound={rowsByRound}
+                  resolveTeamStub={resolveTeamStub}
+                  onPickMatch={(match) => onPickMatch(buildMatchupPairForBracketMatch(match))}
+                />
+              ) : (
+                <DesktopColumnBracket
+                  maxRound={maxRound}
+                  rowsByRound={rowsByRound}
+                  resolveTeamStub={resolveTeamStub}
+                  onPickMatch={(match) => onPickMatch(buildMatchupPairForBracketMatch(match))}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes goldSweep {
+          0% { transform: translateX(-60%); opacity: 0.0; }
+          10% { opacity: 0.35; }
+          50% { opacity: 0.5; }
+          90% { opacity: 0.35; }
+          100% { transform: translateX(60%); opacity: 0.0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function MatchChip({ sideLabel, isWinner, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left rounded-lg border px-3 py-2 transition hover:scale-[1.01] active:scale-[0.99] ${
+        isWinner
+          ? 'border-yellow-300/50 bg-yellow-400/10 text-yellow-100'
+          : 'border-white/10 bg-black/30 text-white/85'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate font-semibold">{goldifyTeamName(sideLabel)}</span>
+        {isWinner ? (
+          <span className="text-[10px] font-bold text-yellow-200 border border-yellow-400/30 bg-yellow-400/10 rounded px-1.5 py-0.5">
+            W
+          </span>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function DesktopColumnBracket({ maxRound, rowsByRound, resolveTeamStub, onPickMatch }) {
+  const rounds = Array.from({ length: maxRound }, (_, i) => i + 1);
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[720px] grid gap-3" style={{ gridTemplateColumns: `repeat(${rounds.length}, minmax(200px, 1fr))` }}>
+        {rounds.map((r) => {
+          const rows = rowsByRound.get(r) || [];
+          const label = r === maxRound ? 'Championship' : r === 1 ? 'Round 1' : `Round ${r}`;
+          return (
+            <div key={r} className="space-y-3">
+              <div className="text-xs font-bold tracking-wide text-yellow-200/70 uppercase px-1">{label}</div>
+              <div className="space-y-3">
+                {rows.map((match) => {
+                  const t1 = resolveTeamStub(match?.t1 ?? match?.t1_from, match?.r);
+                  const t2 = resolveTeamStub(match?.t2 ?? match?.t2_from, match?.r);
+                  const winner = match?.w != null ? Number(match.w) : null;
+                  return (
+                    <div
+                      key={match?.m}
+                      className="rounded-xl border border-yellow-300/15 bg-gradient-to-b from-black/40 to-black/20 p-3 shadow-[0_0_0_1px_rgba(255,215,0,0.08),0_12px_32px_rgba(0,0,0,0.35)]"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-[11px] font-semibold text-yellow-200/70">Match M{match?.m}</div>
+                        <button
+                          onClick={() => onPickMatch(match)}
+                          className="text-[11px] px-2 py-1 rounded border border-yellow-400/25 bg-yellow-400/10 text-yellow-100 hover:bg-yellow-400/15"
+                          aria-label="Open matchup"
+                          title="Open matchup"
+                        >
+                          View
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        <TeamChip
+                          team={t1}
+                          isWinner={winner != null && t1.rosterId != null ? winner === t1.rosterId : false}
+                          onClick={() => onPickMatch(match)}
+                        />
+                        <TeamChip
+                          team={t2}
+                          isWinner={winner != null && t2.rosterId != null ? winner === t2.rosterId : false}
+                          onClick={() => onPickMatch(match)}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MobileVerticalBracket({ maxRound, rowsByRound, resolveTeamStub, onPickMatch }) {
+  const rounds = Array.from({ length: maxRound }, (_, i) => i + 1);
+  return (
+    <div className="space-y-4">
+      {rounds.map((r) => {
+        const rows = rowsByRound.get(r) || [];
+        const label = r === maxRound ? 'Championship' : r === 1 ? 'Round 1' : `Round ${r}`;
+        return (
+          <div key={r} className="rounded-xl border border-yellow-300/15 bg-black/25 p-3">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-bold tracking-wide text-yellow-200/75 uppercase">{label}</div>
+              <div className="text-[11px] text-yellow-200/60">{rows.length} matchup{rows.length === 1 ? '' : 's'}</div>
+            </div>
+            <div className="space-y-3">
+              {rows.map((match) => {
+                const t1 = resolveTeamStub(match?.t1 ?? match?.t1_from, match?.r);
+                const t2 = resolveTeamStub(match?.t2 ?? match?.t2_from, match?.r);
+                const winner = match?.w != null ? Number(match.w) : null;
+                return (
+                  <button
+                    key={match?.m}
+                    onClick={() => onPickMatch(match)}
+                    className="w-full text-left rounded-xl border border-white/10 bg-gradient-to-b from-black/40 to-black/20 p-3"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[11px] font-semibold text-yellow-200/70">M{match?.m}</div>
+                      <div className="text-[11px] text-yellow-200/60">Tap to open</div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className={`p-2 rounded-lg border ${winner != null && t1.rosterId != null && winner === t1.rosterId ? 'border-yellow-300/50 bg-yellow-400/10' : 'border-white/10 bg-black/30'}`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <AvatarBubble avatar={t1.avatar} fallback={t1.label} />
+                          <div className="truncate font-semibold text-white/90">{goldifyTeamName(t1.label)}</div>
+                        </div>
+                      </div>
+                      <div className={`p-2 rounded-lg border ${winner != null && t2.rosterId != null && winner === t2.rosterId ? 'border-yellow-300/50 bg-yellow-400/10' : 'border-white/10 bg-black/30'}`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <AvatarBubble avatar={t2.avatar} fallback={t2.label} />
+                          <div className="truncate font-semibold text-white/90">{goldifyTeamName(t2.label)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AvatarBubble({ avatar, fallback }) {
+  return (
+    <div className="w-6 h-6 rounded-full border border-yellow-300/30 bg-black/30 overflow-hidden flex items-center justify-center flex-none">
+      {avatar ? (
+        <img
+          src={`https://sleepercdn.com/avatars/${avatar}`}
+          alt={typeof fallback === 'string' ? fallback : 'Team'}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <span className="text-[11px] font-bold text-yellow-200">
+          {String(fallback || 'T').trim().charAt(0) || 'T'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function TeamChip({ team, isWinner, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left rounded-lg border px-3 py-2 transition hover:scale-[1.01] active:scale-[0.99] ${
+        isWinner
+          ? 'border-yellow-300/50 bg-yellow-400/10 text-yellow-100'
+          : 'border-white/10 bg-black/30 text-white/85'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <AvatarBubble avatar={team?.avatar} fallback={team?.label} />
+          <span className="truncate font-semibold">{goldifyTeamName(team?.label)}</span>
+        </div>
+        <div className="flex items-center gap-2 flex-none">
+          {typeof team?.score === 'number' ? (
+            <span className={`text-xs font-extrabold tabular-nums ${isWinner ? 'text-yellow-200' : 'text-white/85'}`}>
+              {team.score.toFixed(2)}
+            </span>
+          ) : (
+            <span className="text-xs text-white/40 tabular-nums">--</span>
+          )}
+          {isWinner ? (
+            <span className="text-[10px] font-bold text-yellow-200 border border-yellow-400/30 bg-yellow-400/10 rounded px-1.5 py-0.5">
+              W
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function BracketMatchupModal({
+  isMobile,
+  payload,
+  onClose,
+  matchupPair,
+  loadingMatchup,
+  playerInfoMap,
+  selectedWeek,
+  expandedPlayerId,
+  setExpandedPlayerId,
+  playerGameStates,
+  setPlayerGameStates,
+  playersLoading
+}) {
+  const match = payload?.match;
+  const t1 = match?.t1 ?? match?.t1_from;
+  const t2 = match?.t2 ?? match?.t2_from;
+  const leftLabel = typeof t1 === 'number' ? `Roster ${t1}` : (t1?.w ? `Winner of M${t1.w}` : t1?.l ? `Loser of M${t1.l}` : 'TBD');
+  const rightLabel = typeof t2 === 'number' ? `Roster ${t2}` : (t2?.w ? `Winner of M${t2.w}` : t2?.l ? `Loser of M${t2.l}` : 'TBD');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6">
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="relative w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-2xl border border-yellow-300/25 bg-gradient-to-b from-[#1a1200] via-black to-black shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
+        <div className="p-4 md:p-5 border-b border-yellow-300/15 flex items-start justify-between gap-4">
+          <div>
+            <div className="text-xs font-bold tracking-wide text-yellow-200/70 uppercase">Champions Bracket</div>
+            <div className="text-lg md:text-xl font-extrabold text-yellow-100">Match M{match?.m}</div>
+            <div className="text-xs text-yellow-200/60">Tap outside to close</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg border border-yellow-400/25 bg-yellow-400/10 text-yellow-100 hover:bg-yellow-400/15"
+            aria-label="Close"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="p-4 md:p-5 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 76px)' }}>
+          {loadingMatchup ? (
+            <div className="bg-black/30 rounded-lg border border-yellow-300/15 p-6 text-center">
+              <div className="text-yellow-100 font-bold text-lg">Loading matchup…</div>
+              <div className="text-yellow-200/60 text-sm mt-1">
+                Pulling the correct playoff week data for this bracket game.
+              </div>
+            </div>
+          ) : Array.isArray(matchupPair) && matchupPair.length === 2 ? (
+            <BracketMatchupCard
+              matchupPair={matchupPair}
+              playerInfoMap={playerInfoMap}
+              selectedWeek={selectedWeek}
+              expandedPlayerId={expandedPlayerId}
+              setExpandedPlayerId={setExpandedPlayerId}
+              playerGameStates={playerGameStates}
+              setPlayerGameStates={setPlayerGameStates}
+              playersLoading={playersLoading}
+              isMobile={isMobile}
+            />
+          ) : (
+            <div className="bg-black/30 rounded-lg border border-white/10 p-4 flex flex-col">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                <div className="flex flex-col items-center min-w-0">
+                  <span className="font-bold truncate whitespace-nowrap text-center">{leftLabel}</span>
+                  <div className="w-12 h-12 rounded-full bg-yellow-400/10 overflow-hidden flex items-center justify-center border border-yellow-300/40 mt-2">
+                    <span className="text-xl font-bold text-yellow-200">{leftLabel?.charAt(0) || 'T'}</span>
+                  </div>
+                  <div className="mt-2 font-extrabold text-2xl text-yellow-100 text-center w-full">--</div>
+                </div>
+                <div className="flex flex-col items-center justify-center min-w-[60px]">
+                  <div className="rounded-full bg-yellow-400 text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md mb-2">
+                    VS
+                  </div>
+                  <div className="text-[11px] text-yellow-200/60">No matchup found for Week {selectedWeek ?? '--'}</div>
+                </div>
+                <div className="flex flex-col items-center min-w-0">
+                  <span className="font-bold truncate whitespace-nowrap text-center">{rightLabel}</span>
+                  <div className="w-12 h-12 rounded-full bg-yellow-400/10 overflow-hidden flex items-center justify-center border border-yellow-300/40 mt-2">
+                    <span className="text-xl font-bold text-yellow-200">{rightLabel?.charAt(0) || 'T'}</span>
+                  </div>
+                  <div className="mt-2 font-extrabold text-2xl text-yellow-100 text-center w-full">--</div>
+                </div>
+              </div>
+              <div className="mt-4 border-t border-white/10 pt-4 text-sm text-white/70">
+                <p>
+                  This bracket matchup doesn’t map to a real matchup in the currently selected week. Try switching weeks.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BracketMatchupCard({
+  matchupPair,
+  playerInfoMap,
+  selectedWeek,
+  expandedPlayerId,
+  setExpandedPlayerId,
+  playerGameStates,
+  setPlayerGameStates,
+  playersLoading,
+  isMobile
+}) {
+  const left = matchupPair[0];
+  const right = matchupPair[1];
+  let winnerIdx = null;
+  if (
+    typeof left?.points === 'number' &&
+    typeof right?.points === 'number' &&
+    left.points !== right.points
+  ) {
+    winnerIdx = left.points > right.points ? 0 : 1;
+  }
+
+  const [expanded, setExpanded] = React.useState(true);
+
+  return (
+    <div className="bg-black/30 rounded-lg border border-white/10 p-4 flex flex-col">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+        <div className="flex flex-col items-center min-w-0">
+          <span className="font-bold truncate whitespace-nowrap text-center" title={left?.teamName}>
+            {left?.teamName}
+          </span>
+          <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-yellow-300/40 mt-2">
+            {left?.avatar ? (
+              <img
+                src={`https://sleepercdn.com/avatars/${left.avatar}`}
+                alt={left?.teamName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-xl font-bold text-yellow-200">{left?.teamName?.charAt(0) || 'T'}</span>
+            )}
+          </div>
+          <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 0 ? "text-yellow-200" : ""}`}>
+            {typeof left?.points === 'number' ? left.points.toFixed(2) : '--'}
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center min-w-[60px]">
+          <div className="rounded-full bg-yellow-400 text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md mb-2">
+            VS
+          </div>
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="text-xs px-2 py-1 rounded bg-yellow-400/10 text-yellow-100 border border-yellow-400/25 hover:bg-yellow-400/15 transition"
+            aria-label={expanded ? 'Hide Matchup' : 'Show Matchup'}
+            title={expanded ? 'Hide Matchup' : 'Show Matchup'}
+          >
+            {expanded ? 'Hide Matchup' : 'Show Matchup'}
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center min-w-0">
+          <span className="font-bold truncate whitespace-nowrap text-center" title={right?.teamName}>
+            {right?.teamName}
+          </span>
+          <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-yellow-300/40 mt-2">
+            {right?.avatar ? (
+              <img
+                src={`https://sleepercdn.com/avatars/${right.avatar}`}
+                alt={right?.teamName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-xl font-bold text-yellow-200">{right?.teamName?.charAt(0) || 'T'}</span>
+            )}
+          </div>
+          <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 1 ? "text-yellow-200" : ""}`}>
+            {typeof right?.points === 'number' ? right.points.toFixed(2) : '--'}
+          </div>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 border-t border-white/10 pt-4">
+          {playersLoading && (
+            <div className="text-sm text-white/60">Loading starters...</div>
+          )}
+          {!playersLoading && (
+            <AlignedStarters
+              leftTeam={left}
+              rightTeam={right}
+              playerInfoMap={playerInfoMap}
+              selectedWeek={selectedWeek}
+              expandedPlayerId={expandedPlayerId}
+              setExpandedPlayerId={setExpandedPlayerId}
+              playerGameStates={playerGameStates}
+              setPlayerGameStates={setPlayerGameStates}
+              isMobile={isMobile}
+            />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
