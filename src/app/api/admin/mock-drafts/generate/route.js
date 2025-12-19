@@ -3,7 +3,7 @@ import clientPromise from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { OpenAI } from 'openai';
-import { loadPlayerPool, popPlayerByName } from '@/utils/playerPoolUtils';
+import { loadPlayerPool, loadPlayerPoolAsync, popPlayerByName } from '@/utils/playerPoolUtils';
 
 export const runtime = 'nodejs';
 
@@ -228,7 +228,13 @@ export async function POST(request) {
     order = order.slice(0, Math.max(12, Math.min(84, Number(maxPicks) || 12)));
 
     // Player pool
-    let pool = loadPlayerPool();
+    let pool;
+    try {
+      pool = loadPlayerPool();
+    } catch (e) {
+      // In production, the pool is stored in MongoDB
+      pool = await loadPlayerPoolAsync();
+    }
     if (!Array.isArray(pool) || pool.length === 0) {
       return NextResponse.json({ error: 'Player pool is empty' }, { status: 400 });
     }

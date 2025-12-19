@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import clientPromise from '@/lib/mongodb';
 
 /**
  * Load a player pool from public/data/player-pool.json if present.
@@ -12,20 +13,44 @@ export function loadPlayerPool() {
   // Resolve to Next.js project root public folder at runtime
   const root = process.cwd();
   const file = path.join(root, 'public', 'data', 'player-pool.json');
-  if (!fs.existsSync(file)) {
-    throw new Error(`Player pool file not found at ${file}`);
+  if (fs.existsSync(file)) {
+    const raw = fs.readFileSync(file, 'utf-8');
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      throw new Error('Player pool JSON parse error');
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('Player pool is empty or invalid');
+    }
+    return normalizePool(data);
   }
-  const raw = fs.readFileSync(file, 'utf-8');
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (e) {
-    throw new Error('Player pool JSON parse error');
+
+  // Production-friendly fallback: load from MongoDB.
+  // NOTE: This function stays sync for local filesystem, but for MongoDB we throw with guidance
+  // and provide an async helper below.
+  throw new Error(`Player pool file not found at ${file}. In production, ensure player pool is stored in MongoDB via /api/admin/player-pool/scrape.`);
+}
+
+/**
+ * Async loader for environments where the filesystem isn't writable/readable.
+ * Reads from MongoDB playerPools/rookies.
+ */
+export async function loadPlayerPoolAsync() {
+  const root = process.cwd();
+  const file = path.join(root, 'public', 'data', 'player-pool.json');
+  if (fs.existsSync(file)) {
+    return loadPlayerPool();
   }
-  if (!Array.isArray(data) || data.length === 0) {
-    throw new Error('Player pool is empty or invalid');
+  const client = await clientPromise;
+  const db = client.db();
+  const doc = await db.collection('playerPools').findOne({ key: 'rookies' });
+  const pool = doc?.pool;
+  if (!Array.isArray(pool) || pool.length === 0) {
+    throw new Error('Player pool not found in MongoDB. Run the Admin scrape action to generate it.');
   }
-  return normalizePool(data);
+  return normalizePool(pool);
 }
 
 function normalizePool(arr) {
