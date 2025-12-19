@@ -100,7 +100,9 @@ export async function POST() {
       { upsert: true }
     );
 
-    return NextResponse.json({ ok: true, count: pool.length, file: !isProd ? '/data/player-pool.json' : null, stored: 'mongodb:playerPools/rookies' });
+    // Provide a small preview for the Admin UI in environments where we can't rely on the JSON file.
+    const poolPreview = isProd ? pool.slice(0, 200) : null;
+    return NextResponse.json({ ok: true, count: pool.length, file: !isProd ? '/data/player-pool.json' : null, stored: 'mongodb:playerPools/rookies', poolPreview });
   } catch (err) {
     return NextResponse.json({ error: err?.message || 'Failed to scrape player pool' }, { status: 500 });
   }

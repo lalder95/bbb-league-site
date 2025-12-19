@@ -42,6 +42,18 @@ export default function AdminPage() {
   const [rounds, setRounds] = useState(7);
   // No external URL needed anymore; we scrape internally
 
+  async function safeReadJson(res) {
+    try {
+      return await res.json();
+    } catch {
+      const text = await res.text().catch(() => '');
+      const preview = text ? text.slice(0, 280) : '';
+      throw new Error(
+        `Non-JSON response from ${res.url || 'request'} (HTTP ${res.status}). ${preview}`
+      );
+    }
+  }
+
   useEffect(() => {
     async function fetchMissing() {
       setLoadingMissing(true);
@@ -151,7 +163,7 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, dryRun: false, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription, progressKey: key })
       });
-      const json = await res.json();
+      const json = await safeReadJson(res);
       if (!res.ok || !json.ok) {
         throw new Error(json?.error || 'Generation failed');
       }
@@ -180,18 +192,25 @@ export default function AdminPage() {
       setOrderPreview(null);
       // Step 1: Scrape and generate player pool locally
       const poolRes = await fetch('/api/admin/player-pool/scrape', { method: 'POST' });
-      const poolJson = await poolRes.json();
+      const poolJson = await safeReadJson(poolRes);
       if (!poolRes.ok || !poolJson.ok) {
         throw new Error(poolJson?.error || 'Failed to generate player pool');
       }
-      // Load the saved pool for preview
-      const poolDataRes = await fetch('/data/player-pool.json', { cache: 'no-store' });
-      const poolData = await poolDataRes.json();
-      setPoolPreview(Array.isArray(poolData) ? poolData : []);
+
+      // Load pool preview:
+      // - In dev we can read /data/player-pool.json
+      // - In prod/serverless the pool is stored in MongoDB (filesystem may not have the JSON)
+      if (poolJson?.file) {
+        const poolDataRes = await fetch(poolJson.file, { cache: 'no-store' });
+        const poolData = await safeReadJson(poolDataRes);
+        setPoolPreview(Array.isArray(poolData) ? poolData : []);
+      } else {
+        setPoolPreview(Array.isArray(poolJson?.poolPreview) ? poolJson.poolPreview : []);
+      }
 
       setProgressText('Calculating draft order (including traded picks)...');
   const ordRes = await fetch('/api/admin/draft-order/preview', { cache: 'no-store' });
-  const ordJson = await ordRes.json();
+  const ordJson = await safeReadJson(ordRes);
       if (!ordRes.ok || !ordJson.ok) {
         throw new Error(ordJson?.error || 'Failed to compute draft order');
       }
