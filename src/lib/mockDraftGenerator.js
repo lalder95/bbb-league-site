@@ -157,6 +157,9 @@ export async function generateMockDraft({
   title = 'BBB AI Mock Draft',
   description = 'AI-generated mock draft with per-pick reasoning.',
   maxSeconds = 50,
+  // Prevent a single OpenAI call from hanging the whole job.
+  perPickTimeoutMs = 25000,
+  perPickMaxRetries = 2,
   onProgress,
 }) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY missing');
@@ -257,6 +260,61 @@ export async function generateMockDraft({
   const traceLog = [];
   const picks = [];
 
+  async function callOpenAIWithRetry({ messages, pickNumber }) {
+    const timeoutMs = Math.max(5000, Number(perPickTimeoutMs) || 25000);
+    const maxRetries = Math.max(0, Number(perPickMaxRetries) || 0);
+
+    let lastErr = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        if (attempt > 0 && onProgress) {
+          await onProgress({
+            pickNumber,
+            message: `Retrying OpenAI for ${pickNumber} (attempt ${attempt + 1}/${maxRetries + 1})…`,
+          });
+        }
+
+        const completion = await openai.chat.completions.create(
+          {
+            model,
+            messages,
+            temperature: 0.75,
+            top_p: 0.9,
+            frequency_penalty: 0.6,
+            presence_penalty: 0.4,
+            max_tokens: 450,
+            seed,
+          },
+          { signal: controller.signal }
+        );
+        clearTimeout(t);
+        return completion;
+      } catch (e) {
+        clearTimeout(t);
+        lastErr = e;
+        const msg = e?.name === 'AbortError' ? `OpenAI timeout after ${timeoutMs}ms` : (e?.message || String(e));
+        trace && traceLog.push({ pickNumber, error: 'OpenAI call failed', attempt, message: msg });
+        if (onProgress) {
+          try {
+            await onProgress({ pickNumber, message: `OpenAI issue on ${pickNumber}: ${msg}` });
+          } catch {}
+        }
+
+        // Backoff before retrying
+        if (attempt < maxRetries) {
+          const backoff = 750 * (attempt + 1);
+          await new Promise(r => setTimeout(r, backoff));
+          continue;
+        }
+      }
+    }
+
+    throw lastErr || new Error('OpenAI call failed');
+  }
+
   const startedAt = Date.now();
 
   for (let i = 0; i < order.length && pool.length > 0; i++) {
@@ -287,19 +345,24 @@ export async function generateMockDraft({
     const system = buildSystemPrompt(teamProfile, styleToken);
     const userMsg = buildUserPrompt({ pickNumber, available: pool, leagueHints, teamProfile, reasonTemplate });
 
-    const completion = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userMsg },
-      ],
-      temperature: 0.75,
-      top_p: 0.9,
-      frequency_penalty: 0.6,
-      presence_penalty: 0.4,
-      max_tokens: 450,
-      seed,
-    });
+    const messages = [
+      { role: 'system', content: system },
+      { role: 'user', content: userMsg },
+    ];
+
+    let completion;
+    try {
+      completion = await callOpenAIWithRetry({ messages, pickNumber });
+    } catch (e) {
+      // Hard fallback: take BPA if OpenAI is unavailable/hanging.
+      const fallback = pool[0];
+      let reason = `${fallback.name} fits ${teamProfile.teamName}'s roster build and projected role. He provides actionable value now while keeping future options open. A minor concern is the adjustment curve at the pro level.`;
+      reason = sanitizeReason(reason, fallback.name);
+      picks.push({ pickNumber, teamName: teamProfile.teamName, player: fallback, reason });
+      pool = popPlayerByName(pool, fallback.name).nextPool;
+      trace && traceLog.push({ pickNumber, team: teamProfile.teamName, error: 'OpenAI unavailable; BPA fallback', message: e?.message || String(e) });
+      continue;
+    }
 
     const content = completion?.choices?.[0]?.message?.content?.trim?.() || '';
     const parsed = safeJson(content);
