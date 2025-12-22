@@ -1,15 +1,15 @@
 [
   {
-    "id": "1732",
-    "name": "Jaxson Dart",
-    "position": "QB",
+    "id": "1742",
+    "name": "Ashton Jeanty",
+    "position": "RB",
     "rank": 1,
     "value": 0
   },
   {
-    "id": "1742",
-    "name": "Ashton Jeanty",
-    "position": "RB",
+    "id": "1732",
+    "name": "Jaxson Dart",
+    "position": "QB",
     "rank": 2,
     "value": 0
   },
@@ -196,51 +196,51 @@
     "value": 0
   },
   {
-    "id": "1813",
-    "name": "Isaac TeSlaa",
+    "id": "1782",
+    "name": "Pat Bryant",
     "position": "WR",
     "rank": 29,
     "value": 0
   },
   {
-    "id": "1780",
-    "name": "Jaylin Noel",
+    "id": "1813",
+    "name": "Isaac TeSlaa",
     "position": "WR",
     "rank": 30,
-    "value": 0
-  },
-  {
-    "id": "1782",
-    "name": "Pat Bryant",
-    "position": "WR",
-    "rank": 31,
     "value": 0
   },
   {
     "id": "1747",
     "name": "Dylan Sampson",
     "position": "RB",
-    "rank": 32,
+    "rank": 31,
     "value": 0
   },
   {
-    "id": "1779",
-    "name": "Tez Johnson",
+    "id": "1780",
+    "name": "Jaylin Noel",
     "position": "WR",
-    "rank": 33,
-    "value": 0
-  },
-  {
-    "id": "1759",
-    "name": "Ollie Gordon",
-    "position": "RB",
-    "rank": 34,
+    "rank": 32,
     "value": 0
   },
   {
     "id": "1772",
     "name": "Tre Harris",
     "position": "WR",
+    "rank": 33,
+    "value": 0
+  },
+  {
+    "id": "1779",
+    "name": "Tez Johnson",
+    "position": "WR",
+    "rank": 34,
+    "value": 0
+  },
+  {
+    "id": "1759",
+    "name": "Ollie Gordon",
+    "position": "RB",
     "rank": 35,
     "value": 0
   },
@@ -287,16 +287,16 @@
     "value": 0
   },
   {
-    "id": "1749",
-    "name": "Brashard Smith",
-    "position": "RB",
+    "id": "1776",
+    "name": "Isaiah Bond",
+    "position": "WR",
     "rank": 42,
     "value": 0
   },
   {
-    "id": "1776",
-    "name": "Isaiah Bond",
-    "position": "WR",
+    "id": "1749",
+    "name": "Brashard Smith",
+    "position": "RB",
     "rank": 43,
     "value": 0
   },
@@ -322,22 +322,22 @@
     "value": 0
   },
   {
+    "id": "1816",
+    "name": "Jaylin Lane",
+    "position": "WR",
+    "rank": 47,
+    "value": 0
+  },
+  {
     "id": "1760",
     "name": "DJ Giddens",
     "position": "RB",
-    "rank": 47,
+    "rank": 48,
     "value": 0
   },
   {
     "id": "1787",
     "name": "Dont'e Thornton",
-    "position": "WR",
-    "rank": 48,
-    "value": 0
-  },
-  {
-    "id": "1816",
-    "name": "Jaylin Lane",
     "position": "WR",
     "rank": 49,
     "value": 0
@@ -364,51 +364,51 @@
     "value": 0
   },
   {
-    "id": "1758",
-    "name": "Tahj Brooks",
-    "position": "RB",
-    "rank": 53,
-    "value": 0
-  },
-  {
     "id": "1761",
     "name": "LeQuint Allen",
     "position": "RB",
-    "rank": 54,
+    "rank": 53,
     "value": 0
   },
   {
     "id": "1764",
     "name": "Jarquez Hunter",
     "position": "RB",
-    "rank": 55,
+    "rank": 54,
     "value": 0
   },
   {
-    "id": "1736",
-    "name": "Will Howard",
-    "position": "QB",
-    "rank": 56,
+    "id": "1758",
+    "name": "Tahj Brooks",
+    "position": "RB",
+    "rank": 55,
     "value": 0
   },
   {
     "id": "1824",
     "name": "Jimmy Horn",
     "position": "WR",
-    "rank": 57,
+    "rank": 56,
     "value": 0
   },
   {
-    "id": "1796",
-    "name": "Savion Williams",
-    "position": "WR",
-    "rank": 58,
+    "id": "1736",
+    "name": "Will Howard",
+    "position": "QB",
+    "rank": 57,
     "value": 0
   },
   {
     "id": "1734",
     "name": "Quinn Ewers",
     "position": "QB",
+    "rank": 58,
+    "value": 0
+  },
+  {
+    "id": "1796",
+    "name": "Savion Williams",
+    "position": "WR",
     "rank": 59,
     "value": 0
   },
@@ -455,29 +455,29 @@
     "value": 0
   },
   {
-    "id": "1838",
-    "name": "Efton Chism",
+    "id": "1815",
+    "name": "Arian Smith",
     "position": "WR",
     "rank": 66,
     "value": 0
   },
   {
-    "id": "1815",
-    "name": "Arian Smith",
+    "id": "1838",
+    "name": "Efton Chism",
     "position": "WR",
     "rank": 67,
     "value": 0
   },
   {
-    "id": "1763",
-    "name": "Phil Mafah",
+    "id": "1754",
+    "name": "Damien Martinez",
     "position": "RB",
     "rank": 68,
     "value": 0
   },
   {
-    "id": "1754",
-    "name": "Damien Martinez",
+    "id": "1763",
+    "name": "Phil Mafah",
     "position": "RB",
     "rank": 69,
     "value": 0
@@ -490,30 +490,30 @@
     "value": 0
   },
   {
+    "id": "1762",
+    "name": "Raheim Sanders",
+    "position": "RB",
+    "rank": 71,
+    "value": 0
+  },
+  {
     "id": "1757",
     "name": "Donovan Edwards",
     "position": "RB",
-    "rank": 71,
+    "rank": 72,
     "value": 0
   },
   {
     "id": "1830",
     "name": "Konata Mumpfield",
     "position": "WR",
-    "rank": 72,
+    "rank": 73,
     "value": 0
   },
   {
     "id": "1817",
     "name": "Jordan Watkins",
     "position": "WR",
-    "rank": 73,
-    "value": 0
-  },
-  {
-    "id": "1762",
-    "name": "Raheim Sanders",
-    "position": "RB",
     "rank": 74,
     "value": 0
   },

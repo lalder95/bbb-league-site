@@ -39,25 +39,8 @@ export default function AdminPage() {
   const [draftDescription, setDraftDescription] = useState('AI-generated multi-round mock draft with per-pick reasoning.');
   const [progressKey, setProgressKey] = useState(null);
   const [progressPollId, setProgressPollId] = useState(null);
-  const [jobId, setJobId] = useState(null);
-  const [jobDebug, setJobDebug] = useState(null);
-  const [liveLogs, setLiveLogs] = useState([]);
-  const [liveLogSince, setLiveLogSince] = useState(null);
   const [rounds, setRounds] = useState(7);
-  const [mongoJobLogging, setMongoJobLogging] = useState(false);
   // No external URL needed anymore; we scrape internally
-
-  async function safeReadJson(res) {
-    try {
-      return await res.json();
-    } catch {
-      const text = await res.text().catch(() => '');
-      const preview = text ? text.slice(0, 280) : '';
-      throw new Error(
-        `Non-JSON response from ${res.url || 'request'} (HTTP ${res.status}). ${preview}`
-      );
-    }
-  }
 
   useEffect(() => {
     async function fetchMissing() {
@@ -136,7 +119,6 @@ export default function AdminPage() {
   }
 
   async function handleApproveAndRun() {
-    let intervals = null;
     try {
       if (!approvedPool || !approvedOrder) {
         setGenError('Please approve both the player pool and the draft order to proceed.');
@@ -144,114 +126,43 @@ export default function AdminPage() {
       }
       setGenError(null);
       setGenerating(true);
-      setJobId(null);
-  setJobDebug(null);
-  setLiveLogs([]);
-  setLiveLogSince(null);
-      // For Mongo-backed jobs we don't need the old in-memory progressKey polling.
-      setProgressKey(null);
-      setProgressText('Queuing background job…');
-      // Start a background job to avoid Vercel timeouts.
-      const jobRes = await fetch('/api/admin/mock-drafts/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription, mongoLogging: mongoJobLogging })
-      });
-      const jobJson = await safeReadJson(jobRes);
-      if (!jobRes.ok || !jobJson.ok) throw new Error(jobJson?.error || 'Failed to create background job');
-      setJobId(jobJson.jobId);
-  setLiveLogSince(null);
-
-      // Trigger the runner (best-effort). If this returns 504 on some plans, the job can still
-      // be triggered by re-running or by adding a scheduled function later.
-      // Trigger the runner (best-effort). Await once locally so we can show errors if it can't start.
-      const runRes = await fetch('/api/admin/mock-drafts/jobs/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: jobJson.jobId })
-      });
-      const runJson = await safeReadJson(runRes);
-      if (!runRes.ok || !runJson.ok) {
-        throw new Error(runJson?.error || 'Failed to start runner');
-      }
-
-      // Poll job status and hydrate UI from Mongo
-      const jobPollId = setInterval(async () => {
+      // Create a progress key and start polling
+      const key = Math.random().toString(36).slice(2);
+      setProgressKey(key);
+      setProgressText('Generating AI mock draft...');
+      const pollId = setInterval(async () => {
         try {
-          const r = await fetch(`/api/admin/mock-drafts/jobs?jobId=${jobJson.jobId}`, { cache: 'no-store' });
-          const j = await safeReadJson(r);
-          if (!r.ok || !j.ok) return;
-          const job = j.job;
-          setJobDebug(job);
-          if (job?.progress?.message) {
-            const pickSuffix = job?.progress?.currentPickNumber ? ` (Pick ${job.progress.currentPickNumber})` : '';
-            setProgressText(`${job.progress.message}${pickSuffix}`);
-          }
-          if (job?.status === 'done') {
-            clearInterval(jobPollId);
-            setProgressPollId(null);
-            setGenResult({
-              ok: true,
-              dryRun: false,
-              draftId: job?.result?.draftId || null,
-              picks: job?.result?.picks || [],
-              article: job?.result?.article || '',
-              trace: job?.result?.trace || [],
-              jobId: jobJson.jobId,
-            });
-            setProgressText('Mock draft generated and published.');
-          }
-          if (job?.status === 'error') {
-            clearInterval(jobPollId);
-            setProgressPollId(null);
-            throw new Error(job?.error?.message || 'Background job failed');
-          }
-        } catch (e) {
-          clearInterval(jobPollId);
-          setProgressPollId(null);
-          setGenError(e?.message || String(e));
-          setProgressText('');
-        }
-      }, 1250);
-  // Store interval IDs for cleanup.
-  intervals = { jobPollId };
-
-      // Poll live logs (best-effort, in-memory).
-      const logPollId = setInterval(async () => {
-        try {
-          const qs = liveLogSince ? `&since=${encodeURIComponent(liveLogSince)}` : '';
-          const r = await fetch(`/api/admin/mock-drafts/jobs/logs?jobId=${jobJson.jobId}${qs}`, { cache: 'no-store' });
-          const j = await safeReadJson(r);
-          if (!r.ok || !j.ok) return;
-          const logs = Array.isArray(j.logs) ? j.logs : [];
-          if (logs.length) {
-            setLiveLogs(prev => {
-              const merged = [...prev, ...logs];
-              return merged.slice(-200);
-            });
-            const lastAt = logs[logs.length - 1]?.at;
-            if (lastAt) setLiveLogSince(lastAt);
+          const res = await fetch(`/api/admin/mock-drafts/progress?key=${key}`, { cache: 'no-store' });
+          const json = await res.json();
+          if (json?.ok) {
+            const msg = json.message || 'Generating AI mock draft...';
+            const pickSuffix = json.currentPickNumber ? ` (Pick ${json.currentPickNumber})` : '';
+            setProgressText(`${msg}${pickSuffix}`);
+            if (json.status === 'done') {
+              clearInterval(pollId);
+              setProgressPollId(null);
+            }
           }
         } catch {}
-      }, 1000);
-
-      intervals = { jobPollId, logPollId };
-      setProgressPollId(intervals);
+      }, 750);
+      setProgressPollId(pollId);
+      const res = await fetch('/api/admin/mock-drafts/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, dryRun: false, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription, progressKey: key })
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json?.error || 'Generation failed');
+      }
+      setGenResult(json);
+      setProgressText('Mock draft generated and published.');
     } catch (e) {
       setGenError(e.message || String(e));
     } finally {
-      // Background generation continues after this function returns.
       setGenerating(false);
-      // Only clear intervals if we failed before starting them.
-      if (!intervals && progressPollId) {
-        if (typeof progressPollId === 'number') {
-          clearInterval(progressPollId);
-        } else {
-          try {
-            clearInterval(progressPollId.jobPollId);
-            clearInterval(progressPollId.logPollId);
-          } catch {}
-        }
+      if (progressPollId) {
+        clearInterval(progressPollId);
         setProgressPollId(null);
       }
     }
@@ -269,25 +180,18 @@ export default function AdminPage() {
       setOrderPreview(null);
       // Step 1: Scrape and generate player pool locally
       const poolRes = await fetch('/api/admin/player-pool/scrape', { method: 'POST' });
-      const poolJson = await safeReadJson(poolRes);
+      const poolJson = await poolRes.json();
       if (!poolRes.ok || !poolJson.ok) {
         throw new Error(poolJson?.error || 'Failed to generate player pool');
       }
-
-      // Load pool preview:
-      // - In dev we can read /data/player-pool.json
-      // - In prod/serverless the pool is stored in MongoDB (filesystem may not have the JSON)
-      if (poolJson?.file) {
-        const poolDataRes = await fetch(poolJson.file, { cache: 'no-store' });
-        const poolData = await safeReadJson(poolDataRes);
-        setPoolPreview(Array.isArray(poolData) ? poolData : []);
-      } else {
-        setPoolPreview(Array.isArray(poolJson?.poolPreview) ? poolJson.poolPreview : []);
-      }
+      // Load the saved pool for preview
+      const poolDataRes = await fetch('/data/player-pool.json', { cache: 'no-store' });
+      const poolData = await poolDataRes.json();
+      setPoolPreview(Array.isArray(poolData) ? poolData : []);
 
       setProgressText('Calculating draft order (including traded picks)...');
   const ordRes = await fetch('/api/admin/draft-order/preview', { cache: 'no-store' });
-  const ordJson = await safeReadJson(ordRes);
+  const ordJson = await ordRes.json();
       if (!ordRes.ok || !ordJson.ok) {
         throw new Error(ordJson?.error || 'Failed to compute draft order');
       }
@@ -301,21 +205,6 @@ export default function AdminPage() {
     } finally {
       // generating flag toggled off above on success
     }
-  }
-
-  // --- UI helpers ---
-  function renderJobLoggingToggle() {
-    return (
-      <label className="flex items-center gap-2 text-sm text-gray-200">
-        <input
-          type="checkbox"
-          className="h-4 w-4"
-          checked={mongoJobLogging}
-          onChange={(e) => setMongoJobLogging(e.target.checked)}
-        />
-        Log job events to MongoDB (durable, for debugging)
-      </label>
-    );
   }
 
   if (status === 'loading') {
@@ -357,7 +246,7 @@ export default function AdminPage() {
             <p className="text-white/70">View and manage all drafts</p>
           </Link>
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-            <h2 className="text-xl font-bold mb-2">AI Mock Draft Generator</h2>
+            <h2 className="text-xl font-bold mb-2">AI Mock Draft Generator (Only works in localhost)</h2>
             <p className="text-white/70 mb-4">Generate a multi-round AI mock draft and publish to the Mock Drafts tab.</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <div>
@@ -394,57 +283,8 @@ export default function AdminPage() {
             <div className="mb-3 text-white/70 text-sm">
               This will scrape the latest KTC rookie rankings and store the normalized player pool locally.
             </div>
-
-            <div className="mb-3">
-              {renderJobLoggingToggle()}
-            </div>
             {progressText && (
               <div className="mb-3 text-white/80 text-sm">{progressText}</div>
-            )}
-
-            {jobId && jobDebug && (
-              <details className="mb-3 bg-black/20 p-3 rounded border border-white/10">
-                <summary className="cursor-pointer text-white/80 text-sm">Job Diagnostics</summary>
-                <div className="mt-2 text-xs text-white/70 space-y-2">
-                  <div><span className="text-white/80">Status:</span> {jobDebug.status}</div>
-                  <div><span className="text-white/80">Current pick:</span> {jobDebug?.progress?.currentPickNumber || '-'}</div>
-                  <div><span className="text-white/80">Heartbeat:</span> {jobDebug?.progress?.heartbeatAt ? new Date(jobDebug.progress.heartbeatAt).toLocaleString() : '-'}</div>
-                  <div><span className="text-white/80">Updated:</span> {jobDebug?.updatedAt ? new Date(jobDebug.updatedAt).toLocaleString() : '-'}</div>
-                  <div className="pt-2 border-t border-white/10">
-                    <div className="text-white/80 mb-1">Recent events</div>
-                    <div className="max-h-40 overflow-auto whitespace-pre-wrap">
-                      {(Array.isArray(jobDebug.events) ? jobDebug.events.slice(-12) : []).map((ev, idx) => (
-                        <div key={idx} className="border-b border-white/5 py-1">
-                          <span className="text-white/60">{ev?.at ? new Date(ev.at).toLocaleTimeString() : ''}</span>
-                          <span className="ml-2 text-[#1FDDFF]">[{ev?.type || 'event'}]</span>
-                          <span className="ml-2">{ev?.message || ''}</span>
-                          {ev?.pickNumber ? <span className="ml-2 text-white/60">({ev.pickNumber})</span> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </details>
-            )}
-
-            {jobId && (
-              <details open className="mb-3 bg-black/20 p-3 rounded border border-white/10">
-                <summary className="cursor-pointer text-white/80 text-sm">Live Log (best-effort)</summary>
-                <div className="mt-2 max-h-56 overflow-auto text-xs whitespace-pre-wrap font-mono">
-                  {liveLogs.length === 0 ? (
-                    <div className="text-white/50">No live logs yet. (In serverless, this only works if the polling request hits the same instance running the job.)</div>
-                  ) : (
-                    liveLogs.map((l, idx) => (
-                      <div key={idx} className="border-b border-white/5 py-1">
-                        <span className="text-white/50">{l?.at ? new Date(l.at).toLocaleTimeString() : ''}</span>
-                        <span className="ml-2 text-[#1FDDFF]">[{l?.type || 'info'}]</span>
-                        {l?.pickNumber ? <span className="ml-2 text-white/60">{l.pickNumber}</span> : null}
-                        <span className="ml-2">{l?.message || ''}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </details>
             )}
             <button
               onClick={handleGenerateMockDraft}
@@ -526,9 +366,6 @@ export default function AdminPage() {
             {genResult && (
               <div className="mt-3 text-sm text-white/80 space-y-2">
                 <div>Draft created: {genResult.draftId ? String(genResult.draftId) : 'Preview only (dry run)'}</div>
-                {genResult.jobId && (
-                  <div className="text-white/60 text-xs">Job: {String(genResult.jobId)}</div>
-                )}
                 <details className="bg-black/20 p-3 rounded border border-white/10">
                   <summary className="cursor-pointer">Debug Trace</summary>
                   <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">

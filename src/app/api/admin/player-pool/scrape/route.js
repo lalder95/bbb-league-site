@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import fs from 'fs';
 import path from 'path';
-import clientPromise from '@/lib/mongodb';
 
 export const runtime = 'nodejs';
 
@@ -81,28 +80,11 @@ export async function POST() {
 
     const pool = normalizeKTCPlayers(playersArr);
     const outPath = path.join(process.cwd(), 'public', 'data', 'player-pool.json');
+    const dir = path.dirname(outPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(outPath, JSON.stringify(pool, null, 2), 'utf-8');
 
-    // In production (e.g., Vercel) the filesystem is read-only. Persist the pool to MongoDB instead.
-    // In dev/local, still write to /public/data/player-pool.json for easy inspection.
-    const isProd = process.env.NODE_ENV === 'production';
-    if (!isProd) {
-      const dir = path.dirname(outPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(outPath, JSON.stringify(pool, null, 2), 'utf-8');
-    }
-
-    // Always upsert in Mongo so prod has a source of truth.
-    const client = await clientPromise;
-    const db = client.db();
-    await db.collection('playerPools').updateOne(
-      { key: 'rookies' },
-      { $set: { key: 'rookies', pool, updatedAt: new Date(), count: pool.length } },
-      { upsert: true }
-    );
-
-    // Provide a small preview for the Admin UI in environments where we can't rely on the JSON file.
-    const poolPreview = isProd ? pool.slice(0, 200) : null;
-    return NextResponse.json({ ok: true, count: pool.length, file: !isProd ? '/data/player-pool.json' : null, stored: 'mongodb:playerPools/rookies', poolPreview });
+    return NextResponse.json({ ok: true, count: pool.length, file: '/data/player-pool.json' });
   } catch (err) {
     return NextResponse.json({ error: err?.message || 'Failed to scrape player pool' }, { status: 500 });
   }
