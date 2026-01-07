@@ -38,6 +38,22 @@ export function playoffFinishOrder(winnersBracket) {
   const matches = Array.isArray(winnersBracket) ? winnersBracket : [];
   if (matches.length === 0) return [];
 
+  // Prefer explicit placement games when present.
+  // Sleeper includes a `p` field for placement (1 = championship, 3 = 3rd place, 5 = 5th place, ...).
+  // When these games are completed, `w` and `l` are the winner/loser roster_ids.
+  const placementMatches = matches
+    .filter((m) => Number.isFinite(Number(m?.p)) && m?.w && m?.l)
+    .sort((a, b) => Number(a.p) - Number(b.p));
+
+  if (placementMatches.length > 0) {
+    const finish = [];
+    for (const m of placementMatches) {
+      if (m.w && !finish.includes(m.w)) finish.push(m.w);
+      if (m.l && !finish.includes(m.l)) finish.push(m.l);
+    }
+    return finish;
+  }
+
   // Determine final round and final match
   const finalRound = matches.reduce((max, m) => Math.max(max, Number(m.r || 0)), 0);
   const finalMatch = matches.find((m) => Number(m.r || 0) === finalRound && m.w && m.l);

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { calculateSeasonMaxPF } from '@/utils/maxpf';
-import { buildDraftOrder } from '@/utils/draftOrderUtils';
+import { calculateDraftOrderForLeague } from '@/utils/draftOrderCalculator';
 
 export const runtime = 'nodejs';
 
@@ -100,39 +99,19 @@ export async function GET() {
   const targetSeason = (!upcoming || upcoming.status === 'complete') ? (currentSeason + 1) : Number(upcoming.season);
       debug.targetSeason = targetSeason;
 
-      // 1) Compute MaxPF map server-side
-      const maxpfMap = await calculateSeasonMaxPF({ leagueId });
-
-      // 2) Fetch winners bracket for playoff results
-      let winnersBracket = [];
-      try {
-        winnersBracket = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { cache: 'no-store' }).then(r => r.json());
-      } catch (_) { /* ignore */ }
-
-      // 3) Build base draft order (slots -> original roster_id)
-      const base = buildDraftOrder({ rosters, maxpfMap, winnersBracket });
-
-      // 4) Apply traded picks for round 1 in targetSeason
-      const roundOneTrades = (Array.isArray(traded) ? traded : []).filter(tp => String(tp.season) === String(targetSeason) && Number(tp.round) === 1);
-      debug.usedTradesCount = roundOneTrades.length;
-      const rosterIdToUserId = Object.fromEntries((rosters || []).map(r => [r.roster_id, r.owner_id]));
-      const userIdToDisplay = Object.fromEntries((users || []).map(u => [u.user_id, u.display_name || u.username || 'Unknown Team']));
-
-      order = base
-        .sort((a, b) => Number(a.slot) - Number(b.slot))
-        .map(entry => {
-          const trade = roundOneTrades.find(tp => Number(tp.roster_id) === Number(entry.roster_id));
-          const currentRosterId = trade ? trade.owner_id : entry.roster_id;
-          const ownerUserId = rosterIdToUserId[currentRosterId] ?? null;
-          const teamName = ownerUserId ? (userIdToDisplay[ownerUserId] || 'Unknown Team') : 'Unknown Team';
-          return {
-            slot: Number(entry.slot),
-            teamName,
-            ownerUserId,
-            rosterId: currentRosterId,
-            originalOwnerId: entry.roster_id,
-          };
-        });
+      const result = await calculateDraftOrderForLeague({
+        leagueId,
+        targetSeason,
+        applyRoundOneTrades: true,
+      });
+      debug.usedTradesCount = result.usedTradesCount;
+      order = (result.draft_order || []).map((e) => ({
+        slot: Number(e.slot),
+        teamName: e.teamName,
+        ownerUserId: e.owner_id,
+        rosterId: e.roster_id,
+        originalOwnerId: e.original_roster_id,
+      }));
     }
 
     return NextResponse.json({ ok: true, leagueId, order, debug });

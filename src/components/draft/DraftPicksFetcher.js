@@ -4,13 +4,14 @@ import React, { useEffect, useState } from "react";
  * Props:
  *   leagueId (string): Sleeper league_id
  *   rosters (array): Array of league rosters (to map roster_id to owner/team)
+ *   baseYear (number|string, optional): First draft year to show; if omitted, derived from Sleeper state
  *   render (function): (picksByOwner, loading, error, rosterIdToDisplayName) => ReactNode
  *     - picksByOwner: { [owner_id]: [pick, ...] }
  *     - loading: boolean
  *     - error: string|null
  *     - rosterIdToDisplayName: { [roster_id]: displayName }
  */
-export default function DraftPicksFetcher({ leagueId, rosters = [], render }) {
+export default function DraftPicksFetcher({ leagueId, rosters = [], baseYear, render }) {
   const [picksByOwner, setPicksByOwner] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -62,11 +63,46 @@ export default function DraftPicksFetcher({ leagueId, rosters = [], render }) {
         }
         setRosterIdToDisplayName(rosterIdToDisplay);
 
-        // 3. Get league settings for draft years/rounds (or assume 3 years, 7 rounds)
+        // 3. Determine which draft years to show (3 years)
+        // Rule: default leagueYear + 1, unless any non-complete draft exists, then use leagueYear.
+        let resolvedBaseYear = Number(baseYear);
+
+        if (!Number.isFinite(resolvedBaseYear) || resolvedBaseYear < 2000) {
+          try {
+            const [stateRes, draftsRes] = await Promise.all([
+              fetch('https://api.sleeper.app/v1/state/nfl'),
+              fetch(`https://api.sleeper.app/v1/league/${leagueId}/drafts`),
+            ]);
+
+            let leagueYear = null;
+            if (stateRes.ok) {
+              const stateJson = await stateRes.json();
+              const yr = Number(stateJson?.season);
+              if (Number.isFinite(yr) && yr > 2000) leagueYear = yr;
+            }
+
+            let hasNonCompleteDraft = false;
+            if (draftsRes.ok) {
+              const draftsJson = await draftsRes.json();
+              if (Array.isArray(draftsJson)) {
+                hasNonCompleteDraft = draftsJson.some((d) => d?.status && d.status !== 'complete');
+              }
+            }
+
+            if (Number.isFinite(leagueYear)) {
+              resolvedBaseYear = hasNonCompleteDraft ? leagueYear : leagueYear + 1;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (!Number.isFinite(resolvedBaseYear) || resolvedBaseYear < 2000) {
+          resolvedBaseYear = new Date().getFullYear() + 1;
+        }
+
         const years = [];
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        for (let y = 0; y < 3; ++y) years.push((currentYear + y).toString());
+        for (let y = 0; y < 3; ++y) years.push(String(resolvedBaseYear + y));
         const rounds = [1, 2, 3, 4, 5, 6, 7];
 
         // 4. Get all owners/roster_ids
@@ -119,7 +155,7 @@ export default function DraftPicksFetcher({ leagueId, rosters = [], render }) {
     }
     fetchAndBuild();
     // eslint-disable-next-line
-  }, [leagueId, JSON.stringify(rosters)]);
+  }, [leagueId, JSON.stringify(rosters), baseYear]);
 
   return render(picksByOwner, loading, error, rosterIdToDisplayName);
 }

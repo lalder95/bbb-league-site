@@ -144,6 +144,16 @@ export const sampleMockDrafts = [
       
       // Handle Round heading
       if (line.startsWith('## Round')) {
+        // If a pick is currently being processed, finalize it BEFORE closing/opening round containers.
+        // Otherwise the last pick of the previous round can get rendered under the next round.
+        if ((currentPickNumber && currentTeamName) || pickContent.length > 0) {
+          const pickHtml = processPick(currentPickNumber, currentTeamName, currentPickProjection, pickContent, users);
+          processedLines.push(pickHtml);
+          pickContent = [];
+          currentPickNumber = '';
+          currentTeamName = '';
+          currentPickProjection = '';
+        }
         if (inRoundSection) {
           // Close previous round section if open
           processedLines.push('</div>');

@@ -4,6 +4,21 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { OpenAI } from 'openai';
 import { loadPlayerPool, popPlayerByName } from '@/utils/playerPoolUtils';
+import {
+  createRng,
+  buildArticleIntro,
+  buildRoundIntro,
+  buildPickLeadIn,
+  buildPickCoda,
+  buildStyleToken,
+  buildReasonTemplate,
+} from '@/utils/mockDraftVoice';
+import {
+  parseBBBContractsCsv,
+  buildTeamNeeds,
+  formatTeamNeedsForPrompt,
+  pickWindowScore,
+} from '@/utils/teamNeedsUtils';
 
 export const runtime = 'nodejs';
 
@@ -69,27 +84,73 @@ function formatPickNumber(round, slot) {
   return `${round}.${s}`;
 }
 
-function buildSystemPrompt(teamProfile, styleToken) {
+function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
+}
+
+// Smooth spectrum from 0 (Blue Chip) to 1 (Dart Throw).
+// We saturate around pick ~40 for a gradual transition.
+function qualitySpectrumForPick(pickIndex, maxBlueChipPicks = 40) {
+  const i = Math.max(0, Number(pickIndex) || 0);
+  const t = clamp01(i / Math.max(1, Number(maxBlueChipPicks) || 40));
+
+  // Nice labels that gradually shift.
+  let band;
+  if (t <= 0.12) band = 'blue-chip';
+  else if (t <= 0.30) band = 'high-end starter';
+  else if (t <= 0.55) band = 'solid contributor';
+  else if (t <= 0.78) band = 'depth/upside';
+  else band = 'dart throw';
+
+  const guidance = t < 0.30
+    ? 'Early picks: it’s fair to talk about weekly starters and higher confidence roles.'
+    : t < 0.60
+      ? 'Mid-draft: strong contributors, but outcomes vary. Discuss realistic role paths and a range of results.'
+      : t < 0.80
+        ? 'Late-ish: bench/depth with upside pockets. Emphasize volatility, contingency value, and matchup-driven starts.'
+        : 'Late: dart-throw territory. Stash/lottery ticket language; low confidence, high variance, uncertain weekly usability.';
+
+  return {
+    t, // 0..1
+    band,
+    guidance,
+    // A compact human-readable slider.
+    slider: `Blue Chip ${Math.round((1 - t) * 100)}%  Dart Throw ${Math.round(t * 100)}%`,
+  };
+}
+
+function buildSystemPrompt(teamProfile, styleToken, quality) {
   // Persona adds stylistic variation
   const persona = teamProfile.persona || 'Balanced Strategist';
   return `You are the AI GM for ${teamProfile.teamName} in a closed-universe fantasy football league (no NFL teams/contracts). Adopt the persona: "${persona}" for tone and decision style.
 Follow constraints strictly:
 - Only draft from the provided Available Players list.
 - Only select from the TOP 10 ranked players remaining in the pool.
-- Do not mention real-life contracts or NFL franchises.
+- This is FANTASY FOOTBALL analysis in a custom league context. Do NOT write as if you are coaching a real team.
+- Do not mention NFL teams/franchises, jerseys, coordinators, playbooks, or real-life contracts.
+- Do not use real-football coaching/strategy language. Avoid phrases like: "balanced offense", "stretch the field", "receiver corps", "gameplan", "play-calling", "two-high", "Cover 2", "route tree", "in the slot/out wide" (as a scheme note), "red zone packages", "snap counts", "special teams", "scheme", "coordinator", "playbook", "system".
+- Do use fantasy framing: weekly start/sit impact, scoring output, positional room, tier/value, floor/ceiling, roster construction, and opportunity (targets/touches) in general terms.
+- Draft-stage realism: Quality spectrum = ${quality.slider}. Band: "${quality.band}". ${quality.guidance}
+- Do NOT call late-round picks "studs" or "lock starters" by default. Only call someone a starter if you explicitly qualify it (e.g., "has a path to starting" or "can earn a weekly role").
 - Prioritize upgrading likely starters first; consider depth second.
 Avoid overemphasizing scarcity; focus on roster fit, role clarity, and value.
 Style guidance: ${styleToken}. Aim for variety—change sentence openings, avoid stock phrases, avoid repeating identical adjectives.
-Your response MUST be valid JSON only with two keys and no extra text: { "pick": "Exact Player Name", "reason": "3-5 sentences that start by restating the chosen player's name and explain team fit, role clarity, value vs alternatives (generic only, no names), and one minor risk/concern." }`;
+Anti-repetition rules:
+- Do NOT reuse the same first-sentence pattern across consecutive picks.
+- Avoid boilerplate like "brings speed and playmaking ability", "clear role", "synergy", "perfectly complements", "fits seamlessly", "impossible to pass up", "solidifies".
+- Avoid "Compared to other available [position]" style sentences.
+Your response MUST be valid JSON only with two keys and no extra text: { "pick": "Exact Player Name", "reason": "3-5 sentences that mention the chosen player's name within the first 2 sentences and explain fantasy roster fit, weekly scoring upside/floor, and value vs generic alternatives. Reflect draft-stage realism (later rounds = more uncertainty). End with one minor risk/concern framed as volatility/usage uncertainty/injury risk (NOT coaching/playbook)." }`;
 }
 
-function buildUserPrompt({ pickNumber, available, leagueHints, teamProfile, reasonTemplate }) {
+function buildUserPrompt({ pickNumber, round, available, leagueHints, teamProfile, reasonTemplate, quality }) {
   const top10 = available.slice(0, 10);
   const availableList = top10.map(p => `${p.name} (${p.position}) [rank ${p.rank}${p.value > 0 ? `, value ${p.value}` : ''}]`).join('\n');
   return `Pick: ${pickNumber}
+Round: ${round}
 Team: ${teamProfile.teamName}
 
 Draft context: ${leagueHints}
+Draft-stage realism: Spectrum ${quality.slider} | Band: ${quality.band} — ${quality.guidance}
 Use this writing pattern: ${reasonTemplate}
 
 Available Players (TOP 10 ONLY):\n${availableList}
@@ -97,54 +158,154 @@ Available Players (TOP 10 ONLY):\n${availableList}
 Choose the best pick for this team from ONLY the top 10 above and return JSON as specified.`;
 }
 
+function buildUserPromptTopN({ pickNumber, round, available, leagueHints, teamProfile, reasonTemplate, quality, topN = 8, teamNeedsText = '' }) {
+  const window = available.slice(0, Math.max(1, Number(topN) || 8));
+  const availableList = window.map(p => `${p.name} (${p.position}) [rank ${p.rank}${p.value > 0 ? `, value ${p.value}` : ''}]`).join('\n');
+  return `Pick: ${pickNumber}
+Round: ${round}
+Team: ${teamProfile.teamName}
+
+Draft context: ${leagueHints}
+Draft-stage realism: Spectrum ${quality.slider} | Band: ${quality.band} — ${quality.guidance}
+${teamNeedsText ? `\n${teamNeedsText}\n` : ''}
+
+Use this writing pattern: ${reasonTemplate}
+
+Available Players (TOP ${Math.max(1, Number(topN) || 8)} ONLY):\n${availableList}
+
+Choose the best pick for this team from ONLY the top ${Math.max(1, Number(topN) || 8)} above and return JSON as specified.`;
+}
+
 function safeJson(str) {
   try { return JSON.parse(str); } catch { return null; }
 }
 
-function sanitizeReason(reason, pickedName) {
-  const banned = [
-    /medium scarcity/gi,
-    /explosive playmaking ability/gi,
-    /perfect fit/gi,
-    /elite (cornerback|matchups)/gi,
-    /balanced risk profile/gi,
-    /immediate impact potential/gi,
-    /scheme-diverse/gi,
-    /well-rounded skill set/gi,
+function sanitizeReason(reason, pickedName, opts = {}) {
+  const mode = opts.mode || 'light';
+  const withMeta = !!opts.withMeta;
+  let out = String(reason || '').trim();
+
+  // Always normalize whitespace minimally (safe and non-destructive).
+  out = out.replace(/\s+/g, ' ').trim();
+  if (!out) {
+    const safe = pickedName ? `${pickedName} is the pick here.` : '';
+    return withMeta ? { text: safe, escalated: false } : safe;
+  }
+
+  // If the text contains real-football/coaching language, escalate even in "light".
+  const triggerRxs = [
+    /\b(stretch the field|balanced offense|receiver corps|receiving corps|route tree|coverage|cover\s*2|two[- ]high|scheme|play[- ]calling|gameplan|snap count[s]?)\b/i,
+    /\b(offensive|defensive) coordinator\b/i,
+    /\bplaybook\b/i,
+    /\bspecial teams\b/i,
+    /\bsub-?packages?\b/i,
+    /\balignment\b/i,
+    /\bfilm\b/i,
+    /\bin the slot\b|\bout wide\b/i,
   ];
-  let out = (reason || '').trim();
-  for (const rx of banned) out = out.replace(rx, '');
-  out = out.replace(/\s{2,}/g, ' ').trim();
-  const lname = pickedName.split(' ').slice(-1)[0];
-  if (!out.toLowerCase().includes(lname.toLowerCase())) {
-    out = `${pickedName} fits the current roster plan and projected role. ` + out;
+
+  const escalated = triggerRxs.some(rx => rx.test(out));
+  const strict = mode === 'strict' || escalated;
+
+  if (!strict) {
+    // Light mode: preserve wording; only ensure the player's name is present.
+    if (pickedName && !new RegExp(`\\b${String(pickedName).replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i').test(out)) {
+      out = `${pickedName}: ${out}`;
+    }
+    return withMeta ? { text: out, escalated } : out;
   }
-  const sentenceCount = out.split('.').filter(Boolean).length;
-  if (sentenceCount < 3) {
-    out += ' He offers practical value now while leaving room for growth without overcommitting to one dimension.';
+
+  // Strict mode: targeted replacements/removals only (avoid homogenizing the whole paragraph).
+  const removePhrases = [
+    /\bthe adjustment curve at the pro level\b[\.,;:]*/gi,
+    /\bcompared to (other|the) available\b[\s\S]*?(\.|$)/gi,
+    /\bthe synergy with\b[\s\S]*?(\.|$)/gi,
+    /\bmedium scarcity\b[\.,;:]*/gi,
+    // Overconfident labels
+    /\bstud\b/gi,
+    /\b(locked[- ]in|lock)\s*(weekly\s*)?starter\b/gi,
+    /\bday[- ]one\s*starter\b/gi,
+    /\binstant\s*starter\b/gi,
+    /\bcan\s*step\s*in\s*and\s*start\s*immediately\b/gi,
+  ];
+  for (const rx of removePhrases) out = out.replace(rx, '').replace(/\s+/g, ' ').trim();
+
+  const replacements = [
+    [/\breceiver corps\b/gi, 'WR room'],
+    [/\breceiving corps\b/gi, 'WR room'],
+    [/\bwide receiver\s+room\b/gi, 'WR room'],
+    [/\bquarterback\s+room\b/gi, 'QB room'],
+    [/\btight end\s+room\b/gi, 'TE room'],
+    [/\bbackfield\b/gi, 'RB room'],
+    [/\bstretch the field\b/gi, 'create spike-week upside'],
+    [/\bbalanced offense\b/gi, 'balanced fantasy roster'],
+    [/\bplay[- ]calling\b/gi, 'usage'],
+    [/\bgameplan\b/gi, 'weekly deployment'],
+    [/\bsnap count(s)?\b/gi, 'weekly usage'],
+    [/\broute tree\b/gi, 'role'],
+    [/\bscheme(?:\s*fit)?\b/gi, 'role'],
+    [/\bplay\s*action\b/gi, ''],
+    [/\b(offense|defense)\b/gi, 'roster'],
+    [/\bcoach(?:ing)?\b/gi, ''],
+  ];
+  for (const [from, to] of replacements) out = out.replace(from, to).replace(/\s+/g, ' ').trim();
+
+  if (pickedName && !new RegExp(`\\b${String(pickedName).replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i').test(out)) {
+    out = `${pickedName}: ${out}`;
   }
-  return out;
+
+  return withMeta ? { text: out, escalated } : out;
 }
-function toMarkdownArticle({ title, picks, leagueName }) {
+
+function hash32(str) {
+  // Tiny non-crypto hash for debug grouping.
+  let h = 2166136261;
+  const s = String(str ?? '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+
+function clip(str, n) {
+  const s = String(str ?? '');
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+function toMarkdownArticle({ title, picks, leagueName, seed }) {
+  const rng = createRng({ seed, salt: `mock-article|${title}|${leagueName}` });
   const lines = [];
   lines.push(`# ${title}`);
   lines.push('');
-  lines.push(`With the rookie draft approaching in ${leagueName}, here\'s a data-assisted mock based on team needs, positional value, and a shared player pool.`);
+  lines.push(buildArticleIntro({ title, leagueName, rng }));
   lines.push('');
   let currentRound = null;
-  for (const p of picks) {
+  for (let idx = 0; idx < picks.length; idx++) {
+    const p = picks[idx];
     const round = Number(String(p.pickNumber).split('.')[0] || 1);
     if (currentRound !== round) {
       currentRound = round;
       lines.push(`## Round ${currentRound}`);
       lines.push('');
+      lines.push(buildRoundIntro({ round: currentRound, rng }));
+      lines.push('');
     }
     lines.push(`### ${p.pickNumber} - Team ${p.teamName}`);
     lines.push(`**Projected Pick: ${p.player.name}, ${p.player.position}**`);
     lines.push('');
+
     lines.push(p.reason);
     lines.push('');
   }
+
+  lines.push('---');
+  lines.push('');
+  lines.push(rng.pick([
+    'That’s the board. Now it’s your turn to overreact responsibly.',
+    'If this mock nailed your next pick: you’re welcome. If it didn’t: blame the simulation.',
+    'Draft day is coming. Hydrate, charge your phone, and don’t trade future firsts out of boredom.',
+    'The only guarantee: someone will hate this mock loud enough for all of us.',
+  ]));
   return lines.join('\n');
 }
 
@@ -163,6 +324,7 @@ export async function POST(request) {
       title = 'BBB AI Mock Draft',
       description = 'AI-generated mock draft with per-pick reasoning.',
       progressKey = null,
+      topN = 8,
     } = body || {};
 
     if (!process.env.OPENAI_API_KEY) {
@@ -233,116 +395,40 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Player pool is empty' }, { status: 400 });
     }
 
-    // League-wide hints (very light for now; could compute scarcity later)
-  // Neutral hints to discourage scarcity emphasis
-  const leagueHints = `Focus on player fit, role clarity, and overall value. Avoid repeating the same adjectives or stock phrases.`;
+    // League-wide hints
+    const leagueHints = `Write like you’re talking to the league chat: clear, confident, and a little fun. Keep it respectful. Focus on roster fit, role clarity, and value. Avoid repeating the same adjectives or stock phrases.`;
 
-  const reasonTemplates = [
-    // Core structures
-    'Start with player name and role fit; follow with value vs generic alternatives; conclude with a minor risk.',
-    'Open with player name + how he improves the lineup; compare to generic options; end with a tempered concern.',
-    'Lead with player name and expected role contribution; discuss value and timing; add a light caveat.',
-    'Begin with player name and team fit; touch on development path and value; mention one risk to monitor.',
-    'Introduce player name with tactical fit; outline why this value works now; finish with a manageable risk.',
-    // Variations on framing
-    'Start with player name and one standout trait; connect it to the team’s immediate plan; end with a reasonable caveat.',
-    'Open with player name and how he shifts matchups; address depth implications; finish with a minor watch‑item.',
-    'Lead with player name and how snaps/usage project; relate to scheme; close with a modest uncertainty.',
-    'Begin with player name and fit within positional room; discuss roster construction; end with a small risk.',
-    'Introduce player name and explain why the board supports this choice; add a realistic limitation to monitor.',
-    // Value and timing spins
-    'Start with player name and where he adds value now; mention future upside; finish with a practical risk.',
-    'Open with player name and how he stabilizes a unit; nod to long‑term growth; add a mild concern.',
-    'Lead with player name and the role clarity he brings; reference timing across the season; end with a restraint.',
-    'Begin with player name and how he complements existing personnel; call out value; note one constraint.',
-    'Introduce player name and why his acquisition sequence makes sense; close with balanced caution.',
-    // Tactical and development blends
-    'Start with player name and tactical utility; add development pathway; end with a measured risk.',
-    'Open with player name and a simple tactical upgrade; outline how reps could expand; add a small caveat.',
-    'Lead with player name and expected situational usage; highlight value; finish with limited downside.',
-    'Begin with player name and the baseline contribution; project improvement; mention one monitoring point.',
-    'Introduce player name and synergy with coordinator tendencies; add value note; close with modest risk.',
-    // Different rhetorical flows
-    'Start with player name and a concise fit statement; add two short value points; end with one risk sentence.',
-    'Open with player name; pose a rhetorical consideration of alternatives (generic); answer with fit; end with caution.',
-    'Lead with player name and a comparison to generic profiles; justify fit; finish with a watch point.',
-    'Begin with player name and a declarative fit; provide one supporting example; end with a constraint.',
-    'Introduce player name; describe role, value, and pacing; add a single pragmatic concern.',
-    // Narrative angle options
-    'Start with player name and immediate plan; touch on how this shapes future flexibility; end with a small risk.',
-    'Open with player name and current depth chart impact; address rotation; finish with tempered uncertainty.',
-    'Lead with player name and why the board aligns; discuss roster balance; end with a manageable limitation.',
-    'Begin with player name and how he addresses one defined need; connect to overall value; add caveat.',
-    'Introduce player name and team‑building rationale; articulate value; finish with cautious note.',
-    // Role clarity and constraints
-    'Start with player name and define primary role; add two concise value points; end with one constraint to manage.',
-    'Open with player name and expected alignment with packages; outline value add; close with rotational caveat.',
-    'Lead with player name and utilization window; justify board position; finish with workload note.',
-    'Begin with player name and where he slots on depth chart; mention value; add one limiter.',
-    'Introduce player name and outline role hierarchy impact; add practical value; end with situational caveat.',
-    // Fit and synergy angles
-    'Start with player name and synergy with current personnel groups; tie to fit; end with minor uncertainty.',
-    'Open with player name and complementary traits; explain why it works with existing starters; add caveat.',
-    'Lead with player name and expected synergy with coordinator preferences; discuss value; close with watch item.',
-    'Begin with player name and package synergy; include a nod to pacing; end with one measured risk.',
-    'Introduce player name and explain fit within sub‑packages; add value timing; finish with pragmatic concern.',
-    // Board/alternatives framing (generic)
-    'Start with player name and succinct board justification; reference generic alternatives; end with modest risk.',
-    'Open with player name and why the board favors this direction; address generic options; finish with restraint.',
-    'Lead with player name and a short board note; offer generic comparison; end with small caveat.',
-    'Begin with player name and the board context; mention generic pathways; close with manageable limitation.',
-    'Introduce player name and board alignment; outline value; end with one realistic concern.',
-    // Development pacing
-    'Start with player name and immediate role; sketch development pacing; end with one mild risk.',
-    'Open with player name and short‑term usage; add how reps evolve; finish with adjustment caveat.',
-    'Lead with player name and baseline contribution; add medium‑term growth line; end with constraint.',
-    'Begin with player name and near‑term plan; mention skill refinement; close with measured caution.',
-    'Introduce player name and a practical ramp‑up path; connect value; end with tempered uncertainty.',
-    // Scenario‑specific notes
-    'Start with player name and situational utility (third‑down/red‑zone as applicable); add value; end with one limiter.',
-    'Open with player name and matchup flexibility; discuss practical value; finish with a single caveat.',
-    'Lead with player name and special teams or package utility when relevant; tie to value; end with mild risk.',
-    'Begin with player name and rotation impact; outline the why; close with usage constraint.',
-    'Introduce player name and contingency coverage; articulate value; finish with pragmatic watch point.',
-    // Position-tailored generic frames (no other names)
-    'QB: Start with player name and pocket/processing fit; outline value in drive consistency; end with one learning curve note.',
-    'RB: Open with player name and run concept alignment; mention value in early downs; close with workload caveat.',
-    'WR: Lead with player name and route/spacing fit; add value in chain-moving; finish with one refinement note.',
-    'TE: Begin with player name and inline/split role fit; outline value in personnel flexibility; end with modest usage caveat.',
-    'DB: Introduce player name and coverage/assignment fit; add value in sub-packages; close with a single constraint.',
-    // Game-state and sequencing frames
-    'Start with player name and impact on early downs; add sequencing value; end with practical limitation.',
-    'Open with player name and third-down utility; tie to sustained drives; finish with measured risk.',
-    'Lead with player name and red-zone contribution; connect to situational value; end with one caveat.',
-    'Begin with player name and two-minute usage; outline pacing value; close with realistic concern.',
-    'Introduce player name and end-of-game tendencies; mention execution value; finish with minor caution.',
-    // Risk-balanced rationales
-    'Start with player name and primary fit statement; add two value points; conclude with a balanced risk sentence.',
-    'Open with player name and plain-fit note; provide concise value justification; end with contained risk.',
-    'Lead with player name and role clarity; add compact value reasoning; finish with a bounded caveat.',
-    'Begin with player name and clear contribution; share brief value logic; close with a limited uncertainty.',
-    'Introduce player name and straightforward fit; include value rationale; end with one constrained risk.',
-  ];
-  const styleTokens = [
-    'Write with concise sentences; avoid clichés.',
-    'Use varied sentence openings; keep the tone analytical.',
-    'Favor plain language; avoid buzzwords.',
-    'Blend tactical and developmental notes; avoid repetition.',
-    'Keep it practical and grounded; avoid sweeping claims.',
-    'Prioritize clarity; prefer short clauses over stacked adjectives.',
-    'Maintain neutral tone; avoid hype language.',
-    'Prefer concrete role terminology; avoid vague superlatives.',
-    'Vary cadence: mix short and medium sentences.',
-    'Avoid template phrases; rephrase common constructions.',
-    'Keep verbs active; minimize filler adverbs.',
-    'Prefer specific nouns over broad labels.',
-    'Limit subordinate clauses; favor clarity.',
-    'Avoid repetitive sentence skeletons across picks.',
-    'Let each sentence carry one idea; avoid chaining multiple clauses.',
-    'Prefer concrete role verbs: anchor, stretch, occupy, trigger, protect.',
-    'Use neutral qualifiers; avoid hype and absolutes.',
-    'Rotate transitions (Moreover, In addition, Meanwhile, Conversely) sparingly.',
-  ];
+    // Roster-needs context from BBB_Contracts (Active only)
+    let teamNeeds = null;
+    try {
+      const csvUrl = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv';
+      const csvRes = await fetch(csvUrl, { cache: 'no-store' });
+      if (csvRes.ok) {
+        const csvText = await csvRes.text();
+        const activeContracts = parseBBBContractsCsv(csvText);
+        const teamNames = Array.from(new Set(order.map(o => o.teamName))).filter(Boolean);
+        if (teamNames.length) {
+          teamNeeds = buildTeamNeeds({ activeContracts, teamNames });
+        }
+      }
+    } catch {
+      teamNeeds = null;
+    }
+
+    // Deterministic voice RNG: if seed is provided, personality/variety becomes stable.
+    const voiceRng = createRng({ seed: (seed ?? Date.now()), salt: `mock-voice|${title}` });
+    const recentLeadIns = [];
+    const recentReasonTemplates = [];
+
+    // Stored in Mongo (meta.generationDebug) for diagnosing repetition.
+    // Keep the payload bounded and admin-only route already restricts access.
+    const generationDebug = {
+      version: 1,
+      seed: seed ?? null,
+      topN: Number(topN) || 8,
+      model,
+      picks: [],
+    };
 
     const traceLog = [];
     const picks = [];
@@ -369,6 +455,7 @@ export async function POST(request) {
       const teamProfile = buildTeamProfile(o.userId, users, rosters);
       teamProfile.persona = personas[(Number(o.slot) - 1) % 12];
       const pickNumber = formatPickNumber(Number(o.round ?? 1), Number(o.slot ?? (i % 12) + 1));
+  const quality = qualitySpectrumForPick(i, 40);
 
       // Update progress (best-effort, non-blocking)
       if (progressKey) {
@@ -382,10 +469,75 @@ export async function POST(request) {
         } catch {}
       }
 
-  const reasonTemplate = reasonTemplates[i % reasonTemplates.length];
-  const styleToken = styleTokens[(i + Math.floor(Math.random() * 3)) % styleTokens.length];
-  const system = buildSystemPrompt(teamProfile, styleToken);
-  const userMsg = buildUserPrompt({ pickNumber, available: pool, leagueHints, teamProfile, reasonTemplate });
+      const positionHint = pool?.[0]?.position || pool?.[0]?.pos || 'FLEX';
+      const reasonTemplate = buildReasonTemplate({
+        rng: voiceRng,
+        position: positionHint,
+        quality,
+        recent: recentReasonTemplates,
+        window: 8,
+      });
+    const styleToken = buildStyleToken({ rng: voiceRng });
+  const system = buildSystemPrompt(teamProfile, styleToken, quality);
+
+      // Compute needs-weighted "best" pick in the allowed window (topN)
+      const windowN = Math.max(1, Math.min(8, Number(topN) || 8));
+      const window = pool.slice(0, windowN);
+      const needsText = teamNeeds ? formatTeamNeedsForPrompt(teamNeeds, teamProfile.teamName) : '';
+
+      let weightedBpaName = window[0]?.name;
+      if (teamNeeds && window.length) {
+        const teamRow = teamNeeds.teams.find(t => t.teamName === teamProfile.teamName);
+        if (teamRow) {
+          let best = null;
+          for (const cand of window) {
+            const pos = String(cand.position || '').toUpperCase();
+            const weight = teamRow.positions?.[pos]?.needWeight ?? 1.0;
+            const score = pickWindowScore({ candidate: cand, needWeight: weight });
+            if (!best || score > best.score) best = { name: cand.name, score };
+          }
+          if (best?.name) weightedBpaName = best.name;
+        }
+      }
+
+      const userMsg = buildUserPromptTopN({
+        pickNumber,
+        round: Number(o.round ?? 1),
+        available: pool,
+        leagueHints,
+        teamProfile,
+        reasonTemplate,
+        quality,
+        topN: windowN,
+        teamNeedsText: needsText,
+      });
+
+      // Track templates to reduce back-to-back structural repetition.
+      recentReasonTemplates.push(reasonTemplate);
+
+      const templateId = hash32(reasonTemplate);
+
+      // Seed debug entry for this pick (we'll fill raw/sanitized later)
+      const debugEntry = {
+        pickNumber,
+        teamName: teamProfile.teamName,
+        slot: Number(o.slot ?? (i % 12) + 1),
+        round: Number(o.round ?? 1),
+        persona: teamProfile.persona,
+        qualityBand: quality?.band,
+  leadInCategory: null,
+        templateId,
+        templatePreview: clip(reasonTemplate, 160),
+        usedFallback: false,
+        parseError: null,
+        sanitizeMode: 'light',
+        sanitizeEscalated: false,
+        sanitizedChanged: false,
+        sanitizeDeltaChars: 0,
+        sanitizeSkipped: false,
+        rawReasonPreview: null,
+        sanitizedReasonPreview: null,
+      };
 
       const messages = [
         { role: 'system', content: system },
@@ -408,8 +560,45 @@ export async function POST(request) {
       if (!parsed || typeof parsed.pick !== 'string') {
         // Fallback to BPA from pool if model failed to follow
         const fallback = pool[0];
-  let reason = `${fallback.name} fits ${teamProfile.teamName}'s roster build and projected role. He provides actionable value now while keeping future options open. A minor concern is the adjustment curve at the pro level.`;
-  reason = sanitizeReason(reason, fallback.name);
+        // Voice-driven fallback reason to avoid obvious repetition when the model output is malformed.
+        const leadInRaw = buildPickLeadIn({
+          pickNumber,
+          teamName: teamProfile.teamName,
+          position: fallback.position,
+          rng: voiceRng,
+          recent: recentLeadIns,
+        });
+        recentLeadIns.push(leadInRaw);
+        debugEntry.leadInCategory = String(leadInRaw || '').includes('|') ? String(leadInRaw).split('|')[0] : null;
+        const leadIn = String(leadInRaw || '').includes('|') ? String(leadInRaw).split('|').slice(1).join('|') : String(leadInRaw || '');
+
+        const fallbackTemplate = buildReasonTemplate({
+          rng: voiceRng,
+          position: fallback.position,
+          quality,
+          recent: recentReasonTemplates,
+          window: 8,
+        });
+        recentReasonTemplates.push(fallbackTemplate);
+
+        const coda = buildPickCoda({ rng: voiceRng });
+
+        // Keep this intentionally simple: one lead-in line + a compact 3-sentence reason + optional coda.
+  const rawFallbackReason = `${leadIn} ${fallback.name} is a clean roster-value pick here: it gives ${teamProfile.teamName} another usable ${fallback.position} option with a realistic path to fantasy points. The upside is lineup flexibility and the chance at a few startable weeks if the role opens up. The risk is volatility — this could stay bench-only and take time (or never fully click).`;
+  const sfb = sanitizeReason(rawFallbackReason, fallback.name, { mode: 'light', withMeta: true });
+  let reason = sfb.text;
+        if (coda) reason = `${reason} ${coda}`;
+
+        debugEntry.usedFallback = true;
+        debugEntry.parseError = 'Malformed LLM JSON';
+        debugEntry.rawReasonPreview = clip(content, 220);
+        debugEntry.sanitizedReasonPreview = clip(reason, 220);
+  debugEntry.sanitizeEscalated = !!sfb.escalated;
+  debugEntry.sanitizedChanged = rawFallbackReason !== sfb.text;
+  debugEntry.sanitizeDeltaChars = (sfb.text || '').length - (rawFallbackReason || '').length;
+  debugEntry.sanitizeSkipped = false;
+        generationDebug.picks.push(debugEntry);
+
         picks.push({ pickNumber, teamName: teamProfile.teamName, player: fallback, reason });
         pool = popPlayerByName(pool, fallback.name).nextPool;
         trace && traceLog.push({ pickNumber, team: teamProfile.teamName, error: 'Malformed LLM JSON', raw: content });
@@ -417,27 +606,66 @@ export async function POST(request) {
       }
 
       const desired = parsed.pick;
-      // Enforce TOP 10 constraint strictly
-      const top10Names = pool.slice(0, 10).map(p => p.name);
+      // Enforce TOP-N constraint strictly (default top 8)
+      const topNames = pool.slice(0, windowN).map(p => p.name);
       let chosenName = desired;
-      if (!top10Names.includes(chosenName)) {
-        chosenName = top10Names[0]; // best available within top 10
-        trace && traceLog.push({ pickNumber, team: teamProfile.teamName, warning: 'Choice outside top-10; auto-corrected', originalChoice: desired, correctedTo: chosenName });
+      if (!topNames.includes(chosenName)) {
+        chosenName = weightedBpaName || topNames[0];
+        trace && traceLog.push({ pickNumber, team: teamProfile.teamName, warning: `Choice outside top-${windowN}; auto-corrected`, originalChoice: desired, correctedTo: chosenName });
       }
       const { picked, nextPool } = popPlayerByName(pool, chosenName);
       if (!picked) {
         // If the model chose someone not in pool, take BPA to enforce constraint
         const fallback = pool[0];
-  let reason = parsed.reason || 'Adjusted to best available from valid pool.';
-  reason = sanitizeReason(reason, fallback.name);
+        const rawFallbackReason = parsed.reason || 'Adjusted to best available from valid pool.';
+        const sfb2 = sanitizeReason(rawFallbackReason, fallback.name, { mode: 'light', withMeta: true });
+        let reason = sfb2.text;
+
+        debugEntry.usedFallback = true;
+        debugEntry.parseError = 'LLM chose out-of-pool after correction';
+        debugEntry.rawReasonPreview = clip(rawFallbackReason, 220);
+        debugEntry.sanitizedReasonPreview = clip(reason, 220);
+        debugEntry.sanitizeMode = 'light';
+        debugEntry.sanitizeEscalated = !!sfb2.escalated;
+        debugEntry.sanitizedChanged = rawFallbackReason !== sfb2.text;
+        debugEntry.sanitizeDeltaChars = (sfb2.text || '').length - (rawFallbackReason || '').length;
+        debugEntry.sanitizeSkipped = false;
+        generationDebug.picks.push(debugEntry);
+
         picks.push({ pickNumber, teamName: teamProfile.teamName, player: fallback, reason });
         pool = popPlayerByName(pool, fallback.name).nextPool;
         trace && traceLog.push({ pickNumber, team: teamProfile.teamName, warning: 'LLM chose out-of-pool after correction', choice: desired });
         continue;
       }
 
-      // Ensure the reason refers to the picked player and not another name
-      let reason = sanitizeReason(parsed.reason || '', picked.name);
+  // For successful LLM picks, use the raw reason as-is (no sanitizer).
+  const rawReason = parsed.reason || '';
+  let reason = String(rawReason || '').trim();
+
+      // Add a short human lead-in and (occasionally) a coda for flavor.
+      // Keep it to 1 line to avoid bloating the article.
+      const leadRaw = buildPickLeadIn({
+        pickNumber,
+        teamName: teamProfile.teamName,
+        position: picked.position,
+        rng: voiceRng,
+        recent: recentLeadIns,
+      });
+      recentLeadIns.push(leadRaw);
+      debugEntry.leadInCategory = String(leadRaw || '').includes('|') ? String(leadRaw).split('|')[0] : null;
+      const lead = String(leadRaw).includes('|') ? String(leadRaw).split('|').slice(1).join('|') : String(leadRaw);
+      const coda = buildPickCoda({ rng: voiceRng });
+      reason = `${lead}\n\n${reason}${coda ? `\n\n*${coda}*` : ''}`;
+
+  debugEntry.rawReasonPreview = clip(rawReason, 220);
+  debugEntry.sanitizedReasonPreview = clip(reason, 220);
+  debugEntry.sanitizeMode = 'skipped';
+  debugEntry.sanitizeEscalated = false;
+  debugEntry.sanitizedChanged = false;
+  debugEntry.sanitizeDeltaChars = 0;
+  debugEntry.sanitizeSkipped = true;
+  generationDebug.picks.push(debugEntry);
+
       picks.push({ pickNumber, teamName: teamProfile.teamName, player: picked, reason });
       pool = nextPool;
 
@@ -454,7 +682,7 @@ export async function POST(request) {
 
     // Compose article
     const leagueName = 'Budget Blitz Bowl';
-  const article = toMarkdownArticle({ title, picks, leagueName });
+    const article = toMarkdownArticle({ title, picks, leagueName, seed: (seed ?? Date.now()) });
 
     // Persist if not dryRun
     let saved = null;
@@ -476,6 +704,7 @@ export async function POST(request) {
           model,
           picks,
           trace: trace ? traceLog : undefined,
+          generationDebug,
         },
       };
       // Make only one active

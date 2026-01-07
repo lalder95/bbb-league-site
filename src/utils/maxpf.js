@@ -43,9 +43,23 @@ export async function calculateSeasonMaxPF({ leagueId }) {
   const { slots, flexDefs } = buildStarterSlots(league.roster_positions || []);
   const playersMeta = await fetchJson('https://api.sleeper.app/v1/players/nfl');
   const state = await fetchJson('https://api.sleeper.app/v1/state/nfl');
-  // Cap MaxPF calculation to regular season weeks 1–14
-  const currentWeek = Number(state.week || 18);
-  const lastWeek = Math.min(14, currentWeek);
+
+  // Determine the last regular-season week for THIS league.
+  // Sleeper stores the playoff start week; regular season ends the week before.
+  const playoffWeekStart = Number(league?.settings?.playoff_week_start);
+  const regularSeasonLastWeek = Number.isFinite(playoffWeekStart) && playoffWeekStart > 1
+    ? playoffWeekStart - 1
+    : 14; // fallback for older leagues / missing settings
+
+  // During the regular season, cap to the current week.
+  // In offseason/postseason, Sleeper's state.week can reset (often to 1), which would
+  // incorrectly truncate MaxPF to only a handful of weeks.
+  const seasonType = String(state?.season_type || '').toLowerCase();
+  const currentWeek = Number(state?.week);
+  const lastWeek =
+    seasonType === 'regular' && Number.isFinite(currentWeek) && currentWeek > 0
+      ? Math.min(regularSeasonLastWeek, currentWeek)
+      : regularSeasonLastWeek;
 
   const maxPf = {};
   for (let week = 1; week <= lastWeek; week++) {

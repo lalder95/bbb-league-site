@@ -18,6 +18,7 @@ export default function DraftDataProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [leagueId, setLeagueId] = useState(null);
+  const [leagueSeason, setLeagueSeason] = useState(null);
   const [draftInfo, setDraftInfo] = useState(null);
   const [draftPicks, setDraftPicks] = useState([]);
   const [tradedPicks, setTradedPicks] = useState([]);
@@ -53,6 +54,7 @@ export default function DraftDataProvider({ children }) {
         if (!seasonResponse.ok) throw new Error('Failed to fetch NFL state');
         const seasonState = await seasonResponse.json();
         const currentSeason = seasonState.season;
+        setLeagueSeason(currentSeason);
 
         // Get user's leagues for the current season
         const userLeaguesResponse = await fetch(
@@ -119,6 +121,49 @@ export default function DraftDataProvider({ children }) {
 
     async function fetchDraftData() {
       try {
+        const getLeagueYear = async () => {
+          const yrFromState = Number(leagueSeason);
+          if (Number.isFinite(yrFromState) && yrFromState > 2000) return yrFromState;
+          try {
+            const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+            if (seasonResponse.ok) {
+              const seasonState = await seasonResponse.json();
+              const yr = Number(seasonState?.season);
+              if (Number.isFinite(yr) && yr > 2000) {
+                setLeagueSeason(String(yr));
+                return yr;
+              }
+            }
+          } catch {
+            // ignore
+          }
+          return new Date().getFullYear();
+        };
+
+        const pickActiveDraft = (drafts) => {
+          if (!Array.isArray(drafts) || drafts.length === 0) return null;
+
+          const nonComplete = drafts.filter((d) => d?.status && d.status !== 'complete');
+          if (nonComplete.length === 0) return null;
+
+          const statusPriority = {
+            drafting: 0,
+            in_progress: 1,
+            paused: 2,
+            pre_draft: 3,
+            upcoming: 4,
+          };
+
+          return nonComplete
+            .slice()
+            .sort((a, b) => {
+              const pa = statusPriority[String(a.status)] ?? 99;
+              const pb = statusPriority[String(b.status)] ?? 99;
+              if (pa !== pb) return pa - pb;
+              return Number(b.start_time || 0) - Number(a.start_time || 0);
+            })[0];
+        };
+
         // Fetch league users
         const usersResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
         if (!usersResponse.ok) throw new Error('Failed to fetch users');
@@ -167,21 +212,20 @@ export default function DraftDataProvider({ children }) {
         setPastDrafts(processedDrafts);
 
         // --- DRAFT YEAR LOGIC ---
-        const currentYear = new Date().getFullYear();
-        let draftYear = currentYear + 1; // fallback
+        const leagueYear = await getLeagueYear();
+        const hasNonCompleteDraft =
+          Array.isArray(draftsData) && draftsData.some((d) => d?.status && d.status !== 'complete');
+        const draftYear = hasNonCompleteDraft ? leagueYear : leagueYear + 1;
 
-        const upcomingDraft = draftsData.find((draft) => draft.status === 'upcoming');
+        const activeDraft = pickActiveDraft(draftsData);
 
-        if (upcomingDraft) {
-          draftYear = upcomingDraft.start_time
-            ? new Date(Number(upcomingDraft.start_time)).getFullYear()
-            : currentYear;
-          setDraftInfo(upcomingDraft);
+        if (activeDraft) {
+          setDraftInfo(activeDraft);
 
           // For upcoming drafts, we might not have picks yet
           try {
             const picksResponse = await fetch(
-              `https://api.sleeper.app/v1/draft/${upcomingDraft.draft_id}/picks`
+              `https://api.sleeper.app/v1/draft/${activeDraft.draft_id}/picks`
             );
             if (picksResponse.ok) {
               const picksData = await picksResponse.json();
@@ -192,8 +236,8 @@ export default function DraftDataProvider({ children }) {
           }
 
           // Process the draft order
-          if (upcomingDraft.draft_order) {
-            const draftOrderArray = Object.entries(upcomingDraft.draft_order).map(
+          if (activeDraft.draft_order) {
+            const draftOrderArray = Object.entries(activeDraft.draft_order).map(
               ([userId, slot]) => ({
                 userId,
                 slot,
@@ -240,7 +284,7 @@ export default function DraftDataProvider({ children }) {
         try {
           const stateRes = await fetch('https://api.sleeper.app/v1/state/nfl');
           const stateJson = await stateRes.json();
-          const season = stateJson?.season || new Date().getFullYear();
+          const season = stateJson?.season || String(leagueYear);
           const tradesRes = await fetch(`/api/history/trades?season=${season}`);
           if (tradesRes.ok) {
             const tradesJson = await tradesRes.json();

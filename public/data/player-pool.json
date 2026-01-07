@@ -21,16 +21,16 @@
     "value": 0
   },
   {
-    "id": "1781",
-    "name": "Emeka Egbuka",
-    "position": "WR",
+    "id": "1744",
+    "name": "Omarion Hampton",
+    "position": "RB",
     "rank": 4,
     "value": 0
   },
   {
-    "id": "1744",
-    "name": "Omarion Hampton",
-    "position": "RB",
+    "id": "1781",
+    "name": "Emeka Egbuka",
+    "position": "WR",
     "rank": 5,
     "value": 0
   },
@@ -63,16 +63,16 @@
     "value": 0
   },
   {
-    "id": "1745",
-    "name": "Cam Skattebo",
-    "position": "RB",
+    "id": "1804",
+    "name": "Colston Loveland",
+    "position": "TE",
     "rank": 10,
     "value": 0
   },
   {
-    "id": "1804",
-    "name": "Colston Loveland",
-    "position": "TE",
+    "id": "1745",
+    "name": "Cam Skattebo",
+    "position": "RB",
     "rank": 11,
     "value": 0
   },
@@ -175,36 +175,36 @@
     "value": 0
   },
   {
-    "id": "1746",
-    "name": "Devin Neal",
-    "position": "RB",
+    "id": "1814",
+    "name": "Chimere Dike",
+    "position": "WR",
     "rank": 26,
     "value": 0
   },
   {
-    "id": "1814",
-    "name": "Chimere Dike",
-    "position": "WR",
+    "id": "1746",
+    "name": "Devin Neal",
+    "position": "RB",
     "rank": 27,
+    "value": 0
+  },
+  {
+    "id": "1813",
+    "name": "Isaac TeSlaa",
+    "position": "WR",
+    "rank": 28,
     "value": 0
   },
   {
     "id": "1798",
     "name": "Tory Horton",
     "position": "WR",
-    "rank": 28,
+    "rank": 29,
     "value": 0
   },
   {
     "id": "1782",
     "name": "Pat Bryant",
-    "position": "WR",
-    "rank": 29,
-    "value": 0
-  },
-  {
-    "id": "1813",
-    "name": "Isaac TeSlaa",
     "position": "WR",
     "rank": 30,
     "value": 0
@@ -231,30 +231,30 @@
     "value": 0
   },
   {
-    "id": "1779",
-    "name": "Tez Johnson",
-    "position": "WR",
-    "rank": 34,
-    "value": 0
-  },
-  {
-    "id": "1759",
-    "name": "Ollie Gordon",
-    "position": "RB",
-    "rank": 35,
-    "value": 0
-  },
-  {
     "id": "1748",
     "name": "Kaleb Johnson",
     "position": "RB",
-    "rank": 36,
+    "rank": 34,
     "value": 0
   },
   {
     "id": "1832",
     "name": "Jacory Croskey-Merritt",
     "position": "RB",
+    "rank": 35,
+    "value": 0
+  },
+  {
+    "id": "1759",
+    "name": "Ollie Gordon",
+    "position": "RB",
+    "rank": 36,
+    "value": 0
+  },
+  {
+    "id": "1812",
+    "name": "Kyle Williams",
+    "position": "WR",
     "rank": 37,
     "value": 0
   },
@@ -266,8 +266,8 @@
     "value": 0
   },
   {
-    "id": "1812",
-    "name": "Kyle Williams",
+    "id": "1779",
+    "name": "Tez Johnson",
     "position": "WR",
     "rank": 39,
     "value": 0
@@ -294,16 +294,16 @@
     "value": 0
   },
   {
-    "id": "1749",
-    "name": "Brashard Smith",
-    "position": "RB",
+    "id": "1778",
+    "name": "Jack Bech",
+    "position": "WR",
     "rank": 43,
     "value": 0
   },
   {
-    "id": "1778",
-    "name": "Jack Bech",
-    "position": "WR",
+    "id": "1749",
+    "name": "Brashard Smith",
+    "position": "RB",
     "rank": 44,
     "value": 0
   },
@@ -329,16 +329,16 @@
     "value": 0
   },
   {
-    "id": "1760",
-    "name": "DJ Giddens",
-    "position": "RB",
+    "id": "1787",
+    "name": "Dont'e Thornton",
+    "position": "WR",
     "rank": 48,
     "value": 0
   },
   {
-    "id": "1787",
-    "name": "Dont'e Thornton",
-    "position": "WR",
+    "id": "1760",
+    "name": "DJ Giddens",
+    "position": "RB",
     "rank": 49,
     "value": 0
   },
@@ -385,16 +385,16 @@
     "value": 0
   },
   {
-    "id": "1824",
-    "name": "Jimmy Horn",
-    "position": "WR",
+    "id": "1736",
+    "name": "Will Howard",
+    "position": "QB",
     "rank": 56,
     "value": 0
   },
   {
-    "id": "1736",
-    "name": "Will Howard",
-    "position": "QB",
+    "id": "1824",
+    "name": "Jimmy Horn",
+    "position": "WR",
     "rank": 57,
     "value": 0
   },
@@ -483,30 +483,30 @@
     "value": 0
   },
   {
-    "id": "1809",
-    "name": "Mitchell Evans",
-    "position": "TE",
+    "id": "1762",
+    "name": "Raheim Sanders",
+    "position": "RB",
     "rank": 70,
     "value": 0
   },
   {
-    "id": "1762",
-    "name": "Raheim Sanders",
-    "position": "RB",
+    "id": "1809",
+    "name": "Mitchell Evans",
+    "position": "TE",
     "rank": 71,
-    "value": 0
-  },
-  {
-    "id": "1757",
-    "name": "Donovan Edwards",
-    "position": "RB",
-    "rank": 72,
     "value": 0
   },
   {
     "id": "1830",
     "name": "Konata Mumpfield",
     "position": "WR",
+    "rank": 72,
+    "value": 0
+  },
+  {
+    "id": "1757",
+    "name": "Donovan Edwards",
+    "position": "RB",
     "rank": 73,
     "value": 0
   },

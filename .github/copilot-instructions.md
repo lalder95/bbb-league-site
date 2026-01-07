@@ -19,6 +19,32 @@ These notes make AI coding agents productive quickly in this Next.js 15 app (App
   - Assets can be fetched via `npm run setup:tesseract` which downloads and pins worker/wasm/lang data.
 - External league data: Utilities in `src/utils/*` wrap Sleeper API (e.g., `sleeperUtils.js`) and draft logic (`draftUtils.js`). Prefer using these helpers over re-implementing.
 
+### Draft Order utilities
+- Server-side calculator: `src/utils/draftOrderCalculator.js`
+  - Use from API routes / server code when you need a canonical draft order.
+  - Exports:
+    - `resolveTargetDraftSeason({ leagueId })` (leagueYear + 1 unless a non-complete draft exists)
+    - `calculateDraftOrderForLeague({ leagueId, targetSeason, applyRoundOneTrades })` (MaxPF + bracket + traded picks)
+- Client hook: `src/hooks/useDraftOrder.js`
+  - Use from client components when you just need the computed order.
+  - Fetches `/api/debug/draft-order?leagueId=...` and returns `{ loading, error, data }`.
+  - Example usage:
+    - `const { loading, error, data } = useDraftOrder({ leagueId });`
+    - Draft order entries are in `data.draft_order`.
+
+### Player profile card
+- Component: `src/app/my-team/components/PlayerProfileCard.js`
+  - Purpose: single player “card” UI used in multiple places (e.g., trade / pick modals) that can expand and show contract + ESPN info.
+  - Data sources:
+    - Contracts: prefers `contracts` prop; otherwise fetches CSV from `https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv`.
+    - Player image: prefers `public/players/cardimages/index.json` match; otherwise falls back to Cloudinary `res.cloudinary.com/.../<normalized>.png`, then position defaults.
+    - ESPN info: only fetched when `expanded === true` to avoid N×M network calls.
+      - Uses internal API routes (`/api/espn/scoreboard`, `/api/espn/summary`) and a small client-side cache with TTL.
+  - Patterns/gotchas:
+    - Avoid rendering raw objects/arrays in JSX; use the component’s safe display helpers.
+    - Keep ESPN fetches behind the `expanded` gate and use the existing cached fetch helper to avoid spamming ESPN.
+    - When adding new UI fields, ensure they degrade gracefully when contract rows are missing or ESPN has no boxscore.
+
 ### Developer workflows
 - Local dev: `npm run dev` (Next.js). Pre-hook runs `npm run generate-image-index`, which will call Cloudinary.
   - If Cloudinary creds are missing, create a stub `public/players/cardimages/index.json` as `[]` or set env in `.env.local` to avoid startup failures.
