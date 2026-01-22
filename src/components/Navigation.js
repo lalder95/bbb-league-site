@@ -107,6 +107,8 @@ export default function Navigation() {
   const [selectedPlayerId, setSelectedPlayerId] = useState(null); // for modal
   const searchInputRef = useRef(null);
   const resultsRef = useRef(null);
+  const mobileSearchInputRef = useRef(null);
+  const mobileResultsRef = useRef(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -260,6 +262,9 @@ export default function Navigation() {
   };
 
   const handleResultClick = (item) => {
+    // If a mobile user selected an item, ensure the overlay closes even if
+    // the component persists across route transitions.
+    setIsMenuOpen(false);
     if (item.type === 'page') {
       setShowResults(false);
       setSearchQuery('');
@@ -271,14 +276,27 @@ export default function Navigation() {
     }
   };
 
+  // If navigation happens (e.g., via router.push), close any open mobile menu
+  // and dismiss search UI so it can't remain stuck over the new page.
+  useEffect(() => {
+    setIsMenuOpen(false);
+    setShowResults(false);
+    setActiveIndex(-1);
+  }, [pathname]);
+
   useEffect(() => {
     function handleClickOutside(e) {
+      const clickedInDesktopSearch =
+        (resultsRef.current && resultsRef.current.contains(e.target)) ||
+        (searchInputRef.current && searchInputRef.current.contains(e.target));
+      const clickedInMobileSearch =
+        (mobileResultsRef.current && mobileResultsRef.current.contains(e.target)) ||
+        (mobileSearchInputRef.current && mobileSearchInputRef.current.contains(e.target));
+
       if (
         showResults &&
-        resultsRef.current &&
-        !resultsRef.current.contains(e.target) &&
-        searchInputRef.current &&
-        !searchInputRef.current.contains(e.target)
+        !clickedInDesktopSearch &&
+        !clickedInMobileSearch
       ) {
         setShowResults(false);
         setActiveIndex(-1);
@@ -483,17 +501,19 @@ export default function Navigation() {
                 <div className="flex items-center bg-white/5 rounded-lg px-3 py-2 border border-white/10">
                   <Search className="h-4 w-4 text-white/60" />
                   <input
+                    ref={mobileSearchInputRef}
                     type="text"
                     value={searchQuery}
                     onChange={(e) => { setSearchQuery(e.target.value); setActiveIndex(-1); setShowResults(true); }}
                     onFocus={handleSearchFocus}
+                    onKeyDown={onKeyDownSearch}
                     placeholder="Search pages and players..."
                     className="ml-2 bg-transparent outline-none text-sm text-white placeholder-white/50 w-full"
                     aria-label="Search pages and players"
                   />
                 </div>
                 {showResults && (searchQuery.length > 0 || loadingPlayers) && (
-                  <div className="mt-2 bg-black/90 border border-white/10 rounded-xl max-h-80 overflow-auto">
+                  <div ref={mobileResultsRef} className="mt-2 bg-black/90 border border-white/10 rounded-xl max-h-80 overflow-auto">
                     <div className="p-2">
                       {pageResults.length > 0 && (
                         <div className="mb-2">
