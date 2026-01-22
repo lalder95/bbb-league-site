@@ -92,7 +92,8 @@ export default function FinancePage() {
   // Gate rendering (after hooks have been declared)
   if (status === 'loading' || status === 'unauthenticated') return null;
 
-  const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
+  const isSalaryStatus = (contractStatus) => contractStatus === 'Active' || contractStatus === 'Future';
+  const activeContracts = playerContracts.filter(p => isSalaryStatus(p.status) && p.team);
   const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team?.trim()).filter(Boolean)));
   const EMAIL_TO_TEAM = Object.freeze({
     // 'user@example.com': 'Your Team Name',
@@ -163,7 +164,10 @@ export default function FinancePage() {
     positions.forEach(pos => {
       yearObj[pos] = myContracts.filter(p => p.position === pos).reduce((sum, p) => sum + (parseFloat(p[yearKey]) || 0), 0);
     });
-    yearObj['DeadCap'] = playerContracts.filter(p => p.status !== 'Active' && p.team === myTeamName).reduce((sum, p) => sum + (parseFloat(p[yearKey]) || 0), 0);
+    // Dead cap should exclude 'Future' contracts (those are salary, not dead cap)
+    yearObj['DeadCap'] = playerContracts
+      .filter(p => p.isDeadCap && p.team === myTeamName)
+      .reduce((sum, p) => sum + (parseFloat(p[yearKey]) || 0), 0);
     return yearObj;
   });
   const posColors = { QB: '#ef4444', RB: '#3b82f6', WR: '#22c55e', TE: '#a855f7', DeadCap: '#6b7280' };
