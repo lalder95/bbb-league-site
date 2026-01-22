@@ -46,6 +46,24 @@ export default function ContractManagementPage() {
   const [holdoutRfaChoices, setHoldoutRfaChoices] = useState({}); // { [playerId]: { apply: boolean } }
   const [pendingHoldoutRfa, setPendingHoldoutRfa] = useState(null); // { player }
 
+  // Admin: manual holdout assignments
+  const [adminHoldoutPlayerId, setAdminHoldoutPlayerId] = useState('');
+  const [adminHoldoutAssignedTeam, setAdminHoldoutAssignedTeam] = useState('');
+  const [adminHoldoutNotes, setAdminHoldoutNotes] = useState('');
+  const [adminHoldoutOfferYear1, setAdminHoldoutOfferYear1] = useState('');
+  const [adminHoldoutAssignLoading, setAdminHoldoutAssignLoading] = useState(false);
+  const [adminHoldoutAssignMsg, setAdminHoldoutAssignMsg] = useState('');
+  const [adminHoldoutAssignError, setAdminHoldoutAssignError] = useState('');
+
+  // Holdout assignments (from Mongo)
+  const [holdoutAssignments, setHoldoutAssignments] = useState([]);
+  const [holdoutAssignmentsLoading, setHoldoutAssignmentsLoading] = useState(false);
+  const [holdoutAssignmentsError, setHoldoutAssignmentsError] = useState('');
+  const [holdoutDecisionDrafts, setHoldoutDecisionDrafts] = useState({}); // { [playerId]: { status: 'DECLINED'|'ACCEPTED', years: 1|2|3 } }
+  const [holdoutDecisionSavingId, setHoldoutDecisionSavingId] = useState(null);
+  const [holdoutDecisionMsg, setHoldoutDecisionMsg] = useState('');
+  const [holdoutDecisionError, setHoldoutDecisionError] = useState('');
+
   // Admin
   const isAdmin = Boolean(
     session?.user?.isAdmin ||
@@ -190,6 +208,15 @@ export default function ContractManagementPage() {
   const holdoutsBadgeText = `${holdoutsWindowActive ? 'Open' : 'Closed'} • Apr 1 — Apr 30`;
 
   const allTeamNames = Array.from(new Set(playerContracts.filter(p => p.team).map(p => p.team.trim())));
+  const allPlayersForAdminHoldouts = Array.from(
+    new Map(
+      playerContracts
+        .filter(p => p.playerId && p.playerName)
+        .map(p => [String(p.playerId), { playerId: String(p.playerId), playerName: String(p.playerName) }])
+    ).values()
+  ).sort((a, b) => a.playerName.localeCompare(b.playerName, undefined, { sensitivity: 'base' }));
+
+
 
   // Determine the viewer's team
   const EMAIL_TO_TEAM = Object.freeze({});
@@ -230,6 +257,33 @@ export default function ContractManagementPage() {
     isAdmin && isAdminMode && (selectedTeamName || myTeamName)
       ? selectedTeamName || myTeamName
       : myTeamName;
+
+  async function refreshHoldoutAssignmentsForTeam(team) {
+    if (!team) {
+      setHoldoutAssignments([]);
+      return;
+    }
+    setHoldoutAssignmentsLoading(true);
+    setHoldoutAssignmentsError('');
+    try {
+      const res = await fetch(`/api/holdout-assignments?team=${encodeURIComponent(team)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load holdout assignments');
+      setHoldoutAssignments(Array.isArray(data.assignments) ? data.assignments : []);
+    } catch (err) {
+      setHoldoutAssignments([]);
+      setHoldoutAssignmentsError(err.message);
+    } finally {
+      setHoldoutAssignmentsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    if (!teamNameForUI) return;
+    refreshHoldoutAssignmentsForTeam(teamNameForUI);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, teamNameForUI]);
 
   const myContractsAll = playerContracts.filter(
     p => p.team && p.team.trim().toLowerCase() === teamNameForUI.trim().toLowerCase()
@@ -1736,338 +1790,327 @@ export default function ContractManagementPage() {
             <div className="mb-2 text-white/70 text-sm">
               Window: Apr 1 — Apr 30. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
+
+            {isAdmin && (
+              <div className="mb-6 p-4 bg-black/20 rounded-xl border border-white/10">
+                <div className="text-yellow-300 font-semibold mb-2">Admin: Assign Holdout Player</div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Player</label>
+                    <select
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      value={adminHoldoutPlayerId}
+                      onChange={e => setAdminHoldoutPlayerId(e.target.value)}
+                    >
+                      <option value="">Select player…</option>
+                      {allPlayersForAdminHoldouts.map(p => (
+                        <option key={p.playerId} value={p.playerId}>
+                          {p.playerName} (#{p.playerId})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Assigned Team</label>
+                    <select
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      value={adminHoldoutAssignedTeam}
+                      onChange={e => setAdminHoldoutAssignedTeam(e.target.value)}
+                    >
+                      <option value="">Select team…</option>
+                      {allTeamNames.map(team => (
+                        <option key={team} value={team}>
+                          {team}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Offer (Year 1 $)</label>
+                    <input
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      min="0"
+                      placeholder="e.g. 12.5"
+                      value={adminHoldoutOfferYear1}
+                      onChange={e => setAdminHoldoutOfferYear1(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Admin Notes (optional)</label>
+                    <input
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      type="text"
+                      placeholder="Notes"
+                      value={adminHoldoutNotes}
+                      onChange={e => setAdminHoldoutNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    className="px-4 py-2 bg-[#FFA726] text-[#0B1722] rounded font-semibold hover:bg-[#ffb247] disabled:opacity-50"
+                    disabled={
+                      !adminHoldoutPlayerId ||
+                      !adminHoldoutAssignedTeam ||
+                      !(Number(adminHoldoutOfferYear1) > 0) ||
+                      adminHoldoutAssignLoading
+                    }
+                    onClick={async () => {
+                      const selected = allPlayersForAdminHoldouts.find(p => p.playerId === String(adminHoldoutPlayerId));
+                      if (!selected) {
+                        setAdminHoldoutAssignError('Please select a valid player.');
+                        return;
+                      }
+
+                      const offerYear1 = Number(adminHoldoutOfferYear1);
+                      if (!(offerYear1 > 0)) {
+                        setAdminHoldoutAssignError('Please enter a valid Year 1 offer amount.');
+                        return;
+                      }
+                      const confirmMsg = `Assign ${selected.playerName} (#${selected.playerId}) to ${adminHoldoutAssignedTeam} for $${offerYear1.toFixed(1)} (Year 1)?`;
+                      if (!window.confirm(confirmMsg)) return;
+
+                      setAdminHoldoutAssignLoading(true);
+                      setAdminHoldoutAssignMsg('');
+                      setAdminHoldoutAssignError('');
+                      try {
+                        const res = await fetch('/api/admin/holdout-assignments', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            playerId: selected.playerId,
+                            playerName: selected.playerName,
+                            assignedTeam: adminHoldoutAssignedTeam,
+                            offerYear1,
+                            adminNotes: adminHoldoutNotes,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Failed to save holdout assignment');
+                        setAdminHoldoutAssignMsg('Holdout assignment saved!');
+                        setAdminHoldoutNotes('');
+                        setAdminHoldoutOfferYear1('');
+
+                        // Refresh assignments so the team list updates immediately
+                        if (teamNameForUI) await refreshHoldoutAssignmentsForTeam(teamNameForUI);
+                      } catch (err) {
+                        setAdminHoldoutAssignError(err.message);
+                      } finally {
+                        setAdminHoldoutAssignLoading(false);
+                      }
+                    }}
+                  >
+                    {adminHoldoutAssignLoading ? 'Saving…' : 'Assign'}
+                  </button>
+                  {adminHoldoutAssignMsg ? <div className="text-green-400 text-sm">{adminHoldoutAssignMsg}</div> : null}
+                  {adminHoldoutAssignError ? <div className="text-red-400 text-sm">{adminHoldoutAssignError}</div> : null}
+                </div>
+              </div>
+            )}
+
+            <div className="mb-6">
+              <h4 className="font-semibold text-white mb-2">Assigned Holdouts</h4>
+              {holdoutAssignmentsLoading ? (
+                <div className="text-white/60 italic">Loading assignments…</div>
+              ) : holdoutAssignmentsError ? (
+                <div className="text-red-300 text-sm">{holdoutAssignmentsError}</div>
+              ) : !teamNameForUI ? (
+                <div className="text-white/60 italic">Team not detected; cannot show assignments.</div>
+              ) : (holdoutAssignments || []).length === 0 ? (
+                <div className="text-white/60 italic">No assigned holdouts for this team.</div>
+              ) : (
+                <div className="space-y-3">
+                  {(holdoutAssignments || []).map(a => {
+                    const pid = String(a.playerId);
+                    const draft = holdoutDecisionDrafts[pid] || {};
+                    const draftStatus = draft.status || '';
+                    const draftYears = draft.years || 1;
+                    const offerYear1 = Number(a.offerYear1);
+                    const hasOffer = Number.isFinite(offerYear1) && offerYear1 > 0;
+
+                    const fmt = v => (Number.isFinite(Number(v)) ? `$${Number(v).toFixed(1)}` : '—');
+                    const computeSalaries = years => {
+                      if (!hasOffer) return [];
+                      let base = roundUp1(offerYear1);
+                      const out = [base];
+                      for (let i = 2; i <= years; i += 1) {
+                        base = roundUp1(base * 1.1);
+                        out.push(base);
+                      }
+                      return out;
+                    };
+
+                    const savedStatus = String(a.decisionStatus || '').toUpperCase();
+                    const decisionLocked = savedStatus === 'DECLINED' || savedStatus === 'ACCEPTED' || Boolean(a.decisionMade);
+                    const savedYears = a.decisionYears;
+                    const savedSalaries = Array.isArray(a.decisionSalaries) ? a.decisionSalaries : [];
+                    const displaySavedSalaries =
+                      savedStatus === 'ACCEPTED'
+                        ? (savedSalaries.length ? savedSalaries : computeSalaries(Number(savedYears) || 1))
+                        : [];
+
+                    const draftPreviewSalaries =
+                      draftStatus === 'ACCEPTED' ? computeSalaries(draftYears) : [];
+
+                    return (
+                      <div key={String(a._id || a.playerId)} className="bg-[#0C1B26] border border-white/10 rounded-xl p-4 shadow">
+                      <div className="flex items-center gap-3">
+                        <PlayerProfileCard playerId={a.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                        <div className="min-w-0">
+                          <div className="text-white font-semibold">{a.playerName} <span className="text-white/50 text-sm">(#{a.playerId})</span></div>
+                          <div className="text-white/60 text-xs">Assigned to: {a.assignedTeam}</div>
+                        </div>
+                      </div>
+
+                      {a.adminNotes ? <div className="mt-2 text-white/70 text-sm">Notes: {a.adminNotes}</div> : null}
+
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <div className="text-white/70 text-sm">Offer</div>
+                          <div className="text-white text-sm">{hasOffer ? fmt(offerYear1) : <span className="text-white/50">Pending</span>}</div>
+                        </div>
+                        <div>
+                          <div className="text-white/70 text-sm">Current Decision</div>
+                          {savedStatus === 'DECLINED' ? (
+                            <div className="text-red-300 text-sm">Declined</div>
+                          ) : savedStatus === 'ACCEPTED' ? (
+                            <div className="text-green-300 text-sm">
+                              Accepted ({savedYears || 1} yr{Number(savedYears) === 1 ? '' : 's'})
+                              {displaySavedSalaries.length ? (
+                                <div className="text-white/70 text-xs mt-1">
+                                  {displaySavedSalaries.map((s, idx) => (
+                                    <span key={idx} className="mr-2">Y{idx + 1}: {fmt(s)}</span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : a.decisionMade ? (
+                            <div className="text-green-300 text-sm">{a.decisionMade}</div>
+                          ) : (
+                            <div className="text-white/50 text-sm">Pending</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                        <div>
+                          <label className="block text-white/70 text-xs mb-1">Your Decision</label>
+                          <select
+                            className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                            value={draftStatus}
+                            disabled={decisionLocked}
+                            onChange={e => {
+                              const nextStatus = e.target.value;
+                              setHoldoutDecisionDrafts(prev => ({
+                                ...prev,
+                                [pid]: {
+                                  status: nextStatus,
+                                  years: nextStatus === 'ACCEPTED' ? (prev?.[pid]?.years || 1) : 1,
+                                },
+                              }));
+                            }}
+                          >
+                            <option value="">Select…</option>
+                            <option value="DECLINED">Decline</option>
+                            <option value="ACCEPTED">Accept</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-white/70 text-xs mb-1">Years</label>
+                          <select
+                            className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726] disabled:opacity-50"
+                            value={draftYears}
+                            disabled={decisionLocked || draftStatus !== 'ACCEPTED'}
+                            onChange={e => {
+                              const nextYears = Number(e.target.value);
+                              setHoldoutDecisionDrafts(prev => ({
+                                ...prev,
+                                [pid]: { status: 'ACCEPTED', years: nextYears },
+                              }));
+                            }}
+                          >
+                            <option value={1}>1</option>
+                            <option value={2}>2</option>
+                            <option value={3}>3</option>
+                          </select>
+                        </div>
+
+                        <button
+                          className="px-4 py-2 bg-[#1FDDFF] text-[#0B1722] rounded font-semibold hover:bg-[#37e8ff] disabled:opacity-50"
+                          disabled={
+                            decisionLocked ||
+                            !draftStatus ||
+                            !teamNameForUI ||
+                            holdoutDecisionSavingId === pid ||
+                            (draftStatus === 'ACCEPTED' && !hasOffer)
+                          }
+                          onClick={async () => {
+                            if (!draftStatus) return;
+                            if (!window.confirm(`Submit decision for ${a.playerName}?`)) return;
+                            setHoldoutDecisionSavingId(pid);
+                            setHoldoutDecisionMsg('');
+                            setHoldoutDecisionError('');
+                            try {
+                              const res = await fetch('/api/holdout-assignments', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  playerId: pid,
+                                  team: teamNameForUI,
+                                  decisionStatus: draftStatus,
+                                  decisionYears: draftStatus === 'ACCEPTED' ? draftYears : null,
+                                }),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || 'Failed to save decision');
+                              setHoldoutDecisionMsg('Decision saved!');
+                              setHoldoutDecisionDrafts(prev => {
+                                const next = { ...prev };
+                                delete next[pid];
+                                return next;
+                              });
+                              await refreshHoldoutAssignmentsForTeam(teamNameForUI);
+                            } catch (err) {
+                              setHoldoutDecisionError(err.message);
+                            } finally {
+                              setHoldoutDecisionSavingId(null);
+                            }
+                          }}
+                        >
+                          {holdoutDecisionSavingId === pid ? 'Saving…' : 'Save Decision'}
+                        </button>
+                      </div>
+
+                      {decisionLocked ? (
+                        <div className="mt-2 text-white/60 text-xs italic">Decision is final and cannot be changed.</div>
+                      ) : null}
+
+                      {draftStatus === 'ACCEPTED' ? (
+                        <div className="mt-2 text-white/70 text-xs">
+                          Offer preview: {draftPreviewSalaries.length ? draftPreviewSalaries.map((s, idx) => (
+                            <span key={idx} className="mr-2">Y{idx + 1}: {fmt(s)}</span>
+                          )) : <span className="text-white/50">Offer not set</span>}
+                        </div>
+                      ) : null}
+
+                      {holdoutDecisionMsg ? <div className="mt-2 text-green-400 text-sm">{holdoutDecisionMsg}</div> : null}
+                      {holdoutDecisionError ? <div className="mt-2 text-red-400 text-sm">{holdoutDecisionError}</div> : null}
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {!holdoutsWindowActive && (
               <div className="text-yellow-400 text-xs mb-4">Holdout actions can only be finalized between April 1st and April 30th.</div>
             )}
-            <div>
-              <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
-              {holdoutEligiblePlayersSorted.length === 0 ? (
-                <div className="text-white/60 italic">No players eligible as holdouts for your team.</div>
-              ) : (
-                <>
-                  {/* Mobile */}
-                  <div className="sm:hidden space-y-3">
-                    {holdoutEligiblePlayersSorted.map(player => {
-                      const extChoice = holdoutExtensionChoices[player.playerId] || { years: 0 };
-                      const rfaChoice = holdoutRfaChoices[player.playerId] || { apply: false };
-                      const year1 = getHoldoutExtensionYear1(player);
-                      let salaries = [];
-                      let sal = year1;
-                      for (let y = 1; y <= extChoice.years; y++) {
-                        if (y > 1) sal = Math.ceil(sal * 1.10 * 10) / 10;
-                        salaries.push(sal);
-                      }
-                      const showFinalizeExtension = extChoice.years > 0 && pendingHoldoutExtension?.player?.playerId === player.playerId && holdoutsWindowActive;
-                      const showFinalizeRfa = rfaChoice.apply && pendingHoldoutRfa?.player?.playerId === player.playerId && holdoutsWindowActive;
-                      return (
-                        <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
-                          <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
-                            <div className="min-w-0">
-                              <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
-                              <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
-                            </div>
-                          </div>
-                          <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
-                            <div>
-                              <div className="text-white/70 text-sm">Holdout Ext Yr1</div>
-                              <div className="text-white font-semibold text-3xl mt-1">${year1.toFixed(1)}</div>
-                              <div className="text-white/60 text-xs">Avg top 20 at position</div>
-                            </div>
-                            <div>
-                              <div className="text-white/70 text-sm">Extension Years</div>
-                              <select
-                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]"
-                                value={extChoice.years}
-                                onChange={e => {
-                                  const years = Number(e.target.value);
-                                  setHoldoutExtensionChoices(prev => ({ ...prev, [player.playerId]: { years } }));
-                                  if (years > 0) {
-                                    setPendingHoldoutExtension({ player, years, salaries });
-                                    // Clear RFA choice if set
-                                    setHoldoutRfaChoices(prev => ({ ...prev, [player.playerId]: { apply: false } }));
-                                    if (pendingHoldoutRfa && pendingHoldoutRfa.player.playerId === player.playerId) setPendingHoldoutRfa(null);
-                                  } else if (pendingHoldoutExtension && pendingHoldoutExtension.player.playerId === player.playerId) {
-                                    setPendingHoldoutExtension(null);
-                                  }
-                                }}
-                              >
-                                <option value={0}>No Extension</option>
-                                <option value={1}>1 Year</option>
-                                <option value={2}>2 Years</option>
-                                <option value={3}>3 Years</option>
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-white/70 text-sm">Holdout RFA Tag</div>
-                              <select
-                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]"
-                                value={rfaChoice.apply ? 'apply' : 'none'}
-                                onChange={e => {
-                                  const apply = e.target.value === 'apply';
-                                  setHoldoutRfaChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
-                                  if (apply) {
-                                    setPendingHoldoutRfa({ player });
-                                    // Clear extension choice
-                                    setHoldoutExtensionChoices(prev => ({ ...prev, [player.playerId]: { years: 0 } }));
-                                    if (pendingHoldoutExtension && pendingHoldoutExtension.player.playerId === player.playerId) setPendingHoldoutExtension(null);
-                                  } else if (pendingHoldoutRfa && pendingHoldoutRfa.player.playerId === player.playerId) {
-                                    setPendingHoldoutRfa(null);
-                                  }
-                                }}
-                              >
-                                <option value="none">No Tag</option>
-                                <option value="apply">Apply Tag</option>
-                              </select>
-                              <div className="text-white/60 text-xs mt-1">Does not count vs normal RFA limit</div>
-                            </div>
-                            <div className="text-white/70 text-xs">PPG: {player.ppg.toFixed(2)} (Rank {player.ppgRank ?? '-'})</div>
-                          </div>
-                          <div className="px-5 pb-5 bg-[#0C1B26] space-y-3">
-                            {showFinalizeExtension && (
-                              <button
-                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
-                                disabled={finalizeLoading || (!holdoutsWindowActive)}
-                                onClick={async () => {
-                                  const extVals = [];
-                                  let s = year1;
-                                  for (let i = 1; i <= pendingHoldoutExtension.years; i++) {
-                                    if (i > 1) s = Math.ceil(s * 1.10 * 10) / 10;
-                                    extVals.push(s.toFixed(1));
-                                  }
-                                  const lengthText = pendingHoldoutExtension.years === 1 ? '1 year' : `${pendingHoldoutExtension.years} years`;
-                                  const confirmMsg = `Are you sure you want to grant a Holdout Extension to ${player.playerName} for ${lengthText} at $${extVals.join(', $')}? This cannot be undone.`;
-                                  if (!window.confirm(confirmMsg)) return;
-                                  setFinalizeLoading(true); setFinalizeMsg(''); setFinalizeError('');
-                                  try {
-                                    const contractChange = {
-                                      change_type: 'holdout_extension',
-                                      user: session?.user?.name || '',
-                                      timestamp: new Date().toISOString(),
-                                      notes: `Holdout extension for ${player.playerName} (${player.position}) ${lengthText} at $${extVals.join(', $')}.`,
-                                      ai_notes: '',
-                                      playerId: player.playerId,
-                                      playerName: player.playerName,
-                                      years: pendingHoldoutExtension.years,
-                                      extensionSalaries: extVals.map(v => parseFloat(v)),
-                                      team: teamNameForUI,
-                                      position: player.position,
-                                    };
-                                    try {
-                                      const aiRes = await fetch('/api/ai/transaction_notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractChange }) });
-                                      const aiData = await aiRes.json();
-                                      contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
-                                    } catch { contractChange.ai_notes = 'AI summary unavailable.'; }
-                                    const res = await fetch('/api/admin/contract_changes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractChange) });
-                                    const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Failed to save holdout extension');
-                                    setFinalizeMsg('Holdout extension saved!');
-                                    const refreshRes = await fetch('/api/admin/contract_changes');
-                                    const refreshData = await refreshRes.json();
-                                    if (Array.isArray(refreshData)) {
-                                      const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                      const recent = refreshData.filter(c => c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo);
-                                      setRecentContractChanges(recent);
-                                    }
-                                    setHoldoutExtensionChoices(prev => { const u = { ...prev }; delete u[player.playerId]; return u; });
-                                    setPendingHoldoutExtension(null);
-                                  } catch (err) { setFinalizeError(err.message); } finally { setFinalizeLoading(false); }
-                                }}
-                              >
-                                {finalizeLoading ? 'Saving...' : 'Finalize Holdout Extension'}
-                              </button>
-                            )}
-                            {showFinalizeRfa && (
-                              <button
-                                className="w-full px-4 py-3 bg-[#1FDDFF] text-[#0B1722] rounded-xl hover:bg-[#37e8ff] font-semibold text-lg shadow"
-                                disabled={finalizeLoading || (!holdoutsWindowActive)}
-                                onClick={async () => {
-                                  const confirmMsg = `Are you sure you want to apply a Holdout RFA Tag to ${player.playerName}? This cannot be undone.`;
-                                  if (!window.confirm(confirmMsg)) return;
-                                  setFinalizeLoading(true); setFinalizeMsg(''); setFinalizeError('');
-                                  try {
-                                    const contractChange = {
-                                      change_type: 'holdout_rfa_tag',
-                                      user: session?.user?.name || '',
-                                      timestamp: new Date().toISOString(),
-                                      notes: `Applied Holdout RFA tag to ${player.playerName}.`,
-                                      ai_notes: '',
-                                      playerId: player.playerId,
-                                      playerName: player.playerName,
-                                      years: 0,
-                                      team: teamNameForUI,
-                                      position: player.position,
-                                    };
-                                    try {
-                                      const aiRes = await fetch('/api/ai/transaction_notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractChange }) });
-                                      const aiData = await aiRes.json();
-                                      contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.';
-                                    } catch { contractChange.ai_notes = 'AI summary unavailable.'; }
-                                    const res = await fetch('/api/admin/contract_changes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractChange) });
-                                    const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Failed to save holdout RFA tag');
-                                    setFinalizeMsg('Holdout RFA tag saved!');
-                                    const refreshRes = await fetch('/api/admin/contract_changes');
-                                    const refreshData = await refreshRes.json();
-                                    if (Array.isArray(refreshData)) {
-                                      const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                      const recent = refreshData.filter(c => c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo);
-                                      setRecentContractChanges(recent);
-                                    }
-                                    setHoldoutRfaChoices(prev => { const u = { ...prev }; delete u[player.playerId]; return u; });
-                                    setPendingHoldoutRfa(null);
-                                  } catch (err) { setFinalizeError(err.message); } finally { setFinalizeLoading(false); }
-                                }}
-                              >
-                                {finalizeLoading ? 'Saving...' : 'Finalize Holdout RFA Tag'}
-                              </button>
-                            )}
-                            <div className="text-white/60 text-xs">PPG excludes zero-point games. Non-pos weeks: {player.nonPosWeeks}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* Desktop */}
-                  <div className="hidden sm:block">
-                    {holdoutEligiblePlayersSorted.map(player => {
-                      const extChoice = holdoutExtensionChoices[player.playerId] || { years: 0 };
-                      const rfaChoice = holdoutRfaChoices[player.playerId] || { apply: false };
-                      const year1 = getHoldoutExtensionYear1(player);
-                      let salaries = [];
-                      let sal = year1;
-                      for (let y = 1; y <= extChoice.years; y++) {
-                        if (y > 1) sal = Math.ceil(sal * 1.10 * 10) / 10;
-                        salaries.push(sal);
-                      }
-                      const showFinalizeExtension = extChoice.years > 0 && pendingHoldoutExtension?.player?.playerId === player.playerId && holdoutsWindowActive;
-                      const showFinalizeRfa = rfaChoice.apply && pendingHoldoutRfa?.player?.playerId === player.playerId && holdoutsWindowActive;
-                      return (
-                        <div key={player.playerId} className="mb-4 bg-[#0C1B26] border border-white/10 rounded-xl p-4 shadow-lg">
-                          <div className="flex items-center gap-4 mb-3">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-12 h-12 rounded-lg overflow-hidden shadow" />
-                            <div className="min-w-0">
-                              <div className="text-white font-bold text-xl truncate">{player.playerName}</div>
-                              <div className="text-white/60 text-xs">Age {player.age ?? '-'} • PPG {player.ppg.toFixed(2)} Rank {player.ppgRank ?? '-'} • Non-pos weeks {player.nonPosWeeks}</div>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-5 gap-3 items-end">
-                            <div>
-                              <div className="text-white/70 text-xs">Ext Yr1 (Avg Top20)</div>
-                              <div className="text-white font-semibold text-lg">${year1.toFixed(1)}</div>
-                            </div>
-                            <div>
-                              <label className="text-white/70 text-xs">Extension</label>
-                              <select
-                                className="mt-1 w-full bg-white text-[#0B1722] rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]"
-                                value={extChoice.years}
-                                onChange={e => {
-                                  const years = Number(e.target.value);
-                                  setHoldoutExtensionChoices(prev => ({ ...prev, [player.playerId]: { years } }));
-                                  if (years > 0) {
-                                    setPendingHoldoutExtension({ player, years, salaries });
-                                    setHoldoutRfaChoices(prev => ({ ...prev, [player.playerId]: { apply: false } }));
-                                    if (pendingHoldoutRfa && pendingHoldoutRfa.player.playerId === player.playerId) setPendingHoldoutRfa(null);
-                                  } else if (pendingHoldoutExtension && pendingHoldoutExtension.player.playerId === player.playerId) {
-                                    setPendingHoldoutExtension(null);
-                                  }
-                                }}
-                              >
-                                <option value={0}>None</option>
-                                <option value={1}>1 Yr</option>
-                                <option value={2}>2 Yrs</option>
-                                <option value={3}>3 Yrs</option>
-                              </select>
-                            </div>
-                            <div className="col-span-2 text-white/60 text-xs">
-                              {extChoice.years > 0 ? (
-                                <div>
-                                  {salaries.map((v, i) => (
-                                    <span key={i} className="inline-block mr-2">Y{3 + i}: ${v.toFixed(1)}</span>
-                                  ))}
-                                </div>
-                              ) : <span className="italic">No extension selected</span>}
-                            </div>
-                            <div>
-                              <label className="text-white/70 text-xs">Holdout RFA Tag</label>
-                              <select
-                                className="mt-1 w-full bg-white text-[#0B1722] rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#1FDDFF]"
-                                value={rfaChoice.apply ? 'apply' : 'none'}
-                                onChange={e => {
-                                  const apply = e.target.value === 'apply';
-                                  setHoldoutRfaChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
-                                  if (apply) {
-                                    setPendingHoldoutRfa({ player });
-                                    setHoldoutExtensionChoices(prev => ({ ...prev, [player.playerId]: { years: 0 } }));
-                                    if (pendingHoldoutExtension && pendingHoldoutExtension.player.playerId === player.playerId) setPendingHoldoutExtension(null);
-                                  } else if (pendingHoldoutRfa && pendingHoldoutRfa.player.playerId === player.playerId) {
-                                    setPendingHoldoutRfa(null);
-                                  }
-                                }}
-                              >
-                                <option value="none">None</option>
-                                <option value="apply">Apply</option>
-                              </select>
-                              <div className="text-white/50 text-[10px]">Not counted vs RFA limit</div>
-                            </div>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-3">
-                            {showFinalizeExtension && (
-                              <button
-                                className="px-3 py-2 bg-[#FF4B1F] text-white rounded text-sm font-semibold hover:bg-orange-600 disabled:opacity-50"
-                                disabled={finalizeLoading || !holdoutsWindowActive}
-                                onClick={async () => {
-                                  const extVals = [];
-                                  let s = year1;
-                                  for (let i = 1; i <= pendingHoldoutExtension.years; i++) {
-                                    if (i > 1) s = Math.ceil(s * 1.10 * 10) / 10;
-                                    extVals.push(s.toFixed(1));
-                                  }
-                                  const lengthText = pendingHoldoutExtension.years === 1 ? '1 year' : `${pendingHoldoutExtension.years} years`;
-                                  const confirmMsg = `Are you sure you want to grant a Holdout Extension to ${player.playerName} for ${lengthText} at $${extVals.join(', $')}? This cannot be undone.`;
-                                  if (!window.confirm(confirmMsg)) return;
-                                  setFinalizeLoading(true); setFinalizeMsg(''); setFinalizeError('');
-                                  try {
-                                    const contractChange = {
-                                      change_type: 'holdout_extension', user: session?.user?.name || '', timestamp: new Date().toISOString(),
-                                      notes: `Holdout extension for ${player.playerName} (${player.position}) ${lengthText} at $${extVals.join(', $')}.`, ai_notes: '', playerId: player.playerId, playerName: player.playerName, years: pendingHoldoutExtension.years, extensionSalaries: extVals.map(v => parseFloat(v)), team: teamNameForUI, position: player.position,
-                                    };
-                                    try { const aiRes = await fetch('/api/ai/transaction_notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractChange }) }); const aiData = await aiRes.json(); contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.'; } catch { contractChange.ai_notes = 'AI summary unavailable.'; }
-                                    const res = await fetch('/api/admin/contract_changes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractChange) }); const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Failed to save holdout extension'); setFinalizeMsg('Holdout extension saved!');
-                                    const refreshRes = await fetch('/api/admin/contract_changes'); const refreshData = await refreshRes.json(); if (Array.isArray(refreshData)) { const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1); const recent = refreshData.filter(c => c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo); setRecentContractChanges(recent); }
-                                    setHoldoutExtensionChoices(prev => { const u = { ...prev }; delete u[player.playerId]; return u; }); setPendingHoldoutExtension(null);
-                                  } catch (err) { setFinalizeError(err.message); } finally { setFinalizeLoading(false); }
-                                }}
-                              >
-                                {finalizeLoading ? 'Saving...' : 'Finalize Holdout Extension'}
-                              </button>
-                            )}
-                            {showFinalizeRfa && (
-                              <button
-                                className="px-3 py-2 bg-[#1FDDFF] text-[#0B1722] rounded text-sm font-semibold hover:bg-[#37e8ff] disabled:opacity-50"
-                                disabled={finalizeLoading || !holdoutsWindowActive}
-                                onClick={async () => {
-                                  const confirmMsg = `Are you sure you want to apply a Holdout RFA Tag to ${player.playerName}? This cannot be undone.`;
-                                  if (!window.confirm(confirmMsg)) return;
-                                  setFinalizeLoading(true); setFinalizeMsg(''); setFinalizeError('');
-                                  try {
-                                    const contractChange = { change_type: 'holdout_rfa_tag', user: session?.user?.name || '', timestamp: new Date().toISOString(), notes: `Applied Holdout RFA tag to ${player.playerName}.`, ai_notes: '', playerId: player.playerId, playerName: player.playerName, years: 0, team: teamNameForUI, position: player.position };
-                                    try { const aiRes = await fetch('/api/ai/transaction_notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractChange }) }); const aiData = await aiRes.json(); contractChange.ai_notes = aiData.ai_notes || 'AI summary unavailable.'; } catch { contractChange.ai_notes = 'AI summary unavailable.'; }
-                                    const res = await fetch('/api/admin/contract_changes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractChange) }); const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Failed to save holdout RFA tag'); setFinalizeMsg('Holdout RFA tag saved!');
-                                    const refreshRes = await fetch('/api/admin/contract_changes'); const refreshData = await refreshRes.json(); if (Array.isArray(refreshData)) { const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1); const recent = refreshData.filter(c => c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo); setRecentContractChanges(recent); }
-                                    setHoldoutRfaChoices(prev => { const u = { ...prev }; delete u[player.playerId]; return u; }); setPendingHoldoutRfa(null);
-                                  } catch (err) { setFinalizeError(err.message); } finally { setFinalizeLoading(false); }
-                                }}
-                              >
-                                {finalizeLoading ? 'Saving...' : 'Finalize Holdout RFA Tag'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
           </div>
         )}
       </div>

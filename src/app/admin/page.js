@@ -413,7 +413,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Missing Images Section */}
+        {/* Missing Images  Section */}
         <div className="mt-8 bg-black/30 rounded-lg border border-white/10 p-6">
           <h2 className="text-xl font-bold mb-4">Players Missing Card Images</h2>
           {loadingMissing ? (
