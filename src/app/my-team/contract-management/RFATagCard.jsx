@@ -9,6 +9,8 @@ export default function RFATagCard({
   finalizeLoading,
   hasRfaLimitReached,
   isRfaWindowOpen,
+  showLogicChecks,
+  logicChecks,
   onChoiceChange,
   onFinalize,
 }) {
@@ -25,8 +27,24 @@ export default function RFATagCard({
       {/* Middle: Informational */}
       <div className="flex-1 flex flex-col gap-2 min-w-[180px]">
         <div className="text-white/80 text-xs">RFA Tag</div>
-        <div className="text-2xl font-semibold text-[#9bffb7]">Set RFA? = TRUE</div>
         <div className="text-white/50 text-xs">Eligible: Active Waiver/FA contracts only</div>
+
+        {showLogicChecks && Array.isArray(logicChecks) && logicChecks.length > 0 && (
+          <div className="mt-2">
+            <div className="text-white/70 text-xs font-semibold">Logic checks</div>
+            <div className="mt-1 space-y-1">
+              {logicChecks.map(c => (
+                <div key={c.label} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-white/70 truncate">{c.label}</span>
+                  <span className={c.ok ? 'text-green-300' : 'text-red-300'}>
+                    {c.ok ? 'PASS' : 'FAIL'}
+                    {c.detail ? <span className="text-white/50"> ({c.detail})</span> : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {/* Right: Choice & Finalize */}
       <div className="flex flex-col items-end gap-2 min-w-[160px]">

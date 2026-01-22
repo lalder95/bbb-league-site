@@ -38,6 +38,7 @@ export default function ContractManagementPage() {
   const [holdoutsCollapsed, setHoldoutsCollapsed] = useState(true);
   const [leagueId, setLeagueId] = useState(null);
   const [currentSeason, setCurrentSeason] = useState(null);
+  const [seasonYear, setSeasonYear] = useState(null);
   const [playerTotals, setPlayerTotals] = useState({}); // { playerId: totalPoints }
   const [playerWeeks, setPlayerWeeks] = useState({}); // { playerId: countedWeeks }
   const [playerNonPositiveWeeks, setPlayerNonPositiveWeeks] = useState({}); // { playerId: weeks with <= 0 pts }
@@ -71,6 +72,7 @@ export default function ContractManagementPage() {
       (process.env.NEXT_PUBLIC_ADMIN_EMAIL &&
         session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL)
   );
+  const [adminControlsCollapsed, setAdminControlsCollapsed] = useState(true);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [selectedTeamName, setSelectedTeamName] = useState('');
 
@@ -194,7 +196,7 @@ export default function ContractManagementPage() {
     return d >= start && d <= end;
   }
 
-  const curYear = new Date().getFullYear();
+  const curYear = Number.isFinite(parseInt(seasonYear)) ? parseInt(seasonYear) : new Date().getFullYear();
   const CAP = 300;
 
   // Window actives for header badges (respect Admin override where applicable)
@@ -312,6 +314,63 @@ export default function ContractManagementPage() {
       .map(p => p.playerId)
   );
 
+  const showLogicChecks = Boolean(isAdmin && isAdminMode);
+  const recentPlayerChangeIds = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
+
+  function buildExtensionLogicChecks(p) {
+    const statusOk = String(p.status) === 'Active';
+    const typeOk = String(p.contractType).toLowerCase() === 'base';
+    const rfaOk = String(p.rfaEligible).toLowerCase() !== 'true';
+    const finalYearOk = String(p.contractFinalYear) === String(curYear);
+    const noFutureOk = !playerIdsWithFuture.has(p.playerId);
+    const notRecentlyChangedOk = !recentPlayerChangeIds.has(String(p.playerId).trim());
+    return [
+      { label: 'Active', ok: statusOk, detail: String(p.status || '') },
+      { label: 'Base contract', ok: typeOk, detail: String(p.contractType || '') },
+      { label: 'Not RFA', ok: rfaOk, detail: String(p.rfaEligible || '') },
+      { label: 'Final year = current', ok: finalYearOk, detail: String(p.contractFinalYear || '') },
+      { label: 'No future deal', ok: noFutureOk, detail: noFutureOk ? 'No' : 'Yes' },
+      { label: 'No recent change', ok: notRecentlyChangedOk, detail: notRecentlyChangedOk ? 'No' : 'Yes' },
+    ];
+  }
+
+  function buildFranchiseLogicChecks(p) {
+    const statusOk = String(p.status) === 'Active';
+    const type = String(p.contractType).toLowerCase();
+    const allowedTypes = ['base', 'extension', 'waiver', 'fa', 'free agent', 'freeagent'];
+    const typeOk = allowedTypes.includes(type);
+    const finalYearOk = String(p.contractFinalYear) === String(curYear);
+    const ftEligible = String(p.franchiseTagEligible).toLowerCase();
+    const ftOk = ftEligible === 'true' || ftEligible === 'yes';
+    const rfaOk = String(p.rfaEligible).toLowerCase() !== 'true';
+    const noFutureOk = !playerIdsWithFuture.has(p.playerId);
+    const notRecentlyChangedOk = !recentPlayerChangeIds.has(String(p.playerId).trim());
+    return [
+      { label: 'Active', ok: statusOk, detail: String(p.status || '') },
+      { label: 'Allowed type', ok: typeOk, detail: String(p.contractType || '') },
+      { label: 'Final year = current', ok: finalYearOk, detail: String(p.contractFinalYear || '') },
+      { label: 'Franchise eligible', ok: ftOk, detail: String(p.franchiseTagEligible || '') },
+      { label: 'Not RFA', ok: rfaOk, detail: String(p.rfaEligible || '') },
+      { label: 'No future deal', ok: noFutureOk, detail: noFutureOk ? 'No' : 'Yes' },
+      { label: 'No recent change', ok: notRecentlyChangedOk, detail: notRecentlyChangedOk ? 'No' : 'Yes' },
+    ];
+  }
+
+  function buildRfaLogicChecks(p) {
+    const statusOk = String(p.status) === 'Active';
+    const type = String(p.contractType).toLowerCase();
+    const allowedTypes = ['waiver', 'fa', 'free agent', 'freeagent'];
+    const typeOk = allowedTypes.includes(type);
+    const rfaOk = String(p.rfaEligible).toLowerCase() !== 'true';
+    const notRecentlyChangedOk = !recentPlayerChangeIds.has(String(p.playerId).trim());
+    return [
+      { label: 'Active', ok: statusOk, detail: String(p.status || '') },
+      { label: 'Allowed type', ok: typeOk, detail: String(p.contractType || '') },
+      { label: 'Not already RFA', ok: rfaOk, detail: String(p.rfaEligible || '') },
+      { label: 'No recent change', ok: notRecentlyChangedOk, detail: notRecentlyChangedOk ? 'No' : 'Yes' },
+    ];
+  }
+
   let eligiblePlayers = myContractsAll.filter(
     p =>
       p.status === 'Active' &&
@@ -356,8 +415,7 @@ export default function ContractManagementPage() {
   // Per-team per window Franchise Tag limit: 1
   // Practical application: treat all tags within the current calendar year as counting toward the current window,
   // so admin-applied tags outside the Feb–Mar window still enforce the single-tag limit for that year's window.
-  const nowForWindow = new Date();
-  const windowYearForLimit = nowForWindow.getFullYear();
+  const windowYearForLimit = curYear;
   const hasFranchiseTagThisYearForTeam = recentContractChanges.some(c => {
     if (c.change_type !== 'franchise_tag') return false;
     if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
@@ -396,6 +454,8 @@ export default function ContractManagementPage() {
       try {
         const stateResp = await fetch('https://api.sleeper.app/v1/state/nfl');
         const state = await stateResp.json();
+        const apiSeasonYear = parseInt(state?.season);
+        if (Number.isFinite(apiSeasonYear)) setSeasonYear(apiSeasonYear);
         // Use previous season for holdout eligibility metrics
         const rawSeason = parseInt(state?.season);
         const prevSeason = Number.isFinite(rawSeason) ? String(rawSeason - 1) : String((new Date().getFullYear()) - 1);
@@ -692,36 +752,52 @@ export default function ContractManagementPage() {
 
       {/* Admin Controls */}
       {isAdmin && (
-        <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 p-4 mb-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <label className="flex items-center gap-2 text-white/80">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[#FF4B1F]"
-                checked={isAdminMode}
-                onChange={e => setIsAdminMode(e.target.checked)}
-              />
-              <span className="font-semibold">Admin Mode</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-white/60">Acting as team:</span>
-              <select
-                className="bg-white/10 text-white rounded px-2 py-1 min-w-[200px] disabled:opacity-50"
-                disabled={!isAdminMode}
-                value={isAdminMode ? (selectedTeamName || myTeamName) : myTeamName}
-                onChange={e => setSelectedTeamName(e.target.value)}
-              >
-                {allTeamNames.map(t => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+        <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-4">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
+            aria-expanded={!adminControlsCollapsed}
+            onClick={() => setAdminControlsCollapsed(v => !v)}
+          >
+            <h3 className="text-lg font-bold text-white">Admin Mode</h3>
+            <span className={`text-white transition-transform ${adminControlsCollapsed ? '' : 'rotate-90'}`} aria-hidden>
+              ▸
+            </span>
+          </button>
+
+          {!adminControlsCollapsed && (
+            <div className="px-5 pb-5 pt-1">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <label className="flex items-center gap-2 text-white/80">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[#FF4B1F]"
+                    checked={isAdminMode}
+                    onChange={e => setIsAdminMode(e.target.checked)}
+                  />
+                  <span className="font-semibold">Enable Admin Mode</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/60">Acting as team:</span>
+                  <select
+                    className="bg-white/10 text-white rounded px-2 py-1 min-w-[200px] disabled:opacity-50"
+                    disabled={!isAdminMode}
+                    value={isAdminMode ? (selectedTeamName || myTeamName) : myTeamName}
+                    onChange={e => setSelectedTeamName(e.target.value)}
+                  >
+                    {allTeamNames.map(t => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-white/60">
+                When Admin Mode is enabled, you can select any team and finalize extensions on their behalf.
+              </div>
             </div>
-          </div>
-          <div className="mt-2 text-xs text-white/60">
-            When Admin Mode is enabled, you can select any team and finalize extensions on their behalf.
-          </div>
+          )}
         </div>
       )}
 
@@ -836,6 +912,23 @@ export default function ContractManagementPage() {
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
+
+                          {showLogicChecks && (
+                            <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10">
+                              <div className="text-white/70 text-sm font-semibold">Logic checks</div>
+                              <div className="mt-2 text-xs text-white/70 space-y-1">
+                                {buildExtensionLogicChecks(player).map(check => (
+                                  <div key={check.label} className="flex items-center justify-between gap-3">
+                                    <span className="truncate">{check.label}</span>
+                                    <span className={check.ok ? 'text-green-300' : 'text-red-300'}>
+                                      {check.ok ? 'PASS' : 'FAIL'}
+                                      {check.detail ? <span className="text-white/50"> ({check.detail})</span> : null}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
                             <div>
@@ -1012,6 +1105,8 @@ export default function ContractManagementPage() {
                       pendingExtension={pendingExtension}
                       finalizeLoading={finalizeLoading}
                       isExtensionWindowOpen={isExtensionWindowOpen() || (isAdmin && isAdminMode)}
+                      showLogicChecks={showLogicChecks}
+                      logicChecks={buildExtensionLogicChecks(player)}
                       onExtensionChange={e => {
                         const val = e.target.value;
                         setExtensionChoices(prev => ({
@@ -1203,7 +1298,8 @@ export default function ContractManagementPage() {
               Apply one-year franchise tags during the tag window. Tag value is the higher of: (a) the average of the top 10 active contracts at the player's position (any contract type), or (b) the player's current salary + 10%.
             </div>
             <div className="mb-2 text-white/70 text-sm">
-              Window: Feb 1 — Mar 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
+              Window: Feb 1 — Mar 31. League Year: <span className="text-[#1FDDFF]">{curYear}</span>. Team:{' '}
+              <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
 
             <div className="mb-8">
@@ -1279,6 +1375,23 @@ export default function ContractManagementPage() {
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
+
+                          {showLogicChecks && (
+                            <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10">
+                              <div className="text-white/70 text-sm font-semibold">Logic checks</div>
+                              <div className="mt-2 text-xs text-white/70 space-y-1">
+                                {buildFranchiseLogicChecks(player).map(check => (
+                                  <div key={check.label} className="flex items-center justify-between gap-3">
+                                    <span className="truncate">{check.label}</span>
+                                    <span className={check.ok ? 'text-green-300' : 'text-red-300'}>
+                                      {check.ok ? 'PASS' : 'FAIL'}
+                                      {check.detail ? <span className="text-white/50"> ({check.detail})</span> : null}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
                             <div>
                               <div className="text-white/70 text-sm">Tag Value</div>
@@ -1407,6 +1520,8 @@ export default function ContractManagementPage() {
                           finalizeLoading={finalizeLoading}
                           isFranchiseWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
                           hasFranchiseLimitReached={hasFranchiseTagThisYearForTeam}
+                          showLogicChecks={showLogicChecks}
+                          logicChecks={buildFranchiseLogicChecks(player)}
                           onChoiceChange={apply => {
                             setFranchiseTagChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
                             if (apply) setPendingFranchiseTag({ player, tagValue });
@@ -1551,6 +1666,23 @@ export default function ContractManagementPage() {
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
+
+                          {showLogicChecks && (
+                            <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10">
+                              <div className="text-white/70 text-sm font-semibold">Logic checks</div>
+                              <div className="mt-2 text-xs text-white/70 space-y-1">
+                                {buildRfaLogicChecks(player).map(check => (
+                                  <div key={check.label} className="flex items-center justify-between gap-3">
+                                    <span className="truncate">{check.label}</span>
+                                    <span className={check.ok ? 'text-green-300' : 'text-red-300'}>
+                                      {check.ok ? 'PASS' : 'FAIL'}
+                                      {check.detail ? <span className="text-white/50"> ({check.detail})</span> : null}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
                             <div>
                               <div className="text-white/70 text-sm">Current Contract</div>
@@ -1675,6 +1807,8 @@ export default function ContractManagementPage() {
                           finalizeLoading={finalizeLoading}
                           hasRfaLimitReached={hasRfaTagThisYearForTeam}
                           isRfaWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
+                          showLogicChecks={showLogicChecks}
+                          logicChecks={buildRfaLogicChecks(player)}
                           onChoiceChange={apply => {
                             setRfaTagChoices(prev => ({ ...prev, [player.playerId]: { apply } }));
                             if (apply) setPendingRfaTag({ player });

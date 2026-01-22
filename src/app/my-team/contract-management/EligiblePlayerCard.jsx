@@ -9,6 +9,8 @@ export default function EligiblePlayerCard({
   pendingExtension,
   finalizeLoading,
   isExtensionWindowOpen,
+  showLogicChecks,
+  logicChecks,
   onExtensionChange,
   onFinalize,
 }) {
@@ -26,6 +28,24 @@ export default function EligiblePlayerCard({
       <div className="flex-1 flex flex-col gap-2 min-w-[180px]">
         <div className="text-white/80 text-xs">Current Salary</div>
         <div className="text-2xl font-semibold text-[#1FDDFF]">${parseFloat(player.curYear).toFixed(1)}</div>
+
+        {showLogicChecks && Array.isArray(logicChecks) && logicChecks.length > 0 && (
+          <div className="mt-2">
+            <div className="text-white/70 text-xs font-semibold">Logic checks</div>
+            <div className="mt-1 space-y-1">
+              {logicChecks.map(c => (
+                <div key={c.label} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-white/70 truncate">{c.label}</span>
+                  <span className={c.ok ? 'text-green-300' : 'text-red-300'}>
+                    {c.ok ? 'PASS' : 'FAIL'}
+                    {c.detail ? <span className="text-white/50"> ({c.detail})</span> : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="text-white/80 text-xs mt-2">Simulated Years</div>
         {ext.deny || !ext.years ? (
           <span className="text-white/50 italic text-xs">No extension</span>
