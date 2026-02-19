@@ -76,6 +76,8 @@ export default function ContractManagementPage() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [selectedTeamName, setSelectedTeamName] = useState('');
 
+  const ignoreTagQuantityLimits = Boolean(isAdmin && isAdminMode);
+
   // Load contracts
   useEffect(() => {
     async function fetchPlayerData() {
@@ -412,16 +414,29 @@ export default function ContractManagementPage() {
     String(a.playerName).localeCompare(String(b.playerName), undefined, { sensitivity: 'base' })
   );
 
-  // Per-team per window Franchise Tag limit: 1
+  // Per-team per window Franchise/RFA Tag limit: 1
   // Practical application: treat all tags within the current calendar year as counting toward the current window,
   // so admin-applied tags outside the Feb–Mar window still enforce the single-tag limit for that year's window.
-  const windowYearForLimit = curYear;
+  // NOTE: `curYear` is derived from Sleeper season state and can lag the calendar year during the offseason.
+  const windowYearForLimit = new Date().getFullYear();
   const hasFranchiseTagThisYearForTeam = recentContractChanges.some(c => {
     if (c.change_type !== 'franchise_tag') return false;
     if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
     if (!c.timestamp) return false;
     return new Date(c.timestamp).getFullYear() === windowYearForLimit;
   });
+
+  const franchiseTagLimitReached = Boolean(!ignoreTagQuantityLimits && hasFranchiseTagThisYearForTeam);
+
+  const appliedFranchiseTagChangeThisYear = recentContractChanges
+    .filter(c => {
+      if (c.change_type !== 'franchise_tag') return false;
+      if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
+      if (!c.timestamp) return false;
+      return new Date(c.timestamp).getFullYear() === windowYearForLimit;
+    })
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+  const appliedFranchiseTagPlayerName = appliedFranchiseTagChangeThisYear?.playerName || '';
 
   // RFA Tag eligibility: Active Waiver/FA type contracts, not already RFA
   const rfaAllowedTypes = ['waiver', 'fa', 'free agent', 'freeagent'];
@@ -447,6 +462,18 @@ export default function ContractManagementPage() {
     if (!c.timestamp) return false;
     return new Date(c.timestamp).getFullYear() === windowYearForLimit;
   });
+
+  const rfaTagLimitReached = Boolean(!ignoreTagQuantityLimits && hasRfaTagThisYearForTeam);
+
+  const appliedRfaTagChangeThisYear = recentContractChanges
+    .filter(c => {
+      if (c.change_type !== 'rfa_tag') return false;
+      if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
+      if (!c.timestamp) return false;
+      return new Date(c.timestamp).getFullYear() === windowYearForLimit;
+    })
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+  const appliedRfaTagPlayerName = appliedRfaTagChangeThisYear?.playerName || '';
 
   // --- Holdouts Data Acquisition (league + scoring) ---
   useEffect(() => {
@@ -749,6 +776,37 @@ export default function ContractManagementPage() {
   return (
     <div className="w-full flex flex-col items-center px-3 sm:px-0">
       <h2 className="text-2xl font-bold mb-6 text-white text-center">Contract Management</h2>
+
+      {(finalizeMsg || finalizeError) && (
+        <div className="w-full max-w-3xl mb-4 space-y-2">
+          {finalizeMsg && (
+            <div className="flex items-start justify-between gap-3 bg-green-500/10 border border-green-500/20 text-green-200 rounded-xl px-4 py-3">
+              <div className="text-sm font-semibold">{finalizeMsg}</div>
+              <button
+                type="button"
+                className="text-green-200/70 hover:text-green-200 text-sm"
+                aria-label="Dismiss message"
+                onClick={() => setFinalizeMsg('')}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {finalizeError && (
+            <div className="flex items-start justify-between gap-3 bg-red-500/10 border border-red-500/20 text-red-200 rounded-xl px-4 py-3">
+              <div className="text-sm font-semibold">{finalizeError}</div>
+              <button
+                type="button"
+                className="text-red-200/70 hover:text-red-200 text-sm"
+                aria-label="Dismiss error"
+                onClick={() => setFinalizeError('')}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Admin Controls */}
       {isAdmin && (
@@ -1318,14 +1376,17 @@ export default function ContractManagementPage() {
                     // Compute tag cost only in Year 1 (i === 1), limit 1 tag per team
                     let tagCost = 0;
                     if (i === 1) {
-                      if (!hasFranchiseTagThisYearForTeam) {
+                      if (!franchiseTagLimitReached) {
                         if (pendingFranchiseTag?.player) {
                           tagCost = getTagValueForPlayer(pendingFranchiseTag.player) || 0;
                         } else {
                           for (const p of franchiseEligiblePlayers) {
                             const choice = franchiseTagChoices[p.playerId] || { apply: false };
-                            if (choice.apply) {
-                              tagCost = getTagValueForPlayer(p) || 0;
+                            if (!choice.apply) continue;
+                            const val = getTagValueForPlayer(p) || 0;
+                            if (ignoreTagQuantityLimits) tagCost += val;
+                            else {
+                              tagCost = val;
                               break;
                             }
                           }
@@ -1353,10 +1414,12 @@ export default function ContractManagementPage() {
               {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
                 <div className="text-yellow-400 text-xs mb-3">Tags can only be applied between Feb 1st and March 31st.</div>
               )}
-              {hasFranchiseTagThisYearForTeam && (
-                <div className="text-yellow-400 text-xs mb-3">This team has already applied a Franchise Tag this year. You cannot apply another.</div>
-              )}
-              {franchiseEligiblePlayers.length === 0 ? (
+              {franchiseTagLimitReached ? (
+                <div className="text-white/80 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                  [Franchise] Tag already applied to{' '}
+                  <span className="text-[#1FDDFF] font-semibold">{appliedFranchiseTagPlayerName || 'Unknown Player'}</span>
+                </div>
+              ) : franchiseEligiblePlayers.length === 0 ? (
                 <div className="text-white/60 italic">No players eligible for a franchise tag.</div>
               ) : (
                 <>
@@ -1365,7 +1428,7 @@ export default function ContractManagementPage() {
                     {franchiseEligiblePlayersSorted.map(player => {
                       const tagValue = getTagValueForPlayer(player) || 0;
                       const choice = franchiseTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam && franchiseWindowActive;
+                      const showFinalize = choice.apply && !franchiseTagLimitReached && franchiseWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -1409,7 +1472,7 @@ export default function ContractManagementPage() {
                                   if (apply) setPendingFranchiseTag({ player, tagValue });
                                   else if (pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId) setPendingFranchiseTag(null);
                                 }}
-                                disabled={hasFranchiseTagThisYearForTeam}
+                                disabled={franchiseTagLimitReached}
                               >
                                 <option value="none">No Tag</option>
                                 <option value="apply">Apply Tag</option>
@@ -1420,9 +1483,11 @@ export default function ContractManagementPage() {
                             {showFinalize && pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId && (
                               <button
                                 className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
-                                disabled={finalizeLoading || hasFranchiseTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
+                                disabled={finalizeLoading || franchiseTagLimitReached || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
-                                  const confirmMsg = `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
+                                  const confirmMsg = ignoreTagQuantityLimits
+                                    ? `Are you sure you want to apply a Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This cannot be undone.`
+                                    : `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
                                   if (!window.confirm(confirmMsg)) return;
 
                                   setFinalizeLoading(true);
@@ -1491,7 +1556,7 @@ export default function ContractManagementPage() {
                                 {finalizeLoading ? 'Saving...' : 'Finalize Tag'}
                               </button>
                             )}
-                            {hasFranchiseTagThisYearForTeam && (
+                            {franchiseTagLimitReached && (
                               <div className="mt-2 text-yellow-400 text-xs">Limit reached: 1 Franchise Tag per team per year.</div>
                             )}
                             {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
@@ -1508,7 +1573,7 @@ export default function ContractManagementPage() {
                     {franchiseEligiblePlayersSorted.map(player => {
                       const tagValue = getTagValueForPlayer(player) || 0;
                       const choice = franchiseTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam && franchiseWindowActive;
+                      const showFinalize = choice.apply && !franchiseTagLimitReached && franchiseWindowActive;
                       return (
                         <FranchiseTagCard
                           key={player.playerId}
@@ -1519,7 +1584,7 @@ export default function ContractManagementPage() {
                           pendingTag={pendingFranchiseTag}
                           finalizeLoading={finalizeLoading}
                           isFranchiseWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
-                          hasFranchiseLimitReached={hasFranchiseTagThisYearForTeam}
+                          hasFranchiseLimitReached={franchiseTagLimitReached}
                           showLogicChecks={showLogicChecks}
                           logicChecks={buildFranchiseLogicChecks(player)}
                           onChoiceChange={apply => {
@@ -1528,7 +1593,9 @@ export default function ContractManagementPage() {
                             else if (pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId) setPendingFranchiseTag(null);
                           }}
                           onFinalize={async () => {
-                            const confirmMsg = `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
+                            const confirmMsg = ignoreTagQuantityLimits
+                              ? `Are you sure you want to apply a Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This cannot be undone.`
+                              : `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
                             if (!window.confirm(confirmMsg)) return;
 
                             setFinalizeLoading(true);
@@ -1639,16 +1706,18 @@ export default function ContractManagementPage() {
               Window: Feb 1 — Mar 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
 
-            {hasRfaTagThisYearForTeam && (
-              <div className="mb-4 text-yellow-400 text-xs">This team has already applied an RFA tag this year. You cannot apply another.</div>
-            )}
-
             <div>
               <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
               {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
                 <div className="text-yellow-400 text-xs mb-3">RFA tags can only be applied between Feb 1st and March 31st.</div>
               )}
-              {rfaEligiblePlayersSorted.length === 0 ? (
+
+              {rfaTagLimitReached ? (
+                <div className="text-white/80 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                  [RFA] Tag already applied to{' '}
+                  <span className="text-[#1FDDFF] font-semibold">{appliedRfaTagPlayerName || 'Unknown Player'}</span>
+                </div>
+              ) : rfaEligiblePlayersSorted.length === 0 ? (
                 <div className="text-white/60 italic">No players eligible for an RFA tag.</div>
               ) : (
                 <>
@@ -1656,7 +1725,7 @@ export default function ContractManagementPage() {
                   <div className="sm:hidden space-y-3">
                     {rfaEligiblePlayersSorted.map(player => {
                       const choice = rfaTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam && rfaWindowActive;
+                      const showFinalize = choice.apply && !rfaTagLimitReached && rfaWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -1700,6 +1769,7 @@ export default function ContractManagementPage() {
                                   if (apply) setPendingRfaTag({ player });
                                   else if (pendingRfaTag && pendingRfaTag.player.playerId === player.playerId) setPendingRfaTag(null);
                                 }}
+                                disabled={rfaTagLimitReached}
                               >
                                 <option value="none">No Tag</option>
                                 <option value="apply">Apply Tag</option>
@@ -1710,9 +1780,11 @@ export default function ContractManagementPage() {
                             {showFinalize && pendingRfaTag && pendingRfaTag.player.playerId === player.playerId && (
                               <button
                                 className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow disabled:opacity-50"
-                                disabled={finalizeLoading || hasRfaTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
+                                disabled={finalizeLoading || rfaTagLimitReached || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
-                                  const confirmMsg = `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
+                                  const confirmMsg = ignoreTagQuantityLimits
+                                    ? `Are you sure you want to apply an RFA Tag to ${player.playerName}? This cannot be undone.`
+                                    : `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
                                   if (!window.confirm(confirmMsg)) return;
 
                                   setFinalizeLoading(true);
@@ -1780,7 +1852,7 @@ export default function ContractManagementPage() {
                                 {finalizeLoading ? 'Saving...' : 'Finalize RFA Tag'}
                               </button>
                             )}
-                            {hasRfaTagThisYearForTeam && (
+                            {rfaTagLimitReached && (
                               <div className="mt-2 text-yellow-400 text-xs">Limit reached: 1 RFA tag per team per year.</div>
                             )}
                             {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
@@ -1796,7 +1868,7 @@ export default function ContractManagementPage() {
                   <div className="hidden sm:block">
                     {rfaEligiblePlayersSorted.map(player => {
                       const choice = rfaTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam && rfaWindowActive;
+                      const showFinalize = choice.apply && !rfaTagLimitReached && rfaWindowActive;
                       return (
                         <RFATagCard
                           key={player.playerId}
@@ -1805,7 +1877,7 @@ export default function ContractManagementPage() {
                           showFinalize={showFinalize}
                           pendingTag={pendingRfaTag}
                           finalizeLoading={finalizeLoading}
-                          hasRfaLimitReached={hasRfaTagThisYearForTeam}
+                          hasRfaLimitReached={rfaTagLimitReached}
                           isRfaWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
                           showLogicChecks={showLogicChecks}
                           logicChecks={buildRfaLogicChecks(player)}
@@ -1815,7 +1887,9 @@ export default function ContractManagementPage() {
                             else if (pendingRfaTag && pendingRfaTag.player.playerId === player.playerId) setPendingRfaTag(null);
                           }}
                           onFinalize={async () => {
-                            const confirmMsg = `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
+                            const confirmMsg = ignoreTagQuantityLimits
+                              ? `Are you sure you want to apply an RFA Tag to ${player.playerName}? This cannot be undone.`
+                              : `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
                             if (!window.confirm(confirmMsg)) return;
 
                             setFinalizeLoading(true);

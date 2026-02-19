@@ -146,10 +146,31 @@ export default function AdminPage() {
         } catch {}
       }, 750);
       setProgressPollId(pollId);
+      // Build full multi-round draft order
+      let fullDraftOrder = [];
+      for (let r = 1; r <= rounds; r++) {
+        orderPreview.forEach((pick, idx) => {
+          fullDraftOrder.push({
+            ...pick,
+            round: r,
+            // Optionally, update pick number if needed
+          });
+        });
+      }
       const res = await fetch('/api/admin/mock-drafts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rounds, maxPicks: rounds * 12, trace: true, dryRun: false, model: 'gpt-4o-mini', title: draftTitle, description: draftDescription, progressKey: key })
+        body: JSON.stringify({
+          rounds,
+          maxPicks: rounds * 12,
+          trace: true,
+          dryRun: false,
+          model: 'gpt-4o-mini',
+          title: draftTitle,
+          description: draftDescription,
+          progressKey: key,
+          draftOrder: fullDraftOrder
+        })
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
@@ -166,6 +187,32 @@ export default function AdminPage() {
         setProgressPollId(null);
       }
     }
+  }
+
+
+  async function resolveBBBLeagueId() {
+    // Same logic as DraftDataProvider and /api/admin/draft-order/preview
+    const USER_ID = '456973480269705216';
+    const stateRes = await fetch('https://api.sleeper.app/v1/state/nfl');
+    const state = await stateRes.json();
+    const currentSeason = state?.season;
+    let leagues = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`)
+      .then(r => r.json());
+    let bbb = leagues.filter(league => {
+      const name = (league?.name || '').toLowerCase();
+      return name.includes('budget blitz bowl') || name.includes('bbb') || (name.includes('budget') && name.includes('blitz'));
+    });
+    if (bbb.length === 0) {
+      const prev = String(Number(currentSeason) - 1);
+      const prevLeagues = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prev}`).then(r => r.json());
+      bbb = prevLeagues.filter(league => {
+        const name = (league?.name || '').toLowerCase();
+        return name.includes('budget blitz bowl') || name.includes('bbb') || (name.includes('budget') && name.includes('blitz'));
+      });
+    }
+    if (bbb.length === 0) throw new Error('No BBB league found for commissioner');
+    const mostRecent = bbb.sort((a, b) => Number(b.season) - Number(a.season))[0];
+    return mostRecent.league_id;
   }
 
   async function handleGenerateMockDraft() {
@@ -190,13 +237,78 @@ export default function AdminPage() {
       setPoolPreview(Array.isArray(poolData) ? poolData : []);
 
       setProgressText('Calculating draft order (including traded picks)...');
-  const ordRes = await fetch('/api/admin/draft-order/preview', { cache: 'no-store' });
-  const ordJson = await ordRes.json();
-      if (!ordRes.ok || !ordJson.ok) {
-        throw new Error(ordJson?.error || 'Failed to compute draft order');
+      // Step 2: Resolve leagueId and fetch draft order using Draft page logic
+      const leagueId = await resolveBBBLeagueId();
+      // 1. Fetch all drafts for this league
+      const draftsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/drafts`, { cache: 'no-store' });
+      const draftsData = await draftsRes.json();
+      // 2. Find active draft with draft_order
+      const activeDraft = Array.isArray(draftsData)
+        ? draftsData.find((d) => d?.status && d.status !== 'complete' && d.draft_order)
+        : null;
+      if (activeDraft && activeDraft.draft_order) {
+        // Fetch users, rosters, and traded picks
+        const [usersRes, rostersRes, tradedRes] = await Promise.all([
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`, { cache: 'no-store' }),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, { cache: 'no-store' }),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`, { cache: 'no-store' }),
+        ]);
+        const usersData = await usersRes.json();
+        const rostersData = await rostersRes.json();
+        const tradedPicks = await tradedRes.json();
+        // Determine the target season (draft year)
+        const targetSeason = activeDraft.season || (new Date().getFullYear() + 1);
+        // Map draft_order to slots with original roster_id
+        let draftOrderArray = Object.entries(activeDraft.draft_order).map(
+          ([userId, slot]) => {
+            const roster = rostersData.find((r) => r.owner_id === userId);
+            return {
+              slot: Number(slot),
+              originalRosterId: roster?.roster_id,
+              userId,
+              teamName: usersData.find((u) => u.user_id === userId)?.display_name || 'Unknown Team',
+            };
+          }
+        );
+        draftOrderArray = draftOrderArray.sort((a, b) => a.slot - b.slot);
+        // For each slot, check for a traded pick for this season and round 1
+        draftOrderArray = draftOrderArray.map((entry) => {
+          const traded = tradedPicks.find(
+            (tp) => String(tp.season) === String(targetSeason)
+              && Number(tp.round) === 1
+              && Number(tp.roster_id) === Number(entry.originalRosterId)
+          );
+          let ownerRosterId = entry.originalRosterId;
+          let isTraded = false;
+          if (traded) {
+            ownerRosterId = traded.owner_id;
+            isTraded = Number(traded.owner_id) !== Number(traded.roster_id);
+          }
+          const ownerRoster = rostersData.find((r) => Number(r.roster_id) === Number(ownerRosterId));
+          const ownerUser = ownerRoster ? usersData.find((u) => u.user_id === ownerRoster.owner_id) : null;
+          const originalOwner = rostersData.find((r) => Number(r.roster_id) === Number(entry.originalRosterId));
+          const originalOwnerUser = originalOwner ? usersData.find((u) => u.user_id === originalOwner.owner_id) : null;
+          return {
+            slot: entry.slot,
+            teamName: ownerUser?.display_name || ownerUser?.username || 'Unknown Team',
+            rosterId: ownerRosterId,
+            originalRosterId: entry.originalRosterId,
+            originalOwnerName: originalOwnerUser?.display_name || originalOwnerUser?.username || 'Unknown Team',
+            isTraded,
+          };
+        });
+        setOrderPreview(draftOrderArray);
+        setGenResult({ ...(genResult || {}), draftOrderDebug: { source: 'sleeper_traded_picks', draftOrder: draftOrderArray } });
+      } else {
+        // Fallback: use canonical debug API (with traded picks enabled)
+        const ordRes = await fetch(`/api/debug/draft-order?leagueId=${leagueId}&applyRoundOneTrades=true`, { cache: 'no-store' });
+        const ordJson = await ordRes.json();
+        if (!ordRes.ok || !ordJson.draft_order) {
+          throw new Error(ordJson?.error || 'Failed to compute draft order');
+        }
+        setOrderPreview(Array.isArray(ordJson.draft_order) ? ordJson.draft_order : []);
+        setGenResult({ ...(genResult || {}), draftOrderDebug: ordJson });
       }
-  setOrderPreview(Array.isArray(ordJson.order) ? ordJson.order : []);
-  setGenResult({ ...(genResult || {}), draftOrderDebug: ordJson.debug || null });
       setProgressText('Review the player pool and draft order below, then approve to continue.');
       setGenerating(false);
       return;
@@ -321,25 +433,46 @@ export default function AdminPage() {
                 )}
                 {Array.isArray(orderPreview) && orderPreview.length > 0 && (
                   <div className="bg-black/20 rounded border border-white/10 p-3">
-                    <div className="flex justify-between items-center">
-                      <h3 className="font-bold text-white">Draft Order Preview (Round 1)</h3>
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-2">
+                      <div>
+                        <h3 className="font-bold text-white">Draft Order Preview (Round 1)</h3>
+                        {genResult?.draftOrderDebug?.targetSeason && (
+                          <div className="text-white/70 text-xs mt-1">Draft Year: {genResult.draftOrderDebug.targetSeason}</div>
+                        )}
+                      </div>
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={approvedOrder} onChange={e=>setApprovedOrder(e.target.checked)} />
                         <span>Approve Draft Order</span>
                       </label>
                     </div>
-                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div className="mt-2 grid grid-cols-1 gap-2 text-sm">
                       {orderPreview
                         .sort((a,b)=>Number(a.slot)-Number(b.slot))
-                        .map((o,i)=> (
-                          <div key={i} className="bg-black/10 p-2 rounded border border-white/10">
-                            <span className="text-[#FF4B1F] font-bold">{String(o.slot).padStart(2,'0')}</span>
-                            <span className="ml-2 text-white/90">{o.teamName}</span>
-                            {o.originalOwnerId && o.rosterId && (Number(o.originalOwnerId) !== Number(o.rosterId)) && (
-                              <span className="ml-2 text-white/60 text-xs">(via trade)</span>
-                            )}
-                          </div>
-                        ))}
+                        .map((o,i)=> {
+                          // Support both picks and fallback data
+                          const rosterId = o.rosterId ?? o.roster_id;
+                          const originalRosterId = o.originalRosterId ?? o.original_roster_id;
+                          const isTraded = originalRosterId && rosterId && (Number(originalRosterId) !== Number(rosterId));
+                          // Try to show original owner name if available
+                          let originalOwnerName = o.originalOwnerName || o.original_owner_name || null;
+                          if (!originalOwnerName && genResult?.draftOrderDebug?.draft_order) {
+                            // Try to find the original owner name from the draft order debug array
+                            const orig = genResult.draftOrderDebug.draft_order.find(
+                              (d) => Number((d.rosterId ?? d.roster_id)) === Number(originalRosterId)
+                            );
+                            originalOwnerName = orig?.teamName || null;
+                          }
+                          return (
+                            <div key={i} className="bg-black/10 p-2 rounded border border-white/10">
+                              <span className="text-[#FF4B1F] font-bold">{String(o.slot).padStart(2,'0')}</span>
+                              <span className="ml-2 text-white/90">{o.teamName}</span>
+                              <span className="ml-2 text-white/60 text-xs">(roster_id: {rosterId}, orig: {originalRosterId}{isTraded && originalOwnerName ? `, original: ${originalOwnerName}` : ''})</span>
+                              {isTraded && (
+                                <span className="ml-2 text-yellow-400 text-xs">[TRADED]</span>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
                     {genResult?.draftOrderDebug && (
                       <details className="mt-3 bg-black/10 p-2 rounded border border-white/10">

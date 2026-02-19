@@ -137,6 +137,7 @@ Avoid overemphasizing scarcity; focus on roster fit, role clarity, and value.
 Style guidance: ${styleToken}. Aim for variety—change sentence openings, avoid stock phrases, avoid repeating identical adjectives.
 Anti-repetition rules:
 - Do NOT reuse the same first-sentence pattern across consecutive picks.
+- Speak as if you are a member of the team (e.g. "Our", not "Your"), but avoid overusing "we/our" to start sentences.
 - Avoid boilerplate like "brings speed and playmaking ability", "clear role", "synergy", "perfectly complements", "fits seamlessly", "impossible to pass up", "solidifies".
 - Avoid "Compared to other available [position]" style sentences.
 Your response MUST be valid JSON only with two keys and no extra text: { "pick": "Exact Player Name", "reason": "3-5 sentences that mention the chosen player's name within the first 2 sentences and explain fantasy roster fit, weekly scoring upside/floor, and value vs generic alternatives. Reflect draft-stage realism (later rounds = more uncertainty). End with one minor risk/concern framed as volatility/usage uncertainty/injury risk (NOT coaching/playbook)." }`;
@@ -320,11 +321,13 @@ export async function POST(request) {
       seed = undefined,
       dryRun = false,
       trace = true,
-      model = 'gpt-4o-mini',
+      model = 'gpt-4o',
       title = 'BBB AI Mock Draft',
       description = 'AI-generated mock draft with per-pick reasoning.',
       progressKey = null,
       topN = 8,
+
+      draftOrder = undefined,
     } = body || {};
 
     if (!process.env.OPENAI_API_KEY) {
@@ -372,22 +375,50 @@ export async function POST(request) {
     const rosterIdToUserId = Object.fromEntries((rosters || []).map(r => [r.roster_id, r.owner_id]));
     const userIdToDisplay = Object.fromEntries((users || []).map(u => [u.user_id, u.display_name || u.username || 'Unknown Team']));
 
+
     let order = [];
-    const totalRounds = Math.max(1, Math.min(7, Number(rounds) || 1));
-    for (let r = 1; r <= totalRounds; r++) {
-      const tradesForRound = (Array.isArray(traded) ? traded : []).filter(tp => String(tp.season) === String(targetSeason) && Number(tp.round) === r);
-      const roundOrder = base
-        .sort((a, b) => Number(a.slot) - Number(b.slot))
-        .map(entry => {
-          const trade = tradesForRound.find(tp => Number(tp.roster_id) === Number(entry.roster_id));
-          const rosterId = trade ? trade.owner_id : entry.roster_id;
-          const ownerUserId = rosterIdToUserId[rosterId] ?? null;
-          const teamName = ownerUserId ? (userIdToDisplay[ownerUserId] || 'Unknown Team') : 'Unknown Team';
-          return { round: r, userId: ownerUserId, slot: Number(entry.slot), teamName };
-        });
-      order.push(...roundOrder);
+    if (Array.isArray(draftOrder) && draftOrder.length > 0) {
+      // Use provided full multi-round draft order from admin page
+      order = draftOrder.map((o, idx) => {
+        // Preserve round, slot, rosterId, etc. from input
+        let userId = o.userId;
+        let teamName = o.teamName;
+        // If userId or teamName missing, resolve from rosterId
+        if (!userId && o.rosterId) {
+          const roster = rosters.find(r => Number(r.roster_id) === Number(o.rosterId));
+          userId = roster?.owner_id || null;
+        }
+        if (!teamName && userId) {
+          teamName = userIdToDisplay[userId] || 'Unknown Team';
+        }
+        return {
+          ...o,
+          round: Number(o.round) || 1,
+          slot: Number(o.slot) || (idx % 12) + 1,
+          rosterId: o.rosterId ?? o.roster_id,
+          originalRosterId: o.originalRosterId ?? o.original_roster_id,
+          userId,
+          teamName: teamName || 'Unknown Team',
+        };
+      });
+    } else {
+      // Fallback to existing logic
+      const totalRounds = Math.max(1, Math.min(7, Number(rounds) || 1));
+      for (let r = 1; r <= totalRounds; r++) {
+        const tradesForRound = (Array.isArray(traded) ? traded : []).filter(tp => String(tp.season) === String(targetSeason) && Number(tp.round) === r);
+        const roundOrder = base
+          .sort((a, b) => Number(a.slot) - Number(b.slot))
+          .map(entry => {
+            const trade = tradesForRound.find(tp => Number(tp.roster_id) === Number(entry.roster_id));
+            const rosterId = trade ? trade.owner_id : entry.roster_id;
+            const ownerUserId = rosterIdToUserId[rosterId] ?? null;
+            const teamName = ownerUserId ? (userIdToDisplay[ownerUserId] || 'Unknown Team') : 'Unknown Team';
+            return { round: r, userId: ownerUserId, slot: Number(entry.slot), teamName };
+          });
+        order.push(...roundOrder);
+      }
+      order = order.slice(0, Math.max(12, Math.min(84, Number(maxPicks) || 12)));
     }
-    order = order.slice(0, Math.max(12, Math.min(84, Number(maxPicks) || 12)));
 
     // Player pool
     let pool = loadPlayerPool();
