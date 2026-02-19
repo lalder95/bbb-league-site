@@ -1,3 +1,29 @@
+import { fetchCollegeDraftNews } from './newsUtils';
+/**
+ * Loads the player pool and attaches recent news (from PFF College & Draft RSS) to each player if available.
+ * Returns a Promise resolving to an array of player objects with optional `news` property.
+ */
+export async function buildPlayerPoolWithNews() {
+  const pool = loadPlayerPool();
+  let newsItems = [];
+  try {
+    newsItems = await fetchCollegeDraftNews();
+  } catch (e) {
+    // Fail gracefully if news fetch fails
+    newsItems = [];
+  }
+  return pool.map(player => {
+    // Normalize player name for matching
+    const normalizedName = player.name.replace(/[.'’]/g, '').toLowerCase();
+    const news = newsItems.find(item =>
+      item.title && item.title.toLowerCase().includes(normalizedName)
+    );
+    return {
+      ...player,
+      news: news ? { headline: news.title, link: news.link, pubDate: news.pubDate } : null,
+    };
+  });
+}
 // src/utils/playerPoolUtils.js
 
 import fs from 'fs';

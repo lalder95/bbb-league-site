@@ -3,7 +3,7 @@ import clientPromise from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { OpenAI } from 'openai';
-import { loadPlayerPool, popPlayerByName } from '@/utils/playerPoolUtils';
+import { buildPlayerPoolWithNews, popPlayerByName } from '@/utils/playerPoolUtils';
 import {
   createRng,
   buildArticleIntro,
@@ -162,6 +162,10 @@ Choose the best pick for this team from ONLY the top 10 above and return JSON as
 function buildUserPromptTopN({ pickNumber, round, available, leagueHints, teamProfile, reasonTemplate, quality, topN = 8, teamNeedsText = '' }) {
   const window = available.slice(0, Math.max(1, Number(topN) || 8));
   const availableList = window.map(p => `${p.name} (${p.position}) [rank ${p.rank}${p.value > 0 ? `, value ${p.value}` : ''}]`).join('\n');
+  const newsSection = window
+    .map(p => p.news ? `${p.name}: ${p.news.headline}` : '')
+    .filter(Boolean)
+    .join('\n');
   return `Pick: ${pickNumber}
 Round: ${round}
 Team: ${teamProfile.teamName}
@@ -173,6 +177,7 @@ ${teamNeedsText ? `\n${teamNeedsText}\n` : ''}
 Use this writing pattern: ${reasonTemplate}
 
 Available Players (TOP ${Math.max(1, Number(topN) || 8)} ONLY):\n${availableList}
+${newsSection ? `\nRecent News:\n${newsSection}` : ''}
 
 Choose the best pick for this team from ONLY the top ${Math.max(1, Number(topN) || 8)} above and return JSON as specified.`;
 }
@@ -420,8 +425,8 @@ export async function POST(request) {
       order = order.slice(0, Math.max(12, Math.min(84, Number(maxPicks) || 12)));
     }
 
-    // Player pool
-    let pool = loadPlayerPool();
+    // Player pool with news
+    let pool = await buildPlayerPoolWithNews();
     if (!Array.isArray(pool) || pool.length === 0) {
       return NextResponse.json({ error: 'Player pool is empty' }, { status: 400 });
     }
