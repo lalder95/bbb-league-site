@@ -161,6 +161,65 @@ export async function getContractChanges() {
   }
 }
 
+async function getAppSettingsCollection() {
+  const db = await getDatabase();
+  return db.collection('appSettings');
+}
+
+export async function getContractManagementSettings() {
+  try {
+    const col = await getAppSettingsCollection();
+    const doc = await col.findOne({ key: 'contractManagement' });
+    return {
+      success: true,
+      settings: {
+        contractYearOverride: Number.isFinite(parseInt(doc?.contractYearOverride, 10))
+          ? parseInt(doc.contractYearOverride, 10)
+          : null,
+        updatedAt: doc?.updatedAt || null,
+        updatedBy: doc?.updatedBy || null,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateContractManagementSettings({ contractYearOverride, updatedBy }) {
+  try {
+    let normalizedOverride = null;
+    if (contractYearOverride !== null && contractYearOverride !== undefined && contractYearOverride !== '') {
+      normalizedOverride = parseInt(contractYearOverride, 10);
+      if (!Number.isFinite(normalizedOverride)) {
+        return { success: false, error: 'contractYearOverride must be a valid year or null' };
+      }
+    }
+
+    const col = await getAppSettingsCollection();
+    const updateDoc = {
+      contractYearOverride: normalizedOverride,
+      updatedAt: new Date(),
+      updatedBy: updatedBy || null,
+    };
+
+    await col.updateOne(
+      { key: 'contractManagement' },
+      {
+        $set: updateDoc,
+        $setOnInsert: { key: 'contractManagement', createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    return {
+      success: true,
+      settings: updateDoc,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 // Announcements helpers
 async function getAnnouncementsCollection() {
   const db = await getDatabase();

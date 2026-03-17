@@ -39,6 +39,12 @@ export default function ContractManagementPage() {
   const [leagueId, setLeagueId] = useState(null);
   const [currentSeason, setCurrentSeason] = useState(null);
   const [seasonYear, setSeasonYear] = useState(null);
+  const [contractYearOverride, setContractYearOverride] = useState(null);
+  const [contractYearOverrideDraft, setContractYearOverrideDraft] = useState('');
+  const [contractYearSettingsLoading, setContractYearSettingsLoading] = useState(true);
+  const [contractYearSettingsSaving, setContractYearSettingsSaving] = useState(false);
+  const [contractYearSettingsMsg, setContractYearSettingsMsg] = useState('');
+  const [contractYearSettingsError, setContractYearSettingsError] = useState('');
   const [playerTotals, setPlayerTotals] = useState({}); // { playerId: totalPoints }
   const [playerWeeks, setPlayerWeeks] = useState({}); // { playerId: countedWeeks }
   const [playerNonPositiveWeeks, setPlayerNonPositiveWeeks] = useState({}); // { playerId: weeks with <= 0 pts }
@@ -77,6 +83,38 @@ export default function ContractManagementPage() {
   const [selectedTeamName, setSelectedTeamName] = useState('');
 
   const ignoreTagQuantityLimits = Boolean(isAdmin && isAdminMode);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchContractManagementSettings() {
+      setContractYearSettingsLoading(true);
+      setContractYearSettingsError('');
+      try {
+        const res = await fetch('/api/contract-management/settings', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load contract management settings');
+        const overrideYear = Number.isFinite(parseInt(data?.settings?.contractYearOverride, 10))
+          ? parseInt(data.settings.contractYearOverride, 10)
+          : null;
+        if (cancelled) return;
+        setContractYearOverride(overrideYear);
+        setContractYearOverrideDraft(overrideYear !== null ? String(overrideYear) : '');
+      } catch (err) {
+        if (cancelled) return;
+        setContractYearOverride(null);
+        setContractYearOverrideDraft('');
+        setContractYearSettingsError(err.message || 'Failed to load contract management settings');
+      } finally {
+        if (!cancelled) setContractYearSettingsLoading(false);
+      }
+    }
+
+    fetchContractManagementSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load contracts
   useEffect(() => {
@@ -198,7 +236,9 @@ export default function ContractManagementPage() {
     return d >= start && d <= end;
   }
 
-  const curYear = Number.isFinite(parseInt(seasonYear)) ? parseInt(seasonYear) : new Date().getFullYear();
+  const detectedLeagueYear = Number.isFinite(parseInt(seasonYear, 10)) ? parseInt(seasonYear, 10) : null;
+  const sharedContractYearOverride = Number.isFinite(parseInt(contractYearOverride, 10)) ? parseInt(contractYearOverride, 10) : null;
+  const curYear = sharedContractYearOverride ?? detectedLeagueYear ?? new Date().getFullYear();
   const CAP = 300;
 
   // Window actives for header badges (respect Admin override where applicable)
@@ -279,6 +319,31 @@ export default function ContractManagementPage() {
       setHoldoutAssignmentsError(err.message);
     } finally {
       setHoldoutAssignmentsLoading(false);
+    }
+  }
+
+  async function saveContractYearOverride(nextOverride) {
+    setContractYearSettingsSaving(true);
+    setContractYearSettingsMsg('');
+    setContractYearSettingsError('');
+    try {
+      const res = await fetch('/api/admin/contract-management/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractYearOverride: nextOverride }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save contract management settings');
+      const savedOverride = Number.isFinite(parseInt(data?.settings?.contractYearOverride, 10))
+        ? parseInt(data.settings.contractYearOverride, 10)
+        : null;
+      setContractYearOverride(savedOverride);
+      setContractYearOverrideDraft(savedOverride !== null ? String(savedOverride) : '');
+      setContractYearSettingsMsg(savedOverride !== null ? 'Shared contract year override saved.' : 'Shared contract year override cleared.');
+    } catch (err) {
+      setContractYearSettingsError(err.message || 'Failed to save contract management settings');
+    } finally {
+      setContractYearSettingsSaving(false);
     }
   }
 
@@ -392,7 +457,7 @@ export default function ContractManagementPage() {
     String(a.playerName).localeCompare(String(b.playerName), undefined, { sensitivity: 'base' })
   );
 
-  // Franchise Tag eligibility (final year of active Base or Extension, franchise eligible true, RFA false, no Future deal)
+  // Franchise Tag eligibility (final year of active eligible contracts in the current league year)
   let franchiseEligiblePlayers = myContractsAll.filter(p => {
     const isActive = p.status === 'Active';
     const type = String(p.contractType).toLowerCase();
@@ -479,39 +544,51 @@ export default function ContractManagementPage() {
   useEffect(() => {
     async function initLeague() {
       try {
+        const USER_ID = '456973480269705216';
+        const isBbbLeague = league =>
+          league?.name && (
+            league.name.includes('Budget Blitz Bowl') ||
+            league.name.includes('budget blitz bowl') ||
+            league.name.includes('BBB') ||
+            (String(league.name).toLowerCase().includes('budget') && String(league.name).toLowerCase().includes('blitz'))
+          );
+        const getLeaguesForSeason = async season => {
+          const seasonStr = String(season);
+          const leaguesResp = await fetch(`/api/league_proxy?season=${seasonStr}`);
+          let leagues = [];
+          if (leaguesResp.ok) {
+            leagues = await leaguesResp.json();
+          }
+          if (!Array.isArray(leagues) || leagues.length === 0) {
+            const directResp = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${seasonStr}`);
+            if (directResp.ok) leagues = await directResp.json();
+          }
+          return Array.isArray(leagues) ? leagues : [];
+        };
+        const getMostRecentBbbLeague = leagues =>
+          [...leagues]
+            .filter(isBbbLeague)
+            .sort((a, b) => (parseInt(b.season) || 0) - (parseInt(a.season) || 0))[0];
+
         const stateResp = await fetch('https://api.sleeper.app/v1/state/nfl');
         const state = await stateResp.json();
         const apiSeasonYear = parseInt(state?.season);
-        if (Number.isFinite(apiSeasonYear)) setSeasonYear(apiSeasonYear);
+        const currentLeagueLookupSeason = Number.isFinite(apiSeasonYear)
+          ? String(apiSeasonYear)
+          : String(new Date().getFullYear());
+        const currentLeagues = await getLeaguesForSeason(currentLeagueLookupSeason);
+        const currentBbbLeague = getMostRecentBbbLeague(currentLeagues);
+        const currentLeagueYear = parseInt(currentBbbLeague?.season);
+        if (Number.isFinite(currentLeagueYear)) setSeasonYear(currentLeagueYear);
+        else if (Number.isFinite(apiSeasonYear)) setSeasonYear(apiSeasonYear);
+
         // Use previous season for holdout eligibility metrics
         const rawSeason = parseInt(state?.season);
         const prevSeason = Number.isFinite(rawSeason) ? String(rawSeason - 1) : String((new Date().getFullYear()) - 1);
         setCurrentSeason(prevSeason);
-        const leaguesResp = await fetch(`/api/league_proxy?season=${prevSeason}`);
-        // Fallback directly if proxy not available
-        let leagues = [];
-        if (leaguesResp.ok) {
-          leagues = await leaguesResp.json();
-        }
-        // If proxy not configured, attempt direct user league fetch (USER_ID known from Holdouts page)
-        if (!Array.isArray(leagues) || leagues.length === 0) {
-          const USER_ID = '456973480269705216';
-          const directResp = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prevSeason}`);
-          if (directResp.ok) leagues = await directResp.json();
-        }
-        let bbb = Array.isArray(leagues)
-          ? leagues.filter(
-              l =>
-                l?.name && (
-                  l.name.includes('Budget Blitz Bowl') ||
-                  l.name.includes('budget blitz bowl') ||
-                  l.name.includes('BBB') ||
-                  (String(l.name).toLowerCase().includes('budget') && String(l.name).toLowerCase().includes('blitz'))
-                )
-            )
-          : [];
-        const mostRecent = bbb.sort((a, b) => (parseInt(b.season) || 0) - (parseInt(a.season) || 0))[0];
-        setLeagueId(mostRecent?.league_id || null);
+        const previousLeagues = await getLeaguesForSeason(prevSeason);
+        const previousBbbLeague = getMostRecentBbbLeague(previousLeagues);
+        setLeagueId(previousBbbLeague?.league_id || null);
       } catch {
         setLeagueId(null);
       }
@@ -854,6 +931,78 @@ export default function ContractManagementPage() {
               <div className="mt-2 text-xs text-white/60">
                 When Admin Mode is enabled, you can select any team and finalize extensions on their behalf.
               </div>
+
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                  {!isAdminMode && (
+                    <div className="mb-3 text-xs text-yellow-300">
+                      Enable Admin Mode to change the shared contract year.
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-white font-semibold">Shared Contract Year</div>
+                      <div className="text-xs text-white/60">Defaults to the detected BBB league year. A saved override applies to all users.</div>
+                    </div>
+                    <div className="text-xs text-white/70">
+                      Effective Year: <span className="text-[#1FDDFF] font-semibold">{curYear}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <div className="text-xs uppercase tracking-wide text-white/50">Detected League Year</div>
+                      <div className="mt-1 text-lg font-semibold text-white">{detectedLeagueYear ?? 'Unknown'}</div>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <div className="text-xs uppercase tracking-wide text-white/50">Saved Override</div>
+                      <div className="mt-1 text-lg font-semibold text-white">{sharedContractYearOverride ?? 'Default'}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex-1">
+                      <label className="block text-white/70 text-xs mb-1">Override year</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min="2020"
+                        className="w-full rounded px-3 py-2 bg-white text-[#0B1722] focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]"
+                        placeholder={detectedLeagueYear ? String(detectedLeagueYear) : 'Enter year'}
+                        value={contractYearOverrideDraft}
+                        onChange={e => setContractYearOverrideDraft(e.target.value)}
+                        disabled={!isAdminMode || contractYearSettingsLoading || contractYearSettingsSaving}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="px-4 py-2 bg-[#FF4B1F] text-white rounded font-semibold hover:bg-orange-600 disabled:opacity-50"
+                        disabled={
+                          !isAdminMode ||
+                          contractYearSettingsLoading ||
+                          contractYearSettingsSaving ||
+                          !Number.isFinite(parseInt(contractYearOverrideDraft, 10))
+                        }
+                        onClick={() => saveContractYearOverride(parseInt(contractYearOverrideDraft, 10))}
+                      >
+                        {contractYearSettingsSaving ? 'Saving…' : 'Save Override'}
+                      </button>
+                      <button
+                        type="button"
+                        className="px-4 py-2 bg-white/10 text-white rounded font-semibold hover:bg-white/20 disabled:opacity-50"
+                        disabled={!isAdminMode || contractYearSettingsLoading || contractYearSettingsSaving || sharedContractYearOverride === null}
+                        onClick={() => saveContractYearOverride(null)}
+                      >
+                        Use Default
+                      </button>
+                    </div>
+                  </div>
+
+                  {contractYearSettingsLoading && <div className="mt-2 text-xs text-white/60">Loading shared contract year setting…</div>}
+                  {contractYearSettingsMsg && <div className="mt-2 text-sm text-green-300">{contractYearSettingsMsg}</div>}
+                  {contractYearSettingsError && <div className="mt-2 text-sm text-red-300">{contractYearSettingsError}</div>}
+                </div>
             </div>
           )}
         </div>
