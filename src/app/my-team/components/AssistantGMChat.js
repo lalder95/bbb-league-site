@@ -16,6 +16,7 @@ function formatPickString(pick, rosters, users) {
 }
 
 export default function AssistantGMChat({
+  id,
   teamState,
   assetPriority,
   strategyNotes,
@@ -182,14 +183,40 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     allRostersString
   ]);
 
-  const chatKey = `assistantGMChat_${session?.user?.name || 'guest'}`;
+  const chatKey = `assistantGMChat_${id || 'default'}_${session?.user?.name || 'guest'}`;
+  const getInitialMessages = () => [{ role: 'system', content: systemPrompt }];
   const [messages, setMessages] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(chatKey);
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        } catch {
+          // ignore malformed cache
+        }
+      }
     }
-    return [];
+    return getInitialMessages();
   });
+
+  useEffect(() => {
+    setMessages((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        return getInitialMessages();
+      }
+
+      const [firstMessage, ...rest] = prev;
+      if (firstMessage?.role === 'system') {
+        if (firstMessage.content === systemPrompt) return prev;
+        return [{ ...firstMessage, content: systemPrompt }, ...rest];
+      }
+
+      return [{ role: 'system', content: systemPrompt }, ...prev];
+    });
+  }, [systemPrompt]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -199,6 +226,14 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+
+  function buildApiMessages(messageList) {
+    const normalizedMessages = Array.isArray(messageList) ? messageList : [];
+    const systemMessage = normalizedMessages.find((message) => message?.role === 'system') || { role: 'system', content: systemPrompt };
+    const conversationMessages = normalizedMessages.filter((message) => message?.role === 'user' || message?.role === 'assistant');
+    const trimmedConversation = conversationMessages.slice(-12);
+    return [systemMessage, ...trimmedConversation].map(({ role, content }) => ({ role, content }));
+  }
 
   async function sendRawMessage(content, baseMessages, options = {}) {
     if (!content?.trim()) return;
@@ -216,7 +251,7 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
       const res = await fetch('/api/assistant-gm-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages.map(({ role, content }) => ({ role, content })) }),
+        body: JSON.stringify({ messages: buildApiMessages(newMessages) }),
       });
 
       const contentType = res.headers.get('content-type') || '';
@@ -275,9 +310,10 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
 
   function handleClearChat() {
     if (window.confirm('Are you sure you want to reset your conversation?')) {
-      setMessages([{ role: 'system', content: systemPrompt }]);
+      const freshMessages = [{ role: 'system', content: systemPrompt }];
+      setMessages(freshMessages);
       if (typeof window !== 'undefined') {
-        localStorage.setItem(chatKey, JSON.stringify([{ role: 'system', content: systemPrompt }]));
+        localStorage.setItem(chatKey, JSON.stringify(freshMessages));
       }
     }
   }

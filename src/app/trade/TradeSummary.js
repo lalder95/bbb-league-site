@@ -6,6 +6,97 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, R
 import Image from 'next/image';
 import AssistantGMChat from '../my-team/components/AssistantGMChat';
 import { useSession } from 'next-auth/react';
+import { describeTradeAsset, getAssetBudgetValue, getAssetKey, getDisplayDraftSlot, isDraftPickAsset } from '@/utils/draftPickTradeUtils';
+
+const SUMMARY_TEAM_BAR_COLORS = [
+  'from-emerald-500 to-emerald-300',
+  'from-blue-500 to-cyan-300',
+  'from-orange-500 to-amber-300',
+  'from-fuchsia-500 to-pink-300',
+  'from-violet-500 to-indigo-300',
+  'from-rose-500 to-red-300',
+];
+
+const getBudgetValue = (player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }) => {
+  const v = getAssetBudgetValue(player, {
+    ktcPerDollar: salaryKtcRatio,
+    positionRatios,
+    usePositionRatios,
+    avgKtcByPosition,
+  });
+  return Number.isNaN(v) ? 0 : v;
+};
+
+const formatIncomingMetricValue = (value, type) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '-';
+  if (type === 'currency') return `$${num.toFixed(1)}`;
+  if (type === 'age') return num > 0 ? `${num.toFixed(1)}` : '-';
+  return Math.round(num).toLocaleString();
+};
+
+function SummaryIncomingBars({ metricSections }) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  return (
+    <div className="mb-4 space-y-4 rounded-lg border border-white/10 bg-black/20 p-3 md:p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-sm font-bold text-white">Incoming Comparison</div>
+          <div className="text-xs text-white/60">100% stacked bars showing each team's share of incoming value by metric.</div>
+        </div>
+        <button
+          onClick={() => setShowDetails((prev) => !prev)}
+          className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10"
+          type="button"
+        >
+          {showDetails ? 'Hide Breakdown' : 'Show Breakdown'}
+        </button>
+      </div>
+
+      {metricSections.map((section) => (
+        <div key={section.key} className="space-y-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div className="text-sm font-semibold text-white">{section.label}</div>
+            <div className="text-xs text-white/55">Total: {section.totalFormatted}</div>
+          </div>
+
+          <div className="overflow-hidden rounded-full border border-white/10 bg-black/30">
+            <div className="flex min-h-10 w-full">
+              {section.entries.map((entry) => (
+                <div
+                  key={`${section.key}-${entry.team}`}
+                  className={`flex min-w-0 items-center justify-center bg-gradient-to-r ${entry.colorClass} px-2 text-center text-sm font-extrabold text-slate-950`}
+                  style={{ width: `${entry.percent}%` }}
+                  title={`${entry.team}: ${entry.formattedValue} (${entry.percent.toFixed(1)}%)`}
+                >
+                  <span className="truncate">{entry.team} · {entry.formattedValue}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {showDetails && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {section.entries.map((entry) => (
+                <div key={`${section.key}-legend-${entry.team}`} className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block h-3 w-3 rounded-full bg-gradient-to-r ${entry.colorClass}`}></span>
+                    <div className="truncate text-sm font-semibold text-white">{entry.team}</div>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <div className="text-base font-bold text-white">{entry.formattedValue}</div>
+                    <div className="text-sm font-semibold text-white/70">{entry.percent.toFixed(1)}% share</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const TradeSummary = ({
   participants,
@@ -213,6 +304,70 @@ const TradeSummary = ({
     return p ? p.selectedPlayers : [];
   };
 
+  const incomingMetricSections = useMemo(() => {
+    const teams = [...new Set(participants.map((p) => p.team).filter(Boolean))];
+    const eligibleToShow = teams.length >= 2 && participants.filter((p) => p.team).every((p) => p.selectedPlayers.length > 0);
+    if (!eligibleToShow) return [];
+
+    const metricConfigs = [
+      {
+        key: 'ktc',
+        label: 'Total KTC Incoming',
+        type: 'integer',
+        getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0),
+      },
+      {
+        key: 'bv',
+        label: 'Total BV Incoming',
+        type: 'integer',
+        getValue: (players) => players.reduce((sum, player) => sum + getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0),
+      },
+      {
+        key: 'cap',
+        label: 'Total Cap Incoming',
+        type: 'currency',
+        getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
+      },
+      {
+        key: 'age',
+        label: 'Average Age Incoming',
+        type: 'age',
+        getValue: (players) => {
+          const ageEligiblePlayers = players.filter((player) => Number.isFinite(parseFloat(player.age)) && parseFloat(player.age) > 0);
+          if (!ageEligiblePlayers.length) return 0;
+          const totalAge = ageEligiblePlayers.reduce((sum, player) => sum + (parseFloat(player.age) || 0), 0);
+          return totalAge / ageEligiblePlayers.length;
+        },
+      },
+    ];
+
+    return metricConfigs.map((metric) => {
+      const baseEntries = teams.map((team, index) => {
+        const incoming = buildReceivedFor(team);
+        const value = metric.getValue(incoming);
+        return {
+          team,
+          value,
+          formattedValue: formatIncomingMetricValue(value, metric.type),
+          colorClass: SUMMARY_TEAM_BAR_COLORS[index % SUMMARY_TEAM_BAR_COLORS.length],
+        };
+      });
+
+      const total = baseEntries.reduce((sum, entry) => sum + (Number.isFinite(entry.value) ? Math.abs(entry.value) : 0), 0);
+      const fallbackPercent = baseEntries.length ? 100 / baseEntries.length : 0;
+
+      return {
+        key: metric.key,
+        label: metric.label,
+        totalFormatted: formatIncomingMetricValue(total || (metric.type === 'age' ? 0 : total), metric.type),
+        entries: baseEntries.map((entry) => ({
+          ...entry,
+          percent: total > 0 ? ((Math.abs(entry.value) / total) * 100) : fallbackPercent,
+        })),
+      };
+    });
+  }, [participants, salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition]);
+
   // Compose a concise auto message summarizing the trade
   const composeTradeSummaryMessage = () => {
     const teams = participants.map(p => p.team).filter(Boolean);
@@ -222,8 +377,8 @@ const TradeSummary = ({
       const outgoing = buildOutgoingFor(team);
       const incoming = buildReceivedFor(team);
       const impact = impactsByTeam?.[team];
-      const outNames = outgoing.map(o => `${o.playerName} (${o.position}, $${Number(o.curYear||0).toFixed(1)})`).join(', ') || 'None';
-      const inNames = incoming.map(i => `${i.playerName} (${i.position}, $${Number(i.curYear||0).toFixed(1)})`).join(', ') || 'None';
+      const outNames = outgoing.map((o) => describeTradeAsset(o)).join(', ') || 'None';
+      const inNames = incoming.map((i) => describeTradeAsset(i)).join(', ') || 'None';
       const yr = impact?.after?.curYear?.remaining;
       const y2 = impact?.after?.year2?.remaining;
       const y3 = impact?.after?.year3?.remaining;
@@ -348,16 +503,7 @@ const TradeSummary = ({
             const totalSalary = allIncoming.reduce((s, p) => s + (parseFloat(p.curYear) || 0), 0);
             const totalKtc = allIncoming.reduce((s, p) => s + (parseFloat(p.ktcValue) || 0), 0);
             const totalValue = (() => {
-              const perSum = allIncoming.reduce((sum, p) => {
-                const pos = (p.position || 'UNKNOWN').toUpperCase();
-                const sal = parseFloat(p.curYear) || 0;
-                const ktc = parseFloat(p.ktcValue) || 0;
-                const appliedRatio = usePositionRatios
-                  ? ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0))
-                  : (salaryKtcRatio || 0);
-                const avgAdd = avgKtcByPosition?.[pos] || 0;
-                return sum + ktc + sal * (-(appliedRatio)) + avgAdd;
-              }, 0);
+              const perSum = allIncoming.reduce((sum, p) => sum + getBudgetValue(p, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
               return Math.round(perSum);
             })();
             return (
@@ -385,6 +531,11 @@ const TradeSummary = ({
               </div>
             );
           })()}
+
+          {incomingMetricSections.length > 0 && (
+            <SummaryIncomingBars metricSections={incomingMetricSections} />
+          )}
+
           <div className={`grid ${isMobile ? "grid-cols-1 gap-4" : "grid-cols-2 gap-6"}`}>
             {participants.filter(p => p.team).map((p, idx) => {
               const received = buildReceivedFor(p.team);
@@ -392,16 +543,7 @@ const TradeSummary = ({
               const totalCap = calculateTotalValue(received);
               const totalKTC = calculateTotalKTC(received);
               const totalValue = (() => {
-                const perSum = received.reduce((sum, pl) => {
-                  const pos = (pl.position || 'UNKNOWN').toUpperCase();
-                  const sal = parseFloat(pl.curYear) || 0;
-                  const ktc = parseFloat(pl.ktcValue) || 0;
-                  const appliedRatio = usePositionRatios
-                    ? ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0))
-                    : (salaryKtcRatio || 0);
-                  const avgAdd = avgKtcByPosition?.[pos] || 0;
-                  return sum + ktc + sal * (-(appliedRatio)) + avgAdd;
-                }, 0);
+                const perSum = received.reduce((sum, pl) => sum + getBudgetValue(pl, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
                 return Math.round(perSum);
               })();
               return (
@@ -413,7 +555,7 @@ const TradeSummary = ({
                     <div>
                       <h3 className="font-bold text-base md:text-lg">{formatTeamName(p.team)} Receives</h3>
                       <p className="text-white/70 text-xs md:text-sm">
-                        {received.length} player{received.length !== 1 ? 's' : ''} • ${totalCap.toFixed(1)} cap value • KTC: {totalKTC ? totalKTC.toFixed(0) : 0}
+                        {received.length} asset{received.length !== 1 ? 's' : ''} • ${totalCap.toFixed(1)} current cap value • KTC: {totalKTC ? totalKTC.toFixed(0) : 0}
                       </p>
                       <div className="text-white/90 text-xs md:text-sm font-bold flex items-center">
                         Budget Value: {totalValue}
@@ -479,15 +621,22 @@ const TradeSummary = ({
                     </div>
                   )}
 
-                  {/* Players received */}
+                  {/* Assets received */}
                   <div className="space-y-2 mb-4 md:mb-6 mt-6">
                     {received.length > 0 ? (
                       received.map((player, index) => (
                         <div
-                          key={player.id + '-' + index}
+                          key={`${getAssetKey(player)}-${index}`}
                           className="bg-black/20 rounded p-2 md:p-3 flex flex-row items-center gap-4"
                         >
                           <div className="flex items-center justify-center" style={{ width: 72, height: 72, minWidth: 72, minHeight: 72 }}>
+                            {isDraftPickAsset(player) ? (
+                              <div className="flex h-[72px] w-[72px] flex-col items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-sky-500/20 via-indigo-500/15 to-violet-500/15 text-center">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-100">Pick</div>
+                                <div className="mt-1 text-2xl font-black leading-none text-white">R{player.round}</div>
+                                <div className="mt-1 text-[11px] font-semibold text-white/70">{player.pickBucketLabel}</div>
+                              </div>
+                            ) : (
                               <PlayerProfileCard
                                 playerId={player.id}
                                 imageExtension="png"
@@ -497,48 +646,46 @@ const TradeSummary = ({
                                 usePositionRatios={usePositionRatios ?? ratiosCtx.usePositionRatios}
                                 positionRatios={positionRatios ?? ratiosCtx.positionRatios}
                               />
+                            )}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-base text-white truncate">{player.playerName}</div>
                             <div className="flex flex-row flex-wrap items-center gap-3 mt-1 text-sm">
-                              <span className="text-white/80 font-semibold">{player.position}</span>
-                              <span className="text-white/80 font-semibold">${player.curYear ? Number(player.curYear).toFixed(1) : "-"}</span>
+                              <span className="text-white/80 font-semibold">{isDraftPickAsset(player) ? (getDisplayDraftSlot(player) || player.pickBucketLabel || 'PICK') : player.position}</span>
+                              <span className="text-white/80 font-semibold">${isDraftPickAsset(player) ? Number(player.pickSalary || 0).toFixed(1) : (player.curYear ? Number(player.curYear).toFixed(1) : "-")}</span>
                               <span className="text-white/80 font-semibold">{player.contractType}</span>
                             </div>
                             <div className="mt-1 text-sm">
-                              <span className="text-white/80 font-semibold">{player.team}</span>
+                              <span className="text-white/80 font-semibold">{isDraftPickAsset(player) ? `Original: ${player.originalTeam || '-'}` : player.team}</span>
                             </div>
                             <div className="mt-2 flex flex-col gap-1">
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
-                                <span className="text-white/60 mr-1">Age:</span>
-                                {player.age || "-"}
-                              </span>
+                              {!isDraftPickAsset(player) && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
+                                  <span className="text-white/60 mr-1">Age:</span>
+                                  {player.age || "-"}
+                                </span>
+                              )}
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
                                 <span className="text-white/60 mr-1">KTC:</span>
                                 {player.ktcValue ? player.ktcValue : "-"}
                               </span>
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
                                 <span className="text-white/60 mr-1">BV:</span>
-                                {(() => {
-                                  const ktc = parseFloat(player.ktcValue) || 0;
-                                  const sal = parseFloat(player.curYear) || 0;
-                                  if (!sal && !ktc) return '-';
-                                  const pos = (player.position || 'UNKNOWN').toUpperCase();
-                                  const applied = (!usePositionRatios)
-                                    ? (salaryKtcRatio || 0)
-                                    : ((positionRatios?.[pos] != null) ? positionRatios[pos] : (salaryKtcRatio || 0));
-                                  const avgAdd = avgKtcByPosition?.[pos] || 0;
-                                  const v = Math.round(ktc + sal * (-(applied)) + avgAdd);
-                                  return isNaN(v) ? '-' : v;
-                                })()}
+                                {getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }) || '-'}
                               </span>
+                              {isDraftPickAsset(player) && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
+                                  <span className="text-white/60 mr-1">Cap:</span>
+                                  ${Number(player.pickSalary || 0).toFixed(1)}
+                                </span>
+                              )}
                             </div>
                           </div>
-                          <div className="text-green-400 font-bold ml-4 text-lg">${parseFloat(player.curYear).toFixed(1)}</div>
+                          <div className="text-green-400 font-bold ml-4 text-lg">${Number(isDraftPickAsset(player) ? (player.pickSalary || 0) : (player.curYear || 0)).toFixed(1)}</div>
                         </div>
                       ))
                     ) : (
-                      <div className="text-center py-2 text-white/50 italic">No players in this trade</div>
+                      <div className="text-center py-2 text-white/50 italic">No assets in this trade</div>
                     )}
                   </div>
                 </div>
