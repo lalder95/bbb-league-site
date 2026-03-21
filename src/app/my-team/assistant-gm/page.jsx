@@ -4,6 +4,8 @@ import { useSession } from 'next-auth/react';
 import AssistantGMChat from '../components/AssistantGMChat';
 import DraftPicksFetcher from '../../../components/draft/DraftPicksFetcher';
 import { getSleeperLeagueWeekAndYear } from '../../../utils/sleeperUtils';
+import { useDraftOrder } from '../../../hooks/useDraftOrder';
+import { createDraftPickAsset, DEFAULT_FUTURE_PICK_BUCKET } from '../../../utils/draftPickTradeUtils';
 import { getLeagueRosters } from '../myTeamApi';
 
 export default function AssistantGMPage() {
@@ -26,6 +28,11 @@ export default function AssistantGMPage() {
 
   // Contracts for chat context
   const [playerContracts, setPlayerContracts] = useState([]);
+
+  const { data: draftOrderData } = useDraftOrder({
+    leagueId,
+    enabled: Boolean(leagueId),
+  });
 
   const assistantGMChatRef = useRef(null);
 
@@ -305,17 +312,46 @@ export default function AssistantGMPage() {
           const myRoster = (leagueRosters[leagueId] || []).find(r => r.owner_id === session.user.sleeperId);
           if (myRoster) myRosterId = myRoster.roster_id;
         }
+
+        const projectedSlotsByOriginalRosterId = Object.fromEntries(
+          (draftOrderData?.draft_order || []).map((entry) => [
+            Number(entry.original_roster_id ?? entry.roster_id),
+            Number(entry.slot),
+          ])
+        );
+        const targetDraftSeason = String(
+          draftOrderData?.targetSeason || (leagueYear ? Number(leagueYear) + 1 : new Date().getFullYear() + 1)
+        );
         const allPicks = Object.values(picksByOwner).flat();
         const myRawDraftPicks = myRosterId ? allPicks.filter(pick => pick.owner_id === myRosterId) : [];
-        const myDraftPicksList = myRawDraftPicks.map(pick => {
-          const year = pick.season || pick.year || pick.draftYear || 'Unknown';
-          const round = pick.round || '?';
-          let str = `${year} Round ${round}`;
-          if (pick.original_owner_id && pick.owner_id !== pick.original_owner_id) {
-            str += ` (original: ${rosterIdToDisplayName[pick.original_owner_id] || pick.original_owner_id})`;
-          }
-          return str;
-        });
+        const myDraftPicksList = myRawDraftPicks
+          .map((pick) => {
+            const season = String(pick.season || pick.year || pick.draftYear || targetDraftSeason);
+            const round = Number(pick.round) || 1;
+            const originalRosterId = Number(pick.original_owner_id ?? pick.roster_id ?? myRosterId);
+            const currentOwnerRosterId = Number(pick.owner_id ?? myRosterId);
+            const projectedSlot = season === targetDraftSeason
+              ? projectedSlotsByOriginalRosterId[originalRosterId]
+              : null;
+
+            return createDraftPickAsset({
+              season,
+              round,
+              pickPosition: projectedSlot || 6,
+              originalOwner: rosterIdToDisplayName[originalRosterId] || String(originalRosterId),
+              currentOwner: rosterIdToDisplayName[currentOwnerRosterId] || getMyTeamName() || String(currentOwnerRosterId),
+              slotDetermined: Boolean(projectedSlot),
+              mappedSlotDebug: projectedSlot != null ? String(projectedSlot) : 'assistant gm default',
+              bucketOverride: projectedSlot ? undefined : DEFAULT_FUTURE_PICK_BUCKET,
+            });
+          })
+          .sort((a, b) => {
+            const seasonDiff = Number(a.season) - Number(b.season);
+            if (seasonDiff !== 0) return seasonDiff;
+            const roundDiff = Number(a.round) - Number(b.round);
+            if (roundDiff !== 0) return roundDiff;
+            return Number(a.pickPosition) - Number(b.pickPosition);
+          });
 
         return (
           <div className="flex flex-col md:flex-row gap-8 max-w-4xl mx-auto">
@@ -405,7 +441,7 @@ export default function AssistantGMPage() {
                 tradedPicks={[]} // you can wire traded picks if desired
                 rosters={leagueRosters[leagueId] || []}
                 users={[]}
-                myDraftPicksList={[]} // populated by the DraftPicksFetcher if needed
+                myDraftPicksList={myDraftPicksList}
                 leagueWeek={leagueWeek}
                 leagueYear={leagueYear}
                 activeTab="Assistant GM"

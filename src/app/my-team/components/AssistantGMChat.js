@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { getAssetBudgetValue, isDraftPickAsset } from '@/utils/draftPickTradeUtils';
 
 // Helper to get team name (mimics TradedPicks.js usage)
 function getTeamName(rosterId, rosters, users) {
@@ -33,6 +34,54 @@ export default function AssistantGMChat({
   autoSendTrigger,
   autoStartNewConversation = false,
 }) {
+  const activeContractsForBudgetValue = useMemo(
+    () => playerContracts.filter((p) => p?.status === 'Active'),
+    [playerContracts]
+  );
+
+  const budgetValueContext = useMemo(() => {
+    const totalActiveSalary = activeContractsForBudgetValue.reduce((sum, contract) => sum + (parseFloat(contract.curYear) || 0), 0);
+    const totalActiveKtc = activeContractsForBudgetValue.reduce((sum, contract) => sum + (parseFloat(contract.ktcValue) || 0), 0);
+    const ktcPerDollar = totalActiveSalary > 0 ? (totalActiveKtc / totalActiveSalary) : 0;
+
+    const byPos = activeContractsForBudgetValue.reduce((acc, contract) => {
+      const pos = (contract.position || 'UNKNOWN').toUpperCase();
+      const salary = parseFloat(contract.curYear) || 0;
+      const ktc = parseFloat(contract.ktcValue) || 0;
+      if (!acc[pos]) acc[pos] = { salary: 0, ktc: 0, count: 0 };
+      acc[pos].salary += salary;
+      acc[pos].ktc += ktc;
+      acc[pos].count += 1;
+      return acc;
+    }, {});
+
+    const positionRatios = Object.keys(byPos).reduce((acc, pos) => {
+      const { salary, ktc } = byPos[pos];
+      acc[pos] = salary > 0 ? (ktc / salary) : 0;
+      return acc;
+    }, {});
+
+    const avgKtcByPosition = Object.keys(byPos).reduce((acc, pos) => {
+      const { ktc, count } = byPos[pos];
+      acc[pos] = count > 0 ? (ktc / count) : 0;
+      return acc;
+    }, {});
+
+    return {
+      ktcPerDollar,
+      usePositionRatios: true,
+      positionRatios,
+      avgKtcByPosition,
+    };
+  }, [activeContractsForBudgetValue]);
+
+  const getBudgetValue = useMemo(() => {
+    return (asset) => {
+      const value = getAssetBudgetValue(asset, budgetValueContext);
+      return Number.isNaN(value) ? null : value;
+    };
+  }, [budgetValueContext]);
+
   // Find user's team name
   const activeContracts = playerContracts.filter(p => p.status === 'Active' && p.team);
   const allTeamNames = Array.from(new Set(activeContracts.map(p => p.team.trim())));
@@ -102,9 +151,29 @@ export default function AssistantGMChat({
     }).filter(p => p.yearsRemaining === null || p.yearsRemaining > 0);
     const totalSalary = filteredContracts.reduce((sum, p) => sum + (parseFloat(p.curYear) || 0), 0);
     return `--- ${isUser ? 'USER TEAM: ' : ''}${team} (Total Salary: $${totalSalary.toFixed(1)}) ---\n` + filteredContracts.map(p => {
-      return `${p.playerName} (${p.position}), $${p.curYear}, KTC: ${p.ktcValue}, Age: ${p.age}, Years Left: ${p.yearsRemaining ?? '-'}, ${p.status}`;
+      const budgetValue = getBudgetValue(p);
+      return `${p.playerName} (${p.position}), $${p.curYear}, KTC: ${p.ktcValue}, BV: ${budgetValue ?? '-'}, Age: ${p.age}, Years Left: ${p.yearsRemaining ?? '-'}, ${p.status}`;
     }).join('\n');
   }).join('\n\n');
+
+  const myDraftPicksPrompt = useMemo(() => {
+    if (!Array.isArray(myDraftPicksList) || myDraftPicksList.length === 0) return 'None';
+
+    return myDraftPicksList.map((pick) => {
+      if (typeof pick === 'string') return pick;
+
+      const budgetValue = getBudgetValue(pick);
+      const rookieCap = Number(pick.pickSalary ?? pick.year2 ?? 0);
+      const originalTeam = pick.originalTeam || pick.original_owner || pick.originalOwner;
+      const slotText = pick.slotDetermined && pick.pickNumber ? `, Slot ${pick.pickNumber}` : '';
+
+      if (isDraftPickAsset(pick)) {
+        return `${pick.playerName}${slotText}, KTC: ${pick.ktcValue || 0}, BV: ${budgetValue ?? '-'}, Rookie Cap: $${rookieCap.toFixed(1)}${originalTeam ? `, Original Team: ${originalTeam}` : ''}`;
+      }
+
+      return `${pick.playerName || 'Pick'}, KTC: ${pick.ktcValue || 0}, BV: ${budgetValue ?? '-'}${originalTeam ? `, Original Team: ${originalTeam}` : ''}`;
+    }).join('\n');
+  }, [getBudgetValue, myDraftPicksList]);
 
   const systemPrompt = useMemo(() => `You're my Assistant GM for my Budget Blitz Bowl dynasty fantasy football league. Let's keep it casual—just text me advice like a friend would. Be concise and don't write essays.
 
@@ -122,6 +191,8 @@ If I ask for trade advice, always compare the KTC values of the players and pick
 
 Always evaluate players based on both KTC value **and** contract details. Cheap contracts increase value. Expensive contracts reduce value, even for good players. KTC values do not reflect contract status, so you must consider both.
 
+BV means Budget Value. It's like KTC, but it adjusts for contract cost. On this site, player BV is calculated as KTC minus the salary penalty, plus a position-based adjustment. Pick BV is calculated from KTC minus the rookie salary penalty. When you evaluate any player or pick, use both KTC and BV, and treat BV as the better summary of contract-adjusted value.
+
 Long-term contracts are an asset if the player is an established starter, and not expected to decline due to age before the contract expires. Long-term contracts are a liability if the player's value is expected to decline significantly, due to age or losing their starting position.
 
 Short-term contracts are prefered when a player is expected to be a starter for the next 1-2 years, but not beyond that. They are a liability if the player is expected to lose their starting position or decline significantly in that time.
@@ -138,7 +209,7 @@ All later picks have negligible value.
 
 Here's what you need to know:
 - My Upcoming Draft Picks:
-${myDraftPicksList.length ? myDraftPicksList.join(', ') : 'None'}
+${myDraftPicksPrompt}
 
 - All Team Rosters (including mine):
 ${allRostersString}
@@ -179,7 +250,7 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     teamState,
     assetPriority,
     strategyNotes,
-    myDraftPicksList,
+    myDraftPicksPrompt,
     allRostersString
   ]);
 
