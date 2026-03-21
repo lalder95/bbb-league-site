@@ -189,14 +189,14 @@ function PlayerMetrics({ player, ktcPerDollar, usePositionRatios, positionRatios
       <PlayerMetric
         label="KTC"
         value={player.ktcValue || '-'}
-        valueClassName={compact ? 'text-2xl' : 'text-lg'}
+        valueClassName={compact ? 'text-xl' : 'text-base'}
         valueStyle={getValueHeatStyle(ktcValue, 0, 10000)}
       />
       <div className={compact && showContract ? 'col-span-2' : ''}>
         <PlayerMetric
           label="BV"
           value={budgetValue ?? '-'}
-          valueClassName={compact ? 'text-2xl' : 'text-lg'}
+          valueClassName={compact ? 'text-xl' : 'text-base'}
           valueStyle={getValueHeatStyle(budgetValue, -2000, 6000)}
           tooltip={BV_TOOLTIP}
         />
