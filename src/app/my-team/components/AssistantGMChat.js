@@ -23,6 +23,7 @@ export default function AssistantGMChat({
   strategyNotes,
   myContracts,
   playerContracts,
+  teamFines = {},
   session,
   tradedPicks = [],
   rosters = [],
@@ -101,6 +102,67 @@ export default function AssistantGMChat({
     });
     myTeamName = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
   }
+
+  const formatCapNumber = (value) => `$${Number(value || 0).toFixed(1)}`;
+
+  const teamCapSummary = useMemo(() => {
+    const caps = {};
+
+    playerContracts.forEach((contract) => {
+      const team = contract?.team?.trim();
+      if (!team) return;
+
+      if (!caps[team]) {
+        caps[team] = {
+          team,
+          curYear: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+          year2: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+          year3: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+          year4: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+        };
+      }
+
+      const capData = caps[team];
+      capData.curYear.active += Number(contract.curYear) || 0;
+      capData.curYear.dead += Number(contract.deadCurYear) || 0;
+      capData.year2.active += Number(contract.year2) || 0;
+      capData.year2.dead += Number(contract.deadYear2) || 0;
+      capData.year3.active += Number(contract.year3) || 0;
+      capData.year3.dead += Number(contract.deadYear3) || 0;
+      capData.year4.active += Number(contract.year4) || 0;
+      capData.year4.dead += Number(contract.deadYear4) || 0;
+    });
+
+    Object.entries(caps).forEach(([team, capData]) => {
+      const fines = teamFines?.[team] || { curYear: 0, year2: 0, year3: 0, year4: 0 };
+      capData.curYear.fines = Number(fines.curYear) || 0;
+      capData.year2.fines = Number(fines.year2) || 0;
+      capData.year3.fines = Number(fines.year3) || 0;
+      capData.year4.fines = Number(fines.year4) || 0;
+
+      ['curYear', 'year2', 'year3', 'year4'].forEach((yearKey) => {
+        capData[yearKey].remaining = capData[yearKey].total
+          - capData[yearKey].active
+          - capData[yearKey].dead
+          - capData[yearKey].fines;
+      });
+    });
+
+    return caps;
+  }, [playerContracts, teamFines]);
+
+  const allTeamsCapSpaceString = useMemo(() => {
+    const teams = Object.values(teamCapSummary).sort((a, b) => a.team.localeCompare(b.team));
+
+    return teams.map((capData) => {
+      const isUser = capData.team.trim().toLowerCase() === myTeamName.trim().toLowerCase();
+      return `- ${isUser ? 'USER TEAM: ' : ''}${capData.team}: ` +
+        `Y1 ${formatCapNumber(capData.curYear.remaining)} (active ${formatCapNumber(capData.curYear.active)}, dead ${formatCapNumber(capData.curYear.dead)}, fines ${formatCapNumber(capData.curYear.fines)}), ` +
+        `Y2 ${formatCapNumber(capData.year2.remaining)} (active ${formatCapNumber(capData.year2.active)}, dead ${formatCapNumber(capData.year2.dead)}, fines ${formatCapNumber(capData.year2.fines)}), ` +
+        `Y3 ${formatCapNumber(capData.year3.remaining)} (active ${formatCapNumber(capData.year3.active)}, dead ${formatCapNumber(capData.year3.dead)}, fines ${formatCapNumber(capData.year3.fines)}), ` +
+        `Y4 ${formatCapNumber(capData.year4.remaining)} (active ${formatCapNumber(capData.year4.active)}, dead ${formatCapNumber(capData.year4.dead)}, fines ${formatCapNumber(capData.year4.fines)})`;
+    }).join('\n');
+  }, [teamCapSummary, myTeamName]);
 
   // Find user's roster_id (for draft pick ownership)
   let myRosterId = null;
@@ -193,6 +255,8 @@ Always evaluate players based on both KTC value **and** contract details. Cheap 
 
 BV means Budget Value. It's like KTC, but it adjusts for contract cost. On this site, player BV is calculated as KTC minus the salary penalty, plus a position-based adjustment. Pick BV is calculated from KTC minus the rookie salary penalty. When you evaluate any player or pick, use both KTC and BV, and treat BV as the better summary of contract-adjusted value.
 
+For salary cap questions, use the cap-space figures provided below as the source of truth. Do not estimate cap room from salary totals alone. Remaining cap space = $300 cap minus active salary, dead cap, and team fines. A trade only works if the team stays at or above $0.0 remaining in the current year and future years.
+
 Long-term contracts are an asset if the player is an established starter, and not expected to decline due to age before the contract expires. Long-term contracts are a liability if the player's value is expected to decline significantly, due to age or losing their starting position.
 
 Short-term contracts are prefered when a player is expected to be a starter for the next 1-2 years, but not beyond that. They are a liability if the player is expected to lose their starting position or decline significantly in that time.
@@ -210,6 +274,9 @@ All later picks have negligible value.
 Here's what you need to know:
 - My Upcoming Draft Picks:
 ${myDraftPicksPrompt}
+
+- Canonical Team Cap Space (same source as the Salary Cap Space page):
+${allTeamsCapSpaceString}
 
 - All Team Rosters (including mine):
 ${allRostersString}
@@ -251,6 +318,7 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     assetPriority,
     strategyNotes,
     myDraftPicksPrompt,
+    allTeamsCapSpaceString,
     allRostersString
   ]);
 

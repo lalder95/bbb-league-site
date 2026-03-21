@@ -28,6 +28,7 @@ export default function AssistantGMPage() {
 
   // Contracts for chat context
   const [playerContracts, setPlayerContracts] = useState([]);
+  const [teamFines, setTeamFines] = useState({});
 
   const { data: draftOrderData } = useDraftOrder({
     leagueId,
@@ -45,8 +46,12 @@ export default function AssistantGMPage() {
   useEffect(() => {
     async function fetchPlayerData() {
       try {
-        const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
-        const text = await response.text();
+        const [contractsResponse, finesResponse] = await Promise.all([
+          fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv'),
+          fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv'),
+        ]);
+        const text = await contractsResponse.text();
+        const finesText = await finesResponse.text();
         const rows = text.split('\n').filter(Boolean);
         if (rows.length < 2) return setPlayerContracts([]);
         const header = rows[0].split(',').map(h => h.trim());
@@ -68,18 +73,14 @@ export default function AssistantGMPage() {
             contractType: values[headerMap["Contract Type"]],
             status: values[headerMap["Status"]],
             team: values[headerMap["TeamDisplayName"]],
-            curYear: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
-              ? parseFloat(values[headerMap["Relative Year 1 Salary"]]) || 0
-              : parseFloat(values[headerMap["Relative Year 1 Dead"]]) || 0,
-            year2: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
-              ? parseFloat(values[headerMap["Relative Year 2 Salary"]]) || 0
-              : parseFloat(values[headerMap["Relative Year 2 Dead"]]) || 0,
-            year3: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
-              ? parseFloat(values[headerMap["Relative Year 3 Salary"]]) || 0
-              : parseFloat(values[headerMap["Relative Year 3 Dead"]]) || 0,
-            year4: (values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future')
-              ? parseFloat(values[headerMap["Relative Year 4 Salary"]]) || 0
-              : parseFloat(values[headerMap["Relative Year 4 Dead"]]) || 0,
+            curYear: parseFloat(values[headerMap["Relative Year 1 Salary"]]) || 0,
+            year2: parseFloat(values[headerMap["Relative Year 2 Salary"]]) || 0,
+            year3: parseFloat(values[headerMap["Relative Year 3 Salary"]]) || 0,
+            year4: parseFloat(values[headerMap["Relative Year 4 Salary"]]) || 0,
+            deadCurYear: parseFloat(values[headerMap["Relative Year 1 Dead"]]) || 0,
+            deadYear2: parseFloat(values[headerMap["Relative Year 2 Dead"]]) || 0,
+            deadYear3: parseFloat(values[headerMap["Relative Year 3 Dead"]]) || 0,
+            deadYear4: parseFloat(values[headerMap["Relative Year 4 Dead"]]) || 0,
             isDeadCap: !(values[headerMap["Status"]] === 'Active' || values[headerMap["Status"]] === 'Future'),
             contractFinalYear: values[headerMap["Contract Final Year"]],
             age: values[headerMap["Age"]],
@@ -88,8 +89,23 @@ export default function AssistantGMPage() {
             franchiseTagEligible: values[headerMap["Franchise Tag Eligible?"]],
           });
         });
+
+        const fines = finesText.split('\n').slice(1)
+          .filter(row => row.trim())
+          .reduce((acc, row) => {
+            const [team, year1, year2, year3, year4] = row.split(',');
+            acc[team] = {
+              curYear: parseFloat(year1) || 0,
+              year2: parseFloat(year2) || 0,
+              year3: parseFloat(year3) || 0,
+              year4: parseFloat(year4) || 0,
+            };
+            return acc;
+          }, {});
+
         console.log('[AssistantGM Debug] Loaded contracts:', contracts.slice(0, 5), `Total: ${contracts.length}`);
         setPlayerContracts(contracts);
+        setTeamFines(fines);
       } catch (err) {
         console.error('[AssistantGM Debug] Error fetching or parsing contracts:', err);
       }
@@ -437,6 +453,7 @@ export default function AssistantGMPage() {
                 strategyNotes={strategyNotes}
                 myContracts={getMyContractsForAssistantGM()}
                 playerContracts={playerContracts}
+                teamFines={teamFines}
                 session={session}
                 tradedPicks={[]} // you can wire traded picks if desired
                 rosters={leagueRosters[leagueId] || []}

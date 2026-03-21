@@ -1284,6 +1284,7 @@ export default function Trade() {
   });
 
   const addAssetCapHit = (cap, asset) => {
+    if (isDraftPickAsset(asset)) return;
     cap.curYear.active += Number(asset?.curYear) || 0;
     cap.year2.active += Number(asset?.year2) || 0;
     cap.year3.active += Number(asset?.year3) || 0;
