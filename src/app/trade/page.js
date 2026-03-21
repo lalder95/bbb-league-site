@@ -37,6 +37,8 @@ const getEligibilityText = (value) => String(value).toLowerCase() === 'true' ? '
 
 const getRestrictedStatusText = (value) => String(value).toLowerCase() === 'true' ? '(Restricted)' : '(Unrestricted)';
 
+const isTruthyFlag = (value) => String(value).toLowerCase() === 'true';
+
 const formatContractYearValue = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num) || num === 0) return '-';
@@ -50,6 +52,44 @@ const getValueHeatStyle = (value, min, max) => {
   const ratio = (clamped - min) / (max - min || 1);
   const hue = Math.round(ratio * 120);
   return { color: `hsl(${hue} 85% 62%)` };
+};
+
+const buildPlayerAssetsFromContracts = (parsedContracts) => {
+  const groupedContracts = parsedContracts.reduce((acc, contract) => {
+    if (!(contract.isActive || contract.status === 'Future')) return acc;
+
+    const key = `${contract.id}-${contract.team}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(contract);
+    return acc;
+  }, {});
+
+  return Object.values(groupedContracts)
+    .map((contractGroup) => {
+      const primaryContract = contractGroup.find((contract) => contract.isActive) || contractGroup[0];
+      const uniqueContractTypes = [...new Set(contractGroup.map((contract) => contract.contractType).filter(Boolean))];
+      const maxFinalYear = contractGroup.reduce((maxYear, contract) => {
+        const contractYear = Number(contract.contractFinalYear);
+        if (!Number.isFinite(contractYear)) return maxYear;
+        return Math.max(maxYear, contractYear);
+      }, Number.NEGATIVE_INFINITY);
+
+      return {
+        ...primaryContract,
+        uniqueKey: `player-${primaryContract.id}-${primaryContract.team}`,
+        contractRowKeys: contractGroup.map((contract) => contract.uniqueKey),
+        contractType: uniqueContractTypes.length <= 1 ? (uniqueContractTypes[0] || primaryContract.contractType) : 'Multiple',
+        curYear: contractGroup.reduce((sum, contract) => sum + (Number(contract.curYear) || 0), 0),
+        year2: contractGroup.reduce((sum, contract) => sum + (Number(contract.year2) || 0), 0),
+        year3: contractGroup.reduce((sum, contract) => sum + (Number(contract.year3) || 0), 0),
+        year4: contractGroup.reduce((sum, contract) => sum + (Number(contract.year4) || 0), 0),
+        contractFinalYear: Number.isFinite(maxFinalYear) ? String(maxFinalYear) : (primaryContract.contractFinalYear || '-'),
+        rfaEligible: contractGroup.some((contract) => isTruthyFlag(contract.rfaEligible)),
+        franchiseTagEligible: contractGroup.some((contract) => isTruthyFlag(contract.franchiseTagEligible)),
+      };
+    })
+    .filter((player) => player.isActive)
+    .sort((a, b) => a.playerName.localeCompare(b.playerName));
 };
 
 const formatCompactMetric = (value, type) => {
@@ -915,8 +955,8 @@ export default function Trade() {
         }, {});
       setFines(finesObj);
 
-      // Only show active players for selection
-      setPlayers(parsedContracts.filter(player => player.isActive));
+      // Only show active players for selection, but aggregate active + future contracts per player
+      setPlayers(buildPlayerAssetsFromContracts(parsedContracts));
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -1291,12 +1331,19 @@ export default function Trade() {
     cap.year4.active += Number(asset?.year4) || 0;
   };
 
-  const calculateTeamCapSpace = (teamName, excludeIds = []) => {
+  const calculateTeamCapSpace = (teamName, excludeAssets = []) => {
+    const excludedContractKeys = new Set(
+      (excludeAssets || []).flatMap((asset) => (
+        Array.isArray(asset?.contractRowKeys) && asset.contractRowKeys.length
+          ? asset.contractRowKeys
+          : [getAssetKey(asset)]
+      ))
+    );
     const teamContracts = contracts.filter(
-      c => c.team === teamName && !excludeIds.includes(getAssetKey(c))
+      c => c.team === teamName && !excludedContractKeys.has(getAssetKey(c))
     );
     const teamDraftPicks = (draftPickAssetsByTeam[teamName] || []).filter(
-      (pick) => !excludeIds.includes(getAssetKey(pick))
+      (pick) => !excludedContractKeys.has(getAssetKey(pick))
     );
     const cap = createEmptyCap();
     teamContracts.forEach(c => {
@@ -1323,9 +1370,8 @@ export default function Trade() {
 
   // Calculate trade impact using new cap logic
   const calculateTradeImpact = (teamName, incomingPlayers, outgoingPlayers) => {
-    const excludeIds = outgoingPlayers.map((p) => getAssetKey(p));
     const before = calculateTeamCapSpace(teamName);
-    const afterCap = calculateTeamCapSpace(teamName, excludeIds);
+    const afterCap = calculateTeamCapSpace(teamName, outgoingPlayers);
     incomingPlayers.forEach((asset) => addAssetCapHit(afterCap, asset));
     const teamFines = fines[teamName] || { curYear: 0, year2: 0, year3: 0, year4: 0 };
     afterCap.curYear.fines = teamFines.curYear;
