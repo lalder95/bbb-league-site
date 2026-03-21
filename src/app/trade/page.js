@@ -39,6 +39,24 @@ const getRestrictedStatusText = (value) => String(value).toLowerCase() === 'true
 
 const isTruthyFlag = (value) => String(value).toLowerCase() === 'true';
 
+const getSortableContractCost = (asset) => {
+  if (isDraftPickAsset(asset)) return Number(asset?.pickSalary ?? asset?.year2 ?? asset?.curYear) || 0;
+  return Number(asset?.curYear) || 0;
+};
+
+const getAssetAgeForAverage = (asset, currentSeason) => {
+  if (!isDraftPickAsset(asset)) return parseFloat(asset?.age) || 0;
+
+  const assetSeason = Number(asset?.season);
+  const baseSeason = Number(currentSeason);
+
+  if (Number.isFinite(assetSeason) && Number.isFinite(baseSeason)) {
+    return 22 - (assetSeason - baseSeason);
+  }
+
+  return 22;
+};
+
 const formatContractYearValue = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num) || num === 0) return '-';
@@ -107,7 +125,7 @@ const formatCompactMetric = (value, type) => {
   }
 };
 
-const getIncomingMetricConfig = ({ metricKey, ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) => {
+const getIncomingMetricConfig = ({ metricKey, ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, currentSeason }) => {
   const configs = {
     ktc: {
       key: 'ktc',
@@ -133,7 +151,7 @@ const getIncomingMetricConfig = ({ metricKey, ktcPerDollar, usePositionRatios, p
       type: 'age',
       getValue: (players) => {
         if (!players.length) return 0;
-        const totalAge = players.reduce((sum, player) => sum + (parseFloat(player.age) || 0), 0);
+        const totalAge = players.reduce((sum, player) => sum + getAssetAgeForAverage(player, currentSeason), 0);
         return totalAge / players.length;
       },
     },
@@ -397,6 +415,7 @@ function TeamSection({
                   className="w-full rounded bg-[#0a1929] p-2 text-white border border-white/10"
                 >
                   <option value="name-asc">Sort: Name (A-Z)</option>
+                  <option value="cost-desc">Sort: Cost (High-Low)</option>
                   <option value="ktc-desc">Sort: KTC (High-Low)</option>
                   <option value="bv-desc">Sort: BV (High-Low)</option>
                 </select>
@@ -811,6 +830,7 @@ export default function Trade() {
   const [showRatioDebug, setShowRatioDebug] = useState(false);
   const [incomingMetricIndex, setIncomingMetricIndex] = useState(0);
   const [incomingMetricAutoplay, setIncomingMetricAutoplay] = useState(true);
+  const [currentSeason, setCurrentSeason] = useState(new Date().getFullYear());
 
   // Auto-detect league ID (copied from home page)
   useEffect(() => {
@@ -819,6 +839,7 @@ export default function Trade() {
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
         const seasonState = await seasonResponse.json();
         const currentSeason = seasonState.season;
+        setCurrentSeason(Number(currentSeason) || new Date().getFullYear());
 
         const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
         const userLeagues = await userLeaguesResponse.json();
@@ -1301,6 +1322,8 @@ export default function Trade() {
       )
       .sort((a, b) => {
         switch (participant.sortOption) {
+          case 'cost-desc':
+            return getSortableContractCost(b) - getSortableContractCost(a);
           case 'ktc-desc':
             return (parseFloat(b.ktcValue) || 0) - (parseFloat(a.ktcValue) || 0);
           case 'bv-desc': {
@@ -1506,6 +1529,7 @@ export default function Trade() {
     usePositionRatios,
     positionRatios,
     avgKtcByPosition,
+    currentSeason,
   });
   const incomingBarEntries = uniqueActiveTeams.map((team, index) => {
     const incomingPlayers = teamToIncoming[team] || [];
