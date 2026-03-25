@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import Papa from 'papaparse';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import Image from 'next/image'; // Add this import
 
@@ -99,6 +100,14 @@ function isUserInDraft(session, draft) {
   return draft.users.some(u => u.username === session.user.name);
 }
 
+function userHasActiveContractWithPlayer(session, activeContractsByTeam, playerId) {
+  const username = String(session?.user?.name || '').trim();
+  const normalizedPlayerId = String(playerId || '').trim();
+  if (!username || !normalizedPlayerId) return false;
+  const rosteredPlayers = activeContractsByTeam[username];
+  return Boolean(rosteredPlayers && rosteredPlayers.has(normalizedPlayerId));
+}
+
 function calculateContractScore(salary, years) {
   salary = Number(salary);
   years = Number(years);
@@ -116,6 +125,17 @@ function calculateContractScore(salary, years) {
   return Math.round(total * 10) / 10;
 }
 
+function normalizeDraftPlayer(player, fallbackStartDelay = 0) {
+  return {
+    playerId: Number(player.playerId),
+    playerName: player.playerName ?? '',
+    position: player.position ?? '',
+    ktc: player.ktc ?? '',
+    status: player.status ?? 'UPCOMING',
+    startDelay: Number(player.startDelay ?? fallbackStartDelay ?? 0)
+  };
+}
+
 export default function FreeAgentAuctionPage() {
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -130,6 +150,8 @@ export default function FreeAgentAuctionPage() {
   const [resetConfirmId, setResetConfirmId] = useState(null);
   const [playerCountdowns, setPlayerCountdowns] = useState({});
   const [capTeams, setCapTeams] = useState([]);
+  const [activeContractsByTeam, setActiveContractsByTeam] = useState({});
+  const [activeContractPlayerIds, setActiveContractPlayerIds] = useState(new Set());
   const [teamAvatars, setTeamAvatars] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: 'countdown', direction: 'asc' });
   const [filterPosition, setFilterPosition] = useState('ALL');
@@ -141,9 +163,18 @@ export default function FreeAgentAuctionPage() {
   const [showBidLogModal, setShowBidLogModal] = useState(false);
   const [showResetButtons, setShowResetButtons] = useState(false);
   const [retractConfirmPlayerId, setRetractConfirmPlayerId] = useState(null);
+  const [showAdminToolsModal, setShowAdminToolsModal] = useState(false);
+  const [adminToolPlayers, setAdminToolPlayers] = useState([]);
+  const [adminToolLoading, setAdminToolLoading] = useState(false);
+  const [adminToolSaving, setAdminToolSaving] = useState(false);
+  const [adminToolError, setAdminToolError] = useState('');
+  const [adminToolSearch, setAdminToolSearch] = useState('');
+  const [adminToolPosition, setAdminToolPosition] = useState('ALL');
+  const [adminToolStartDelays, setAdminToolStartDelays] = useState({});
   const initialLoadDone = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
+  const isAdmin = session?.user?.role === 'admin';
 
   useEffect(() => {
     function handleResize() {
@@ -257,6 +288,11 @@ export default function FreeAgentAuctionPage() {
   const handleBid = async () => {
     if (!isUserInDraft(session, draft)) {
       setError('You are not eligible to bid in this auction.');
+      return;
+    }
+
+    if (userHasActiveContractWithPlayer(session, activeContractsByTeam, selectedPlayer?.playerId)) {
+      setError('You cannot bid on a player who already has an active contract with your team.');
       return;
     }
 
@@ -416,6 +452,9 @@ export default function FreeAgentAuctionPage() {
         draft?.results?.find(r => r.playerId === selectedPlayer.playerId)?.years ?? 0
       )
     : 0;
+  const selectedPlayerAlreadyRostered = selectedPlayer
+    ? userHasActiveContractWithPlayer(session, activeContractsByTeam, selectedPlayer.playerId)
+    : false;
 
   useEffect(() => {
     async function fetchCapData() {
@@ -431,10 +470,12 @@ export default function FreeAgentAuctionPage() {
           .filter(row => row.trim())
           .map(row => {
             const values = row.split(',');
+            const playerId = String(values[0] || '').trim();
             const status = values[14];
             const isActive = status === 'Active';
 
             return {
+              playerId,
               team: values[33],
               isActive: isActive,
               curYear: isActive ? parseFloat(values[15]) || 0 : parseFloat(values[24]) || 0,
@@ -459,6 +500,8 @@ export default function FreeAgentAuctionPage() {
           }, {});
 
         const teamCaps = {};
+  const activePlayerIds = new Set();
+        const rosterMap = {};
 
         contracts.forEach(contract => {
           if (!teamCaps[contract.team]) {
@@ -469,6 +512,13 @@ export default function FreeAgentAuctionPage() {
               year3: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
               year4: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 }
             };
+          }
+          if (contract.isActive && contract.team && contract.playerId) {
+            if (!rosterMap[contract.team]) {
+              rosterMap[contract.team] = new Set();
+            }
+            rosterMap[contract.team].add(contract.playerId);
+            activePlayerIds.add(contract.playerId);
           }
           const capData = teamCaps[contract.team];
           if (contract.isActive) {
@@ -507,6 +557,8 @@ export default function FreeAgentAuctionPage() {
               .reduce((sum, r) => sum + (Number(r.contractPoints) || 0), 0);
           });
         }
+        setActiveContractPlayerIds(activePlayerIds);
+        setActiveContractsByTeam(rosterMap);
         setCapTeams(Object.values(teamCaps));
       } catch (error) {
         // Optionally handle error
@@ -555,6 +607,144 @@ export default function FreeAgentAuctionPage() {
     }
     fetchAvatars();
   }, []);
+
+  useEffect(() => {
+    if (!showAdminToolsModal || !isAdmin) return;
+
+    let cancelled = false;
+    async function loadAdminToolPlayers() {
+      setAdminToolLoading(true);
+      setAdminToolError('');
+      try {
+        const [playersRes, ktcRes] = await Promise.all([
+          fetch('/api/players/all'),
+          fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/Players.csv')
+        ]);
+
+        if (!playersRes.ok || !ktcRes.ok) {
+          throw new Error('Failed to load available players.');
+        }
+
+        const [playersData, ktcCsv] = await Promise.all([playersRes.json(), ktcRes.text()]);
+        const parsedKtc = Papa.parse(ktcCsv, { header: true });
+        const ktcMap = {};
+        parsedKtc.data.forEach(row => {
+          if (row?.PlayerID && row['KTC Value']) {
+            ktcMap[row.PlayerID] = row['KTC Value'];
+          }
+        });
+
+        const allowedPositions = ['QB', 'WR', 'RB', 'TE'];
+        const seen = new Set();
+        const mergedPlayers = (Array.isArray(playersData) ? playersData : [])
+          .filter(player => allowedPositions.includes(player.position))
+          .map(player => ({
+            playerId: Number(player.playerId),
+            playerName: player.playerName,
+            position: player.position,
+            ktc: ktcMap[player.playerId] || ''
+          }))
+          .filter(player => Number(player.ktc) > 0)
+          .filter(player => !activeContractPlayerIds.has(String(player.playerId)))
+          .filter(player => {
+            if (seen.has(String(player.playerId))) return false;
+            seen.add(String(player.playerId));
+            return true;
+          })
+          .sort((a, b) => a.playerName.localeCompare(b.playerName));
+
+        if (!cancelled) {
+          setAdminToolPlayers(mergedPlayers);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setAdminToolError(err.message || 'Failed to load available players.');
+        }
+      } finally {
+        if (!cancelled) {
+          setAdminToolLoading(false);
+        }
+      }
+    }
+
+    loadAdminToolPlayers();
+    return () => {
+      cancelled = true;
+    };
+  }, [showAdminToolsModal, isAdmin, activeContractPlayerIds]);
+
+  const draftPlayerIdSet = React.useMemo(
+    () => new Set((draft?.players || []).map(player => String(player.playerId))),
+    [draft?.players]
+  );
+
+  const filteredAdminToolPlayers = React.useMemo(() => {
+    const normalizedSearch = adminToolSearch.trim().toLowerCase();
+    return adminToolPlayers.filter(player => {
+      const matchesSearch = !normalizedSearch || player.playerName.toLowerCase().includes(normalizedSearch);
+      const matchesPosition = adminToolPosition === 'ALL' || player.position === adminToolPosition;
+      return matchesSearch && matchesPosition && !draftPlayerIdSet.has(String(player.playerId));
+    });
+  }, [adminToolPlayers, adminToolSearch, adminToolPosition, draftPlayerIdSet]);
+
+  const updateDraftPlayers = async (nextPlayers, nextResults = draft?.results || [], nextBidLog = draft?.bidLog || []) => {
+    if (!draft?._id) return;
+    setAdminToolSaving(true);
+    setAdminToolError('');
+
+    try {
+      const patchRes = await fetch(`/api/admin/drafts/${draft._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          players: nextPlayers.map(player => normalizeDraftPlayer(player)),
+          results: nextResults,
+          bidLog: nextBidLog
+        })
+      });
+
+      if (!patchRes.ok) {
+        throw new Error(await patchRes.text());
+      }
+
+      const updatedDraft = await patchRes.json();
+      setDraft(updatedDraft);
+      setSuccess('Player pool updated.');
+    } catch (err) {
+      setAdminToolError(err.message || 'Failed to update the player pool.');
+    } finally {
+      setAdminToolSaving(false);
+    }
+  };
+
+  const handleAdminAddPlayer = async (player) => {
+    if (!draft) return;
+    if (draftPlayerIdSet.has(String(player.playerId))) return;
+
+    const startDelay = Number(adminToolStartDelays[player.playerId] ?? 0);
+    const nextPlayers = [
+      ...(draft.players || []).map(existing => normalizeDraftPlayer(existing)),
+      normalizeDraftPlayer({ ...player, startDelay, status: 'UPCOMING' }, startDelay)
+    ];
+    await updateDraftPlayers(nextPlayers);
+  };
+
+  const handleAdminRemovePlayer = async (player) => {
+    if (!draft) return;
+
+    const hasExistingBids = (draft.results || []).some(result => String(result.playerId) === String(player.playerId))
+      || (draft.bidLog || []).some(bid => String(bid.playerId) === String(player.playerId));
+
+    if (hasExistingBids) {
+      const confirmed = window.confirm(`Remove ${player.playerName} and clear all associated bids/results?`);
+      if (!confirmed) return;
+    }
+
+    const nextPlayers = (draft.players || []).filter(existing => String(existing.playerId) !== String(player.playerId));
+    const nextResults = (draft.results || []).filter(result => String(result.playerId) !== String(player.playerId));
+    const nextBidLog = (draft.bidLog || []).filter(bid => String(bid.playerId) !== String(player.playerId));
+    await updateDraftPlayers(nextPlayers, nextResults, nextBidLog);
+  };
 
   const filteredPlayers = React.useMemo(() => {
     if (!draft?.players) return [];
@@ -674,11 +864,13 @@ export default function FreeAgentAuctionPage() {
       draftTimeZone
     );
     const now = getCurrentTime();
+    const alreadyRosteredByUser = userHasActiveContractWithPlayer(session, activeContractsByTeam, p.playerId);
     const canBid =
       now > playerStartTime &&
       now < playerEndTime &&
       (countdown === 'Auction Started!' || countdown === '') &&
-      isUserInDraft(session, draft);
+      isUserInDraft(session, draft) &&
+      !alreadyRosteredByUser;
 
     const isUserHighBidder =
       result && session?.user?.name &&
@@ -894,11 +1086,13 @@ export default function FreeAgentAuctionPage() {
         draftTimeZone
       );
       const now = getCurrentTime();
+      const alreadyRosteredByUser = userHasActiveContractWithPlayer(session, activeContractsByTeam, player.playerId);
       const canBid =
         now > playerStartTime &&
         now < playerEndTime &&
         (countdown === 'Auction Started!' || countdown === '') &&
-        isUserInDraft(session, draft);
+        isUserInDraft(session, draft) &&
+        !alreadyRosteredByUser;
 
       const isUserHighBidder =
         result && session?.user?.name &&
@@ -1335,6 +1529,14 @@ export default function FreeAgentAuctionPage() {
                 {showResetButtons ? 'Hide Reset Buttons' : 'Show Reset Buttons'}
               </button>
             )}
+            {isAdmin && (
+              <button
+                className="px-4 py-2 bg-purple-700 rounded text-white hover:bg-purple-800 transition-colors mr-2"
+                onClick={() => setShowAdminToolsModal(true)}
+              >
+                Admin Tools
+              </button>
+            )}
             <button
               className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors mr-2"
               onClick={() => setShowCapModal(true)}
@@ -1564,6 +1766,11 @@ export default function FreeAgentAuctionPage() {
                 <h3 className="text-lg font-bold mb-2 text-[#FF4B1F]">
                   Bid on {selectedPlayer.playerName}
                 </h3>
+                {selectedPlayerAlreadyRostered && (
+                  <div className="mb-3 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
+                    You already have this player on an active contract, so bidding is disabled.
+                  </div>
+                )}
                 <div className="mb-2">
                   <label className="block mb-1">Salary ($):</label>
                   <input
@@ -1574,6 +1781,7 @@ export default function FreeAgentAuctionPage() {
                     className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
                     placeholder="Enter salary"
                     value={bidSalary}
+                    disabled={selectedPlayerAlreadyRostered}
                     onChange={e => {
                       // Allow numbers with up to one decimal place
                       const val = e.target.value.replace(/[^0-9.]/g, '');
@@ -1591,6 +1799,7 @@ export default function FreeAgentAuctionPage() {
                     className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
                     placeholder="Enter years"
                     value={bidYears}
+                    disabled={selectedPlayerAlreadyRostered}
                     onChange={e => {
                       // Only allow 1, 2, 3, or 4
                       const val = e.target.value.replace(/[^0-9]/g, '');
@@ -1680,7 +1889,7 @@ export default function FreeAgentAuctionPage() {
                   <button
                     className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
                     onClick={handleBid}
-                    disabled={placingBid || !bidSalary || !bidYears}
+                    disabled={placingBid || !bidSalary || !bidYears || selectedPlayerAlreadyRostered}
                   >
                     {placingBid ? 'Placing Bid...' : 'Place Bid'}
                   </button>
@@ -1709,7 +1918,7 @@ export default function FreeAgentAuctionPage() {
                       <button
                         className="px-3 py-1 bg-yellow-600 rounded text-white hover:bg-yellow-700"
                         onClick={() => handleBid()}
-                        disabled={placingBid}
+                        disabled={placingBid || selectedPlayerAlreadyRostered}
                       >
                         Yes, Place Bid
                       </button>
@@ -1877,6 +2086,113 @@ export default function FreeAgentAuctionPage() {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {showAdminToolsModal && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-6xl w-full shadow-2xl relative max-h-[85vh] overflow-hidden flex flex-col">
+            <button
+              className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
+              onClick={() => setShowAdminToolsModal(false)}
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Admin Tools</h2>
+            <p className="text-sm text-white/70 mb-4">Add or remove players from the active auction player pool.</p>
+            {adminToolError && (
+              <div className="mb-4 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
+                {adminToolError}
+              </div>
+            )}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 overflow-hidden flex-1">
+              <div className="border border-white/10 rounded bg-white/5 p-4 overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-semibold">Current Player Pool</h3>
+                  <span className="text-sm text-white/60">{draft?.players?.length ?? 0} players</span>
+                </div>
+                <div className="overflow-y-auto pr-2 space-y-2">
+                  {(draft?.players || [])
+                    .slice()
+                    .sort((a, b) => a.playerName.localeCompare(b.playerName))
+                    .map(player => (
+                      <div key={player.playerId} className="flex items-center justify-between gap-3 rounded border border-white/10 bg-black/20 p-3">
+                        <div>
+                          <div className="font-medium">{player.playerName}</div>
+                          <div className="text-xs text-white/60">{player.position} • KTC {player.ktc || '-'} • Start Delay {Number(player.startDelay || 0)}h</div>
+                        </div>
+                        <button
+                          className="px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 disabled:opacity-50"
+                          onClick={() => handleAdminRemovePlayer(player)}
+                          disabled={adminToolSaving}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              <div className="border border-white/10 rounded bg-white/5 p-4 overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-semibold">Add Players</h3>
+                  <span className="text-sm text-white/60">{filteredAdminToolPlayers.length} available</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                  <input
+                    type="text"
+                    value={adminToolSearch}
+                    onChange={(e) => setAdminToolSearch(e.target.value)}
+                    placeholder="Search player name"
+                    className="rounded border border-white/10 bg-black/30 px-3 py-2 text-white"
+                  />
+                  <select
+                    value={adminToolPosition}
+                    onChange={(e) => setAdminToolPosition(e.target.value)}
+                    className="rounded border border-white/10 bg-[#0A2233] px-3 py-2 text-white"
+                  >
+                    <option value="ALL">All Positions</option>
+                    {['QB', 'RB', 'WR', 'TE'].map(position => (
+                      <option key={position} value={position}>{position}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="overflow-y-auto pr-2 space-y-2">
+                  {adminToolLoading ? (
+                    <div className="text-white/70">Loading players...</div>
+                  ) : filteredAdminToolPlayers.length === 0 ? (
+                    <div className="text-white/50 italic">No players match the current filters.</div>
+                  ) : (
+                    filteredAdminToolPlayers.map(player => (
+                      <div key={player.playerId} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center rounded border border-white/10 bg-black/20 p-3">
+                        <div>
+                          <div className="font-medium">{player.playerName}</div>
+                          <div className="text-xs text-white/60">{player.position} • KTC {player.ktc || '-'} • ID {player.playerId}</div>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-white/60 mb-1">Start Delay</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={adminToolStartDelays[player.playerId] ?? 0}
+                            onChange={(e) => setAdminToolStartDelays(prev => ({ ...prev, [player.playerId]: e.target.value }))}
+                            className="w-24 rounded border border-white/10 bg-black/30 px-2 py-1 text-white"
+                          />
+                        </div>
+                        <button
+                          className="px-3 py-1 bg-green-700 rounded text-white hover:bg-green-800 disabled:opacity-50"
+                          onClick={() => handleAdminAddPlayer(player)}
+                          disabled={adminToolSaving}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

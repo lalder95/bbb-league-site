@@ -57,6 +57,17 @@ export async function PATCH(request, { params }) {
   if (typeof body.state === 'string') updateFields.state = body.state;
   if (typeof body.blind === 'boolean') updateFields.blind = body.blind;
 
+  if (Array.isArray(body.players)) {
+    updateFields.players = body.players.map(p => ({
+      playerId: Number(p.playerId),
+      playerName: p.playerName ?? '',
+      position: p.position ?? '',
+      ktc: p.ktc ?? '',
+      status: p.status ?? 'UPCOMING',
+      startDelay: Number(p.startDelay ?? 0)
+    }));
+  }
+
   // Sanitize results
   if (Array.isArray(body.results)) {
     updateFields.results = body.results.map(r => ({
