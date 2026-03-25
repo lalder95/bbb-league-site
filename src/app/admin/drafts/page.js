@@ -2,6 +2,21 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+function formatDraftDateTime(value, timeZone) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: timeZone || undefined,
+    timeZoneName: 'short'
+  }).format(date);
+}
+
 export default function DraftsListPage() {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -97,6 +112,8 @@ export default function DraftsListPage() {
                 <tr>
                   <th className="py-2 px-3 text-left">Draft ID</th>
                   <th className="py-2 px-3 text-left">Start Date</th>
+                  <th className="py-2 px-3 text-left">End Date</th>
+                  <th className="py-2 px-3 text-left">Time Zone</th>
                   <th className="py-2 px-3 text-left">State</th>
                   <th className="py-2 px-3 text-left">Teams</th>
                   <th className="py-2 px-3 text-left">Players</th>
@@ -108,14 +125,16 @@ export default function DraftsListPage() {
                   group.length > 0 && (
                     <React.Fragment key={state}>
                       <tr>
-                        <td colSpan={6} className="bg-black/40 font-bold text-lg py-2 px-3">
+                        <td colSpan={8} className="bg-black/40 font-bold text-lg py-2 px-3">
                           {state === 'ACTIVE' || state === 'FINAL' ? state : 'OTHER'}
                         </td>
                       </tr>
                       {group.map(draft => (
                         <tr key={draft.draftId} className="border-b border-white/10 hover:bg-black/20">
                           <td className="py-2 px-3">{draft.draftId}</td>
-                          <td className="py-2 px-3">{draft.startDate ? new Date(draft.startDate).toLocaleString() : '-'}</td>
+                          <td className="py-2 px-3">{formatDraftDateTime(draft.startDate, draft.timeZone)}</td>
+                          <td className="py-2 px-3">{formatDraftDateTime(draft.endDate, draft.timeZone)}</td>
+                          <td className="py-2 px-3">{draft.timeZone || '-'}</td>
                           <td className="py-2 px-3">{draft.state}</td>
                           <td className="py-2 px-3">{draft.users?.map(u => u.username).join(', ')}</td>
                           <td className="py-2 px-3">{draft.players?.length ?? 0}</td>

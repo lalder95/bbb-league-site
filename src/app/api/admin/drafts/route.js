@@ -13,6 +13,8 @@ const playerSchema = new mongoose.Schema({
 const draftSchema = new mongoose.Schema({
   draftId: Number,
   startDate: String,
+  endDate: String,
+  timeZone: String,
   state: String,
   nomDuration: Number,
   users: [{ username: String }],
@@ -93,6 +95,8 @@ export async function POST(request) {
 
     const draftData = { 
       ...body, 
+      endDate: body.endDate ? String(body.endDate) : '',
+      timeZone: body.timeZone ? String(body.timeZone) : '',
       nomDuration: Number(body.nomDuration), 
       players,
       results,

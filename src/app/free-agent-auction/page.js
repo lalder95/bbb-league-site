@@ -3,27 +3,37 @@ import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import Image from 'next/image'; // Add this import
 
 const USER_ID = '456973480269705216';
 
-// Always get "now" in Chicago time for comparisons
-function getChicagoNow() {
-  const now = new Date();
-  const chicagoString = formatInTimeZone(now, 'America/Chicago', 'yyyy-MM-dd HH:mm:ss');
-  const [datePart, timePart] = chicagoString.split(' ');
-  const [year, month, day] = datePart.split('-');
-  const [hour, minute, second] = timePart.split(':');
-  return new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second)
-  );
+function getDraftTimeZone(draft) {
+  return draft?.timeZone || 'America/Chicago';
+}
+
+function parseDraftDateTime(value, timeZone = 'America/Chicago') {
+  if (!value) return new Date(NaN);
+  if (value instanceof Date) return value;
+
+  const rawValue = String(value).trim();
+  if (!rawValue) return new Date(NaN);
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(rawValue)) {
+    return new Date(rawValue);
+  }
+
+  return fromZonedTime(rawValue, timeZone);
+}
+
+function getCurrentTime() {
+  return new Date();
+}
+
+function formatDraftDateTime(value, timeZone, pattern = 'MM/dd/yyyy h:mm a zzz') {
+  const parsedValue = parseDraftDateTime(value, timeZone);
+  if (Number.isNaN(parsedValue.getTime())) return 'Invalid time';
+  return formatInTimeZone(parsedValue, timeZone || 'America/Chicago', pattern);
 }
 
 function formatCapSpace(value) {
@@ -37,28 +47,26 @@ function getCapSpaceColor(value) {
   return 'text-red-500';
 }
 
-function getPlayerStartTime(draftStartDate, startDelay) {
-  const start = new Date(draftStartDate);
-  start.setHours(start.getHours() + Number(startDelay || 0));
-  return start;
+function getPlayerStartTime(draftStartDate, startDelay, draftTimeZone = 'America/Chicago') {
+  const start = parseDraftDateTime(draftStartDate, draftTimeZone);
+  if (Number.isNaN(start.getTime())) return start;
+  return new Date(start.getTime() + Number(startDelay || 0) * 60 * 60 * 1000);
 }
 
 // End date is at least 24 hours after the most recent bid for this player
-function getPlayerEndTime(draftStartDate, startDelay, nomDuration, contractPoints = 0, bidLog = [], playerId, draftBlind = false) {
-  const start = getPlayerStartTime(draftStartDate, startDelay);
+function getPlayerEndTime(draftStartDate, startDelay, nomDuration, contractPoints = 0, bidLog = [], playerId, draftBlind = false, draftTimeZone = 'America/Chicago') {
+  const start = getPlayerStartTime(draftStartDate, startDelay, draftTimeZone);
 
   // If draft is blind, do NOT reduce the timer and do NOT enforce 24-hour minimum after each bid
   let effectiveDuration;
   if (draftBlind) {
     effectiveDuration = Number(nomDuration || 0);
-    const calculatedEnd = new Date(start);
-    calculatedEnd.setMinutes(calculatedEnd.getMinutes() + effectiveDuration);
+    const calculatedEnd = new Date(start.getTime() + effectiveDuration * 60 * 1000);
     return calculatedEnd;
   } else {
     const reductionPercent = Math.min(Number(contractPoints) * 0.0138, 0.95);
     effectiveDuration = Number(nomDuration || 0) * (1 - reductionPercent);
-    const calculatedEnd = new Date(start);
-    calculatedEnd.setMinutes(calculatedEnd.getMinutes() + effectiveDuration);
+    const calculatedEnd = new Date(start.getTime() + effectiveDuration * 60 * 1000);
 
     // Find the most recent bid for this player
     const playerBids = (bidLog || []).filter(b => String(b.playerId) === String(playerId));
@@ -74,8 +82,7 @@ function getPlayerEndTime(draftStartDate, startDelay, nomDuration, contractPoint
     // 24 hours after the most recent bid
     let minEnd = null;
     if (latestBidTime) {
-      minEnd = new Date(latestBidTime);
-      minEnd.setHours(minEnd.getHours() + 24);
+      minEnd = new Date(latestBidTime.getTime() + 24 * 60 * 60 * 1000);
     }
 
     // The end time is the later of calculatedEnd and minEnd
@@ -150,13 +157,14 @@ export default function FreeAgentAuctionPage() {
   useEffect(() => {
     if (!draft || !draft.players) return;
     const interval = setInterval(() => {
-      const now = getChicagoNow();
+      const now = getCurrentTime();
+      const draftTimeZone = getDraftTimeZone(draft);
       const countdowns = {};
       draft.players.forEach(p => {
         const result = draft.results?.find(r => r.playerId === p.playerId);
         const contractPoints = result ? Number(result.contractPoints) : 0;
-        const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
-        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind);
+        const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
+        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone);
         let group = 'Ended';
         if (now < playerStartTime) group = 'Upcoming';
         else if (now >= playerStartTime && now < playerEndTime) group = 'Active';
@@ -233,8 +241,8 @@ export default function FreeAgentAuctionPage() {
   useEffect(() => {
     if (!draft?.startDate) return;
     const interval = setInterval(() => {
-      const now = getChicagoNow();
-      const start = new Date(draft.startDate);
+      const now = getCurrentTime();
+      const start = parseDraftDateTime(draft.startDate, getDraftTimeZone(draft));
       const diff = start - now;
       if (diff <= 0) {
         setCountdown('Auction Started!');
@@ -244,7 +252,7 @@ export default function FreeAgentAuctionPage() {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [draft?.startDate]);
+  }, [draft?.startDate, draft?.timeZone]);
 
   const handleBid = async () => {
     if (!isUserInDraft(session, draft)) {
@@ -572,25 +580,25 @@ export default function FreeAgentAuctionPage() {
         bValue = draft.results?.find(r => r.playerId === b.playerId)?.username ?? '';
       }
       if (sortConfig.key === 'startDate') {
-        aValue = getPlayerStartTime(draft.startDate, a.startDelay);
-        bValue = getPlayerStartTime(draft.startDate, b.startDelay);
+        aValue = getPlayerStartTime(draft.startDate, a.startDelay, getDraftTimeZone(draft));
+        bValue = getPlayerStartTime(draft.startDate, b.startDelay, getDraftTimeZone(draft));
       }
       if (sortConfig.key === 'endDate') {
         const aResult = draft.results?.find(r => r.playerId === a.playerId);
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind);
-        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind);
+        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft));
+        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft));
       }
       if (sortConfig.key === 'countdown') {
-        const now = getChicagoNow();
+        const now = getCurrentTime();
         const aResult = draft.results?.find(r => r.playerId === a.playerId);
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind);
-        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind);
+        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft));
+        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft));
         aValue = aEnd - now;
         bValue = bEnd - now;
       }
@@ -617,13 +625,14 @@ export default function FreeAgentAuctionPage() {
 
   const groupedPlayers = React.useMemo(() => {
     if (!sortedPlayers) return { Active: [], Upcoming: [], Ended: [] };
-    const now = getChicagoNow();
+    const now = getCurrentTime();
+    const draftTimeZone = getDraftTimeZone(draft);
     const groups = { Active: [], Upcoming: [], Ended: [] };
     sortedPlayers.forEach(p => {
       const result = draft.results?.find(r => r.playerId === p.playerId);
       const contractPoints = result ? Number(result.contractPoints) : 0;
-      const start = getPlayerStartTime(draft.startDate, p.startDelay);
-      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind);
+      const start = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
+      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone);
 
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         groups.Ended.push(p);
@@ -652,7 +661,8 @@ export default function FreeAgentAuctionPage() {
     const salary = result ? Number(result.salary) : 0;
     const contractScore = result ? Number(result.contractPoints) : 0;
     const years = result ? Number(result.years) : null;
-    const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay);
+    const draftTimeZone = getDraftTimeZone(draft);
+    const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
     const playerEndTime = getPlayerEndTime(
       draft.startDate,
       p.startDelay,
@@ -660,9 +670,10 @@ export default function FreeAgentAuctionPage() {
       contractScore,
       draft.bidLog,
       p.playerId,
-      draft.blind
+      draft.blind,
+      draftTimeZone
     );
-    const now = getChicagoNow();
+    const now = getCurrentTime();
     const canBid =
       now > playerStartTime &&
       now < playerEndTime &&
@@ -797,8 +808,8 @@ export default function FreeAgentAuctionPage() {
             className="cursor-help"
             title={
               (playerStartTime instanceof Date && !isNaN(playerStartTime) && playerEndTime instanceof Date && !isNaN(playerEndTime))
-                ? `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
-                  `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+                ? `Start: ${formatDraftDateTime(playerStartTime, draftTimeZone)}\n` +
+                  `End: ${formatDraftDateTime(playerEndTime, draftTimeZone)}`
                 : 'Invalid time'
             }
           >
@@ -870,7 +881,8 @@ export default function FreeAgentAuctionPage() {
     function PlayerCard({ player, group, draft, playerCountdowns, session, setSelectedPlayer, setResetConfirmId, resetConfirmId, fetchDraft, countdown }) {
       const result = draft.results?.find(r => r.playerId === player.playerId);
       const contractScore = result ? Number(result.contractPoints) : 0;
-      const playerStartTime = getPlayerStartTime(draft.startDate, player.startDelay);
+      const draftTimeZone = getDraftTimeZone(draft);
+      const playerStartTime = getPlayerStartTime(draft.startDate, player.startDelay, draftTimeZone);
       const playerEndTime = getPlayerEndTime(
         draft.startDate,
         player.startDelay,
@@ -878,9 +890,10 @@ export default function FreeAgentAuctionPage() {
         contractScore,
         draft.bidLog,
         player.playerId,
-        draft.blind
+        draft.blind,
+        draftTimeZone
       );
-      const now = getChicagoNow();
+      const now = getCurrentTime();
       const canBid =
         now > playerStartTime &&
         now < playerEndTime &&
@@ -1008,8 +1021,8 @@ export default function FreeAgentAuctionPage() {
               }}
               title={
                 (playerStartTime instanceof Date && !isNaN(playerStartTime) && playerEndTime instanceof Date && !isNaN(playerEndTime))
-                  ? `Start: ${formatInTimeZone(playerStartTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}\n` +
-                    `End: ${formatInTimeZone(playerEndTime, 'America/Chicago', 'MM/dd/yyyy h:mm a')}`
+                  ? `Start: ${formatDraftDateTime(playerStartTime, draftTimeZone)}\n` +
+                    `End: ${formatDraftDateTime(playerEndTime, draftTimeZone)}`
                   : 'Invalid time'
               }
             >
@@ -1299,6 +1312,16 @@ export default function FreeAgentAuctionPage() {
           {draft?.startDate && countdown !== 'Auction Started!' && (
             <div className="mt-2 text-xl font-bold text-[#FF4B1F]">
               Auction Starts In: <span className="font-mono">{countdown}</span>
+            </div>
+          )}
+          {draft?.startDate && (
+            <div className="mt-2 text-center text-sm text-white/70">
+              <div>
+                <span className="font-semibold">Schedule:</span>{' '}
+                {formatDraftDateTime(draft.startDate, getDraftTimeZone(draft))}
+                {draft?.endDate ? ` → ${formatDraftDateTime(draft.endDate, getDraftTimeZone(draft))}` : ''}
+              </div>
+              <div>{getDraftTimeZone(draft)}</div>
             </div>
           )}
           {/* Move Cap Space and Bid Log buttons here */}

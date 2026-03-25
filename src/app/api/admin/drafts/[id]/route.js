@@ -13,6 +13,8 @@ const playerSchema = new mongoose.Schema({
 const draftSchema = new mongoose.Schema({
   draftId: Number,
   startDate: String,
+  endDate: String,
+  timeZone: String,
   state: String,
   nomDuration: Number,
   users: [{ username: String }],
