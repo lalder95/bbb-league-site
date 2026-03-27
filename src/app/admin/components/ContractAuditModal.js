@@ -1,10 +1,24 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+
 export default function ContractAuditModal({ isOpen, onClose, onRefresh, loading, error, auditData }) {
   if (!isOpen) return null;
 
   const issues = Array.isArray(auditData?.issues) ? auditData.issues : [];
   const teamSummaries = Array.isArray(auditData?.issuesByTeam) ? auditData.issuesByTeam : [];
+  const [selectedTeam, setSelectedTeam] = useState('all');
+
+  useEffect(() => {
+    setSelectedTeam('all');
+  }, [auditData?.generatedAt, isOpen]);
+
+  const filteredIssues = useMemo(() => {
+    if (selectedTeam === 'all') return issues;
+    return issues.filter((issue) => issue.ownerTeam === selectedTeam);
+  }, [issues, selectedTeam]);
+
+  const visibleIssueCount = filteredIssues.length;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -40,7 +54,7 @@ export default function ContractAuditModal({ isOpen, onClose, onRefresh, loading
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="bg-black/20 border border-white/10 rounded-lg p-4">
               <div className="text-sm text-white/60">Issue Count</div>
-              <div className="text-2xl font-bold text-white mt-1">{auditData?.issueCount ?? 0}</div>
+              <div className="text-2xl font-bold text-white mt-1">{visibleIssueCount}</div>
             </div>
             <div className="bg-black/20 border border-white/10 rounded-lg p-4">
               <div className="text-sm text-white/60">Contract Year</div>
@@ -56,6 +70,25 @@ export default function ContractAuditModal({ isOpen, onClose, onRefresh, loading
                 {auditData?.generatedAt ? new Date(auditData.generatedAt).toLocaleString() : '—'}
               </div>
             </div>
+          </div>
+
+          <div className="bg-black/20 border border-white/10 rounded-lg p-4">
+            <label className="block text-sm text-white/70 mb-2" htmlFor="contract-audit-team-filter">
+              Filter by Team
+            </label>
+            <select
+              id="contract-audit-team-filter"
+              value={selectedTeam}
+              onChange={(event) => setSelectedTeam(event.target.value)}
+              className="w-full md:w-80 bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-white"
+            >
+              <option value="all">All Teams</option>
+              {teamSummaries.map((team) => (
+                <option key={team.teamName} value={team.teamName}>
+                  {team.teamName} ({team.count})
+                </option>
+              ))}
+            </select>
           </div>
 
           {loading && !auditData ? (
@@ -78,9 +111,11 @@ export default function ContractAuditModal({ isOpen, onClose, onRefresh, loading
                 </div>
               )}
 
-              {issues.length === 0 ? (
+              {filteredIssues.length === 0 ? (
                 <div className="bg-green-500/10 border border-green-400/30 rounded-lg p-6 text-green-200">
-                  No rostered players are missing an active contract for the current season.
+                  {selectedTeam === 'all'
+                    ? 'No rostered players are missing an active contract for the current season.'
+                    : `No rostered players are missing an active contract for ${selectedTeam}.`}
                 </div>
               ) : (
                 <div className="bg-black/20 border border-white/10 rounded-lg overflow-hidden">
@@ -95,7 +130,7 @@ export default function ContractAuditModal({ isOpen, onClose, onRefresh, loading
                         </tr>
                       </thead>
                       <tbody>
-                        {issues.map((issue) => (
+                        {filteredIssues.map((issue) => (
                           <tr key={`${issue.playerId}-${issue.ownerTeam}`} className="border-b border-white/5 align-top hover:bg-white/5">
                             <td className="px-4 py-3">
                               <div className="font-semibold text-white">{issue.playerName}</div>
