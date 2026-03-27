@@ -40,11 +40,6 @@ export default function ContractManagementPage() {
   const [currentSeason, setCurrentSeason] = useState(null);
   const [seasonYear, setSeasonYear] = useState(null);
   const [contractYearOverride, setContractYearOverride] = useState(null);
-  const [contractYearOverrideDraft, setContractYearOverrideDraft] = useState('');
-  const [contractYearSettingsLoading, setContractYearSettingsLoading] = useState(true);
-  const [contractYearSettingsSaving, setContractYearSettingsSaving] = useState(false);
-  const [contractYearSettingsMsg, setContractYearSettingsMsg] = useState('');
-  const [contractYearSettingsError, setContractYearSettingsError] = useState('');
   const [playerTotals, setPlayerTotals] = useState({}); // { playerId: totalPoints }
   const [playerWeeks, setPlayerWeeks] = useState({}); // { playerId: countedWeeks }
   const [playerNonPositiveWeeks, setPlayerNonPositiveWeeks] = useState({}); // { playerId: weeks with <= 0 pts }
@@ -82,37 +77,65 @@ export default function ContractManagementPage() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [selectedTeamName, setSelectedTeamName] = useState('');
 
-  const ignoreTagQuantityLimits = Boolean(isAdmin && isAdminMode);
+  function parseSeasonYear(value) {
+    const parsed = parseInt(String(value ?? '').trim(), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function getContractChangeSeason(change) {
+    if (!change?.timestamp) return null;
+    const parsed = new Date(change.timestamp);
+    const year = parsed.getFullYear();
+    return Number.isFinite(year) ? year : null;
+  }
+
+  function filterTrackedContractChanges(changes) {
+    if (!Array.isArray(changes)) return [];
+    return changes.filter(
+      c =>
+        (
+          c.change_type === 'extension' ||
+          c.change_type === 'franchise_tag' ||
+          c.change_type === 'rfa_tag' ||
+          c.change_type === 'holdout_extension' ||
+          c.change_type === 'holdout_rfa_tag'
+        ) &&
+        c.playerId &&
+        c.timestamp &&
+        getContractChangeSeason(c) !== null
+    );
+  }
+
+  function isTagEligibleStatus(status) {
+    const normalized = String(status || '').trim().toLowerCase();
+    return normalized === 'active' || normalized === 'expired';
+  }
 
   useEffect(() => {
-    let cancelled = false;
+    let isMounted = true;
 
-    async function fetchContractManagementSettings() {
-      setContractYearSettingsLoading(true);
-      setContractYearSettingsError('');
+    async function fetchContractSettings() {
       try {
-        const res = await fetch('/api/contract-management/settings', { cache: 'no-store' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to load contract management settings');
-        const overrideYear = Number.isFinite(parseInt(data?.settings?.contractYearOverride, 10))
-          ? parseInt(data.settings.contractYearOverride, 10)
-          : null;
-        if (cancelled) return;
-        setContractYearOverride(overrideYear);
-        setContractYearOverrideDraft(overrideYear !== null ? String(overrideYear) : '');
-      } catch (err) {
-        if (cancelled) return;
-        setContractYearOverride(null);
-        setContractYearOverrideDraft('');
-        setContractYearSettingsError(err.message || 'Failed to load contract management settings');
-      } finally {
-        if (!cancelled) setContractYearSettingsLoading(false);
+        const response = await fetch('/api/contract-management/settings', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Failed to fetch contract settings');
+
+        const data = await response.json();
+        const overrideYear = Number.parseInt(data?.settings?.contractYearOverride, 10);
+
+        if (isMounted) {
+          setContractYearOverride(Number.isFinite(overrideYear) ? overrideYear : null);
+        }
+      } catch {
+        if (isMounted) {
+          setContractYearOverride(null);
+        }
       }
     }
 
-    fetchContractManagementSettings();
+    fetchContractSettings();
+
     return () => {
-      cancelled = true;
+      isMounted = false;
     };
   }, []);
 
@@ -175,26 +198,7 @@ export default function ContractManagementPage() {
       try {
         const res = await fetch('/api/admin/contract_changes');
         const data = await res.json();
-        if (Array.isArray(data)) {
-          const oneYearAgo = new Date();
-          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-          const recent = data.filter(
-            c =>
-              (
-                c.change_type === 'extension' ||
-                c.change_type === 'franchise_tag' ||
-                c.change_type === 'rfa_tag' ||
-                c.change_type === 'holdout_extension' ||
-                c.change_type === 'holdout_rfa_tag'
-              ) &&
-              c.playerId &&
-              c.timestamp &&
-              new Date(c.timestamp) > oneYearAgo
-          );
-          setRecentContractChanges(recent);
-        } else {
-          setRecentContractChanges([]);
-        }
+        setRecentContractChanges(filterTrackedContractChanges(data));
       } catch {
         setRecentContractChanges([]);
       }
@@ -236,9 +240,11 @@ export default function ContractManagementPage() {
     return d >= start && d <= end;
   }
 
-  const detectedLeagueYear = Number.isFinite(parseInt(seasonYear, 10)) ? parseInt(seasonYear, 10) : null;
-  const sharedContractYearOverride = Number.isFinite(parseInt(contractYearOverride, 10)) ? parseInt(contractYearOverride, 10) : null;
-  const curYear = sharedContractYearOverride ?? detectedLeagueYear ?? new Date().getFullYear();
+  const curYear = Number.isFinite(parseInt(contractYearOverride, 10))
+    ? parseInt(contractYearOverride, 10)
+    : Number.isFinite(parseInt(seasonYear, 10))
+      ? parseInt(seasonYear, 10)
+      : new Date().getFullYear();
   const CAP = 300;
 
   // Window actives for header badges (respect Admin override where applicable)
@@ -322,31 +328,6 @@ export default function ContractManagementPage() {
     }
   }
 
-  async function saveContractYearOverride(nextOverride) {
-    setContractYearSettingsSaving(true);
-    setContractYearSettingsMsg('');
-    setContractYearSettingsError('');
-    try {
-      const res = await fetch('/api/admin/contract-management/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contractYearOverride: nextOverride }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save contract management settings');
-      const savedOverride = Number.isFinite(parseInt(data?.settings?.contractYearOverride, 10))
-        ? parseInt(data.settings.contractYearOverride, 10)
-        : null;
-      setContractYearOverride(savedOverride);
-      setContractYearOverrideDraft(savedOverride !== null ? String(savedOverride) : '');
-      setContractYearSettingsMsg(savedOverride !== null ? 'Shared contract year override saved.' : 'Shared contract year override cleared.');
-    } catch (err) {
-      setContractYearSettingsError(err.message || 'Failed to save contract management settings');
-    } finally {
-      setContractYearSettingsSaving(false);
-    }
-  }
-
   useEffect(() => {
     if (status !== 'authenticated') return;
     if (!teamNameForUI) return;
@@ -382,7 +363,11 @@ export default function ContractManagementPage() {
   );
 
   const showLogicChecks = Boolean(isAdmin && isAdminMode);
-  const recentPlayerChangeIds = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
+  const effectiveContractYear = parseSeasonYear(curYear) ?? new Date().getFullYear();
+  const selectedYearContractChanges = recentContractChanges.filter(
+    c => getContractChangeSeason(c) === effectiveContractYear
+  );
+  const recentPlayerChangeIds = new Set(selectedYearContractChanges.map(c => String(c.playerId).trim()));
 
   function buildExtensionLogicChecks(p) {
     const statusOk = String(p.status) === 'Active';
@@ -402,18 +387,18 @@ export default function ContractManagementPage() {
   }
 
   function buildFranchiseLogicChecks(p) {
-    const statusOk = String(p.status) === 'Active';
+    const statusOk = isTagEligibleStatus(p.status);
     const type = String(p.contractType).toLowerCase();
     const allowedTypes = ['base', 'extension', 'waiver', 'fa', 'free agent', 'freeagent'];
     const typeOk = allowedTypes.includes(type);
-    const finalYearOk = String(p.contractFinalYear) === String(curYear);
+    const finalYearOk = parseSeasonYear(p.contractFinalYear) === effectiveContractYear;
     const ftEligible = String(p.franchiseTagEligible).toLowerCase();
     const ftOk = ftEligible === 'true' || ftEligible === 'yes';
     const rfaOk = String(p.rfaEligible).toLowerCase() !== 'true';
     const noFutureOk = !playerIdsWithFuture.has(p.playerId);
     const notRecentlyChangedOk = !recentPlayerChangeIds.has(String(p.playerId).trim());
     return [
-      { label: 'Active', ok: statusOk, detail: String(p.status || '') },
+      { label: 'Status eligible', ok: statusOk, detail: String(p.status || '') },
       { label: 'Allowed type', ok: typeOk, detail: String(p.contractType || '') },
       { label: 'Final year = current', ok: finalYearOk, detail: String(p.contractFinalYear || '') },
       { label: 'Franchise eligible', ok: ftOk, detail: String(p.franchiseTagEligible || '') },
@@ -424,16 +409,20 @@ export default function ContractManagementPage() {
   }
 
   function buildRfaLogicChecks(p) {
-    const statusOk = String(p.status) === 'Active';
+    const statusOk = isTagEligibleStatus(p.status);
     const type = String(p.contractType).toLowerCase();
     const allowedTypes = ['waiver', 'fa', 'free agent', 'freeagent'];
     const typeOk = allowedTypes.includes(type);
+    const finalYearOk = parseSeasonYear(p.contractFinalYear) === effectiveContractYear;
     const rfaOk = String(p.rfaEligible).toLowerCase() !== 'true';
+    const noFutureOk = !playerIdsWithFuture.has(p.playerId);
     const notRecentlyChangedOk = !recentPlayerChangeIds.has(String(p.playerId).trim());
     return [
-      { label: 'Active', ok: statusOk, detail: String(p.status || '') },
+      { label: 'Status eligible', ok: statusOk, detail: String(p.status || '') },
       { label: 'Allowed type', ok: typeOk, detail: String(p.contractType || '') },
+      { label: 'Final year = current', ok: finalYearOk, detail: String(p.contractFinalYear || '') },
       { label: 'Not already RFA', ok: rfaOk, detail: String(p.rfaEligible || '') },
+      { label: 'No future deal', ok: noFutureOk, detail: noFutureOk ? 'No' : 'Yes' },
       { label: 'No recent change', ok: notRecentlyChangedOk, detail: notRecentlyChangedOk ? 'No' : 'Yes' },
     ];
   }
@@ -447,8 +436,8 @@ export default function ContractManagementPage() {
       !playerIdsWithFuture.has(p.playerId)
   );
 
-  if (recentContractChanges.length > 0) {
-    const recentlyExtendedIds = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
+  if (selectedYearContractChanges.length > 0) {
+    const recentlyExtendedIds = new Set(selectedYearContractChanges.map(c => String(c.playerId).trim()));
     eligiblePlayers = eligiblePlayers.filter(p => !recentlyExtendedIds.has(String(p.playerId).trim()));
   }
 
@@ -457,20 +446,20 @@ export default function ContractManagementPage() {
     String(a.playerName).localeCompare(String(b.playerName), undefined, { sensitivity: 'base' })
   );
 
-  // Franchise Tag eligibility (final year of active eligible contracts in the current league year)
+  // Franchise Tag eligibility (final year of active Base or Extension, franchise eligible true, RFA false, no Future deal)
   let franchiseEligiblePlayers = myContractsAll.filter(p => {
-    const isActive = p.status === 'Active';
+    const isEligibleStatus = isTagEligibleStatus(p.status);
     const type = String(p.contractType).toLowerCase();
     const allowedTypes = ['base', 'extension', 'waiver', 'fa', 'free agent', 'freeagent'];
     const isAllowedType = allowedTypes.includes(type);
-    const isFinalYr = String(p.contractFinalYear) === String(curYear);
+    const isFinalYr = parseSeasonYear(p.contractFinalYear) === effectiveContractYear;
     const isFT = String(p.franchiseTagEligible).toLowerCase() === 'true' || String(p.franchiseTagEligible).toLowerCase() === 'yes';
     const isRfa = String(p.rfaEligible).toLowerCase() === 'true';
     const noFuture = !playerIdsWithFuture.has(p.playerId);
-    return isActive && isAllowedType && isFinalYr && isFT && !isRfa && noFuture;
+    return isEligibleStatus && isAllowedType && isFinalYr && isFT && !isRfa && noFuture;
   });
-  if (recentContractChanges.length > 0) {
-    const recentlyTaggedOrExtended = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
+  if (selectedYearContractChanges.length > 0) {
+    const recentlyTaggedOrExtended = new Set(selectedYearContractChanges.map(c => String(c.playerId).trim()));
     franchiseEligiblePlayers = franchiseEligiblePlayers.filter(p => !recentlyTaggedOrExtended.has(String(p.playerId).trim()));
   }
 
@@ -479,41 +468,30 @@ export default function ContractManagementPage() {
     String(a.playerName).localeCompare(String(b.playerName), undefined, { sensitivity: 'base' })
   );
 
-  // Per-team per window Franchise/RFA Tag limit: 1
+  // Per-team per window Franchise Tag limit: 1
   // Practical application: treat all tags within the current calendar year as counting toward the current window,
   // so admin-applied tags outside the Feb–Mar window still enforce the single-tag limit for that year's window.
-  // NOTE: `curYear` is derived from Sleeper season state and can lag the calendar year during the offseason.
-  const windowYearForLimit = new Date().getFullYear();
-  const hasFranchiseTagThisYearForTeam = recentContractChanges.some(c => {
+  const windowYearForLimit = effectiveContractYear;
+  const hasFranchiseTagThisYearForTeam = selectedYearContractChanges.some(c => {
     if (c.change_type !== 'franchise_tag') return false;
     if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
     if (!c.timestamp) return false;
-    return new Date(c.timestamp).getFullYear() === windowYearForLimit;
+    return getContractChangeSeason(c) === windowYearForLimit;
   });
 
-  const franchiseTagLimitReached = Boolean(!ignoreTagQuantityLimits && hasFranchiseTagThisYearForTeam);
-
-  const appliedFranchiseTagChangeThisYear = recentContractChanges
-    .filter(c => {
-      if (c.change_type !== 'franchise_tag') return false;
-      if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
-      if (!c.timestamp) return false;
-      return new Date(c.timestamp).getFullYear() === windowYearForLimit;
-    })
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-  const appliedFranchiseTagPlayerName = appliedFranchiseTagChangeThisYear?.playerName || '';
-
-  // RFA Tag eligibility: Active Waiver/FA type contracts, not already RFA
+  // RFA Tag eligibility: expiring Waiver/FA type contracts, not already RFA
   const rfaAllowedTypes = ['waiver', 'fa', 'free agent', 'freeagent'];
   let rfaEligiblePlayers = myContractsAll.filter(p => {
-    const isActive = p.status === 'Active';
+    const isEligibleStatus = isTagEligibleStatus(p.status);
     const type = String(p.contractType).toLowerCase();
     const isAllowedType = rfaAllowedTypes.includes(type);
+    const isFinalYr = parseSeasonYear(p.contractFinalYear) === effectiveContractYear;
     const isRfa = String(p.rfaEligible).toLowerCase() === 'true';
-    return isActive && isAllowedType && !isRfa;
+    const noFuture = !playerIdsWithFuture.has(p.playerId);
+    return isEligibleStatus && isAllowedType && isFinalYr && !isRfa && noFuture;
   });
-  if (recentContractChanges.length > 0) {
-    const recentlyChanged = new Set(recentContractChanges.map(c => String(c.playerId).trim()));
+  if (selectedYearContractChanges.length > 0) {
+    const recentlyChanged = new Set(selectedYearContractChanges.map(c => String(c.playerId).trim()));
     rfaEligiblePlayers = rfaEligiblePlayers.filter(p => !recentlyChanged.has(String(p.playerId).trim()));
   }
   const rfaEligiblePlayersSorted = [...rfaEligiblePlayers].sort((a, b) =>
@@ -521,74 +499,50 @@ export default function ContractManagementPage() {
   );
 
   // Per-team per window limit: 1 RFA tag (same treatment as above — count any tag in the current calendar year)
-  const hasRfaTagThisYearForTeam = recentContractChanges.some(c => {
+  const hasRfaTagThisYearForTeam = selectedYearContractChanges.some(c => {
     if (c.change_type !== 'rfa_tag') return false;
     if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
     if (!c.timestamp) return false;
-    return new Date(c.timestamp).getFullYear() === windowYearForLimit;
+    return getContractChangeSeason(c) === windowYearForLimit;
   });
-
-  const rfaTagLimitReached = Boolean(!ignoreTagQuantityLimits && hasRfaTagThisYearForTeam);
-
-  const appliedRfaTagChangeThisYear = recentContractChanges
-    .filter(c => {
-      if (c.change_type !== 'rfa_tag') return false;
-      if (String(c.team).trim().toLowerCase() !== String(teamNameForUI).trim().toLowerCase()) return false;
-      if (!c.timestamp) return false;
-      return new Date(c.timestamp).getFullYear() === windowYearForLimit;
-    })
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-  const appliedRfaTagPlayerName = appliedRfaTagChangeThisYear?.playerName || '';
 
   // --- Holdouts Data Acquisition (league + scoring) ---
   useEffect(() => {
     async function initLeague() {
       try {
-        const USER_ID = '456973480269705216';
-        const isBbbLeague = league =>
-          league?.name && (
-            league.name.includes('Budget Blitz Bowl') ||
-            league.name.includes('budget blitz bowl') ||
-            league.name.includes('BBB') ||
-            (String(league.name).toLowerCase().includes('budget') && String(league.name).toLowerCase().includes('blitz'))
-          );
-        const getLeaguesForSeason = async season => {
-          const seasonStr = String(season);
-          const leaguesResp = await fetch(`/api/league_proxy?season=${seasonStr}`);
-          let leagues = [];
-          if (leaguesResp.ok) {
-            leagues = await leaguesResp.json();
-          }
-          if (!Array.isArray(leagues) || leagues.length === 0) {
-            const directResp = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${seasonStr}`);
-            if (directResp.ok) leagues = await directResp.json();
-          }
-          return Array.isArray(leagues) ? leagues : [];
-        };
-        const getMostRecentBbbLeague = leagues =>
-          [...leagues]
-            .filter(isBbbLeague)
-            .sort((a, b) => (parseInt(b.season) || 0) - (parseInt(a.season) || 0))[0];
-
         const stateResp = await fetch('https://api.sleeper.app/v1/state/nfl');
         const state = await stateResp.json();
         const apiSeasonYear = parseInt(state?.season);
-        const currentLeagueLookupSeason = Number.isFinite(apiSeasonYear)
-          ? String(apiSeasonYear)
-          : String(new Date().getFullYear());
-        const currentLeagues = await getLeaguesForSeason(currentLeagueLookupSeason);
-        const currentBbbLeague = getMostRecentBbbLeague(currentLeagues);
-        const currentLeagueYear = parseInt(currentBbbLeague?.season);
-        if (Number.isFinite(currentLeagueYear)) setSeasonYear(currentLeagueYear);
-        else if (Number.isFinite(apiSeasonYear)) setSeasonYear(apiSeasonYear);
-
+        if (Number.isFinite(apiSeasonYear)) setSeasonYear(apiSeasonYear);
         // Use previous season for holdout eligibility metrics
         const rawSeason = parseInt(state?.season);
         const prevSeason = Number.isFinite(rawSeason) ? String(rawSeason - 1) : String((new Date().getFullYear()) - 1);
         setCurrentSeason(prevSeason);
-        const previousLeagues = await getLeaguesForSeason(prevSeason);
-        const previousBbbLeague = getMostRecentBbbLeague(previousLeagues);
-        setLeagueId(previousBbbLeague?.league_id || null);
+        const leaguesResp = await fetch(`/api/league_proxy?season=${prevSeason}`);
+        // Fallback directly if proxy not available
+        let leagues = [];
+        if (leaguesResp.ok) {
+          leagues = await leaguesResp.json();
+        }
+        // If proxy not configured, attempt direct user league fetch (USER_ID known from Holdouts page)
+        if (!Array.isArray(leagues) || leagues.length === 0) {
+          const USER_ID = '456973480269705216';
+          const directResp = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prevSeason}`);
+          if (directResp.ok) leagues = await directResp.json();
+        }
+        let bbb = Array.isArray(leagues)
+          ? leagues.filter(
+              l =>
+                l?.name && (
+                  l.name.includes('Budget Blitz Bowl') ||
+                  l.name.includes('budget blitz bowl') ||
+                  l.name.includes('BBB') ||
+                  (String(l.name).toLowerCase().includes('budget') && String(l.name).toLowerCase().includes('blitz'))
+                )
+            )
+          : [];
+        const mostRecent = bbb.sort((a, b) => (parseInt(b.season) || 0) - (parseInt(a.season) || 0))[0];
+        setLeagueId(mostRecent?.league_id || null);
       } catch {
         setLeagueId(null);
       }
@@ -854,37 +808,6 @@ export default function ContractManagementPage() {
     <div className="w-full flex flex-col items-center px-3 sm:px-0">
       <h2 className="text-2xl font-bold mb-6 text-white text-center">Contract Management</h2>
 
-      {(finalizeMsg || finalizeError) && (
-        <div className="w-full max-w-3xl mb-4 space-y-2">
-          {finalizeMsg && (
-            <div className="flex items-start justify-between gap-3 bg-green-500/10 border border-green-500/20 text-green-200 rounded-xl px-4 py-3">
-              <div className="text-sm font-semibold">{finalizeMsg}</div>
-              <button
-                type="button"
-                className="text-green-200/70 hover:text-green-200 text-sm"
-                aria-label="Dismiss message"
-                onClick={() => setFinalizeMsg('')}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-          {finalizeError && (
-            <div className="flex items-start justify-between gap-3 bg-red-500/10 border border-red-500/20 text-red-200 rounded-xl px-4 py-3">
-              <div className="text-sm font-semibold">{finalizeError}</div>
-              <button
-                type="button"
-                className="text-red-200/70 hover:text-red-200 text-sm"
-                aria-label="Dismiss error"
-                onClick={() => setFinalizeError('')}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Admin Controls */}
       {isAdmin && (
         <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-4">
@@ -931,78 +854,6 @@ export default function ContractManagementPage() {
               <div className="mt-2 text-xs text-white/60">
                 When Admin Mode is enabled, you can select any team and finalize extensions on their behalf.
               </div>
-
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                  {!isAdminMode && (
-                    <div className="mb-3 text-xs text-yellow-300">
-                      Enable Admin Mode to change the shared contract year.
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="text-white font-semibold">Shared Contract Year</div>
-                      <div className="text-xs text-white/60">Defaults to the detected BBB league year. A saved override applies to all users.</div>
-                    </div>
-                    <div className="text-xs text-white/70">
-                      Effective Year: <span className="text-[#1FDDFF] font-semibold">{curYear}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="text-xs uppercase tracking-wide text-white/50">Detected League Year</div>
-                      <div className="mt-1 text-lg font-semibold text-white">{detectedLeagueYear ?? 'Unknown'}</div>
-                    </div>
-                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="text-xs uppercase tracking-wide text-white/50">Saved Override</div>
-                      <div className="mt-1 text-lg font-semibold text-white">{sharedContractYearOverride ?? 'Default'}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex-1">
-                      <label className="block text-white/70 text-xs mb-1">Override year</label>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="2020"
-                        className="w-full rounded px-3 py-2 bg-white text-[#0B1722] focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]"
-                        placeholder={detectedLeagueYear ? String(detectedLeagueYear) : 'Enter year'}
-                        value={contractYearOverrideDraft}
-                        onChange={e => setContractYearOverrideDraft(e.target.value)}
-                        disabled={!isAdminMode || contractYearSettingsLoading || contractYearSettingsSaving}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className="px-4 py-2 bg-[#FF4B1F] text-white rounded font-semibold hover:bg-orange-600 disabled:opacity-50"
-                        disabled={
-                          !isAdminMode ||
-                          contractYearSettingsLoading ||
-                          contractYearSettingsSaving ||
-                          !Number.isFinite(parseInt(contractYearOverrideDraft, 10))
-                        }
-                        onClick={() => saveContractYearOverride(parseInt(contractYearOverrideDraft, 10))}
-                      >
-                        {contractYearSettingsSaving ? 'Saving…' : 'Save Override'}
-                      </button>
-                      <button
-                        type="button"
-                        className="px-4 py-2 bg-white/10 text-white rounded font-semibold hover:bg-white/20 disabled:opacity-50"
-                        disabled={!isAdminMode || contractYearSettingsLoading || contractYearSettingsSaving || sharedContractYearOverride === null}
-                        onClick={() => saveContractYearOverride(null)}
-                      >
-                        Use Default
-                      </button>
-                    </div>
-                  </div>
-
-                  {contractYearSettingsLoading && <div className="mt-2 text-xs text-white/60">Loading shared contract year setting…</div>}
-                  {contractYearSettingsMsg && <div className="mt-2 text-sm text-green-300">{contractYearSettingsMsg}</div>}
-                  {contractYearSettingsError && <div className="mt-2 text-sm text-red-300">{contractYearSettingsError}</div>}
-                </div>
             </div>
           )}
         </div>
@@ -1525,17 +1376,14 @@ export default function ContractManagementPage() {
                     // Compute tag cost only in Year 1 (i === 1), limit 1 tag per team
                     let tagCost = 0;
                     if (i === 1) {
-                      if (!franchiseTagLimitReached) {
+                      if (!hasFranchiseTagThisYearForTeam) {
                         if (pendingFranchiseTag?.player) {
                           tagCost = getTagValueForPlayer(pendingFranchiseTag.player) || 0;
                         } else {
                           for (const p of franchiseEligiblePlayers) {
                             const choice = franchiseTagChoices[p.playerId] || { apply: false };
-                            if (!choice.apply) continue;
-                            const val = getTagValueForPlayer(p) || 0;
-                            if (ignoreTagQuantityLimits) tagCost += val;
-                            else {
-                              tagCost = val;
+                            if (choice.apply) {
+                              tagCost = getTagValueForPlayer(p) || 0;
                               break;
                             }
                           }
@@ -1563,12 +1411,10 @@ export default function ContractManagementPage() {
               {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
                 <div className="text-yellow-400 text-xs mb-3">Tags can only be applied between Feb 1st and March 31st.</div>
               )}
-              {franchiseTagLimitReached ? (
-                <div className="text-white/80 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                  [Franchise] Tag already applied to{' '}
-                  <span className="text-[#1FDDFF] font-semibold">{appliedFranchiseTagPlayerName || 'Unknown Player'}</span>
-                </div>
-              ) : franchiseEligiblePlayers.length === 0 ? (
+              {hasFranchiseTagThisYearForTeam && (
+                <div className="text-yellow-400 text-xs mb-3">This team has already applied a Franchise Tag this year. You cannot apply another.</div>
+              )}
+              {franchiseEligiblePlayers.length === 0 ? (
                 <div className="text-white/60 italic">No players eligible for a franchise tag.</div>
               ) : (
                 <>
@@ -1577,7 +1423,7 @@ export default function ContractManagementPage() {
                     {franchiseEligiblePlayersSorted.map(player => {
                       const tagValue = getTagValueForPlayer(player) || 0;
                       const choice = franchiseTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !franchiseTagLimitReached && franchiseWindowActive;
+                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam && franchiseWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -1621,7 +1467,7 @@ export default function ContractManagementPage() {
                                   if (apply) setPendingFranchiseTag({ player, tagValue });
                                   else if (pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId) setPendingFranchiseTag(null);
                                 }}
-                                disabled={franchiseTagLimitReached}
+                                disabled={hasFranchiseTagThisYearForTeam}
                               >
                                 <option value="none">No Tag</option>
                                 <option value="apply">Apply Tag</option>
@@ -1632,11 +1478,9 @@ export default function ContractManagementPage() {
                             {showFinalize && pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId && (
                               <button
                                 className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
-                                disabled={finalizeLoading || franchiseTagLimitReached || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
+                                disabled={finalizeLoading || hasFranchiseTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
-                                  const confirmMsg = ignoreTagQuantityLimits
-                                    ? `Are you sure you want to apply a Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This cannot be undone.`
-                                    : `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
+                                  const confirmMsg = `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
                                   if (!window.confirm(confirmMsg)) return;
 
                                   setFinalizeLoading(true);
@@ -1705,7 +1549,7 @@ export default function ContractManagementPage() {
                                 {finalizeLoading ? 'Saving...' : 'Finalize Tag'}
                               </button>
                             )}
-                            {franchiseTagLimitReached && (
+                            {hasFranchiseTagThisYearForTeam && (
                               <div className="mt-2 text-yellow-400 text-xs">Limit reached: 1 Franchise Tag per team per year.</div>
                             )}
                             {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
@@ -1722,7 +1566,7 @@ export default function ContractManagementPage() {
                     {franchiseEligiblePlayersSorted.map(player => {
                       const tagValue = getTagValueForPlayer(player) || 0;
                       const choice = franchiseTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !franchiseTagLimitReached && franchiseWindowActive;
+                      const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam && franchiseWindowActive;
                       return (
                         <FranchiseTagCard
                           key={player.playerId}
@@ -1733,7 +1577,7 @@ export default function ContractManagementPage() {
                           pendingTag={pendingFranchiseTag}
                           finalizeLoading={finalizeLoading}
                           isFranchiseWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
-                          hasFranchiseLimitReached={franchiseTagLimitReached}
+                          hasFranchiseLimitReached={hasFranchiseTagThisYearForTeam}
                           showLogicChecks={showLogicChecks}
                           logicChecks={buildFranchiseLogicChecks(player)}
                           onChoiceChange={apply => {
@@ -1742,9 +1586,7 @@ export default function ContractManagementPage() {
                             else if (pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId) setPendingFranchiseTag(null);
                           }}
                           onFinalize={async () => {
-                            const confirmMsg = ignoreTagQuantityLimits
-                              ? `Are you sure you want to apply a Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This cannot be undone.`
-                              : `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
+                            const confirmMsg = `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
                             if (!window.confirm(confirmMsg)) return;
 
                             setFinalizeLoading(true);
@@ -1855,18 +1697,16 @@ export default function ContractManagementPage() {
               Window: Feb 1 — Mar 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
 
+            {hasRfaTagThisYearForTeam && (
+              <div className="mb-4 text-yellow-400 text-xs">This team has already applied an RFA tag this year. You cannot apply another.</div>
+            )}
+
             <div>
               <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
               {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
                 <div className="text-yellow-400 text-xs mb-3">RFA tags can only be applied between Feb 1st and March 31st.</div>
               )}
-
-              {rfaTagLimitReached ? (
-                <div className="text-white/80 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                  [RFA] Tag already applied to{' '}
-                  <span className="text-[#1FDDFF] font-semibold">{appliedRfaTagPlayerName || 'Unknown Player'}</span>
-                </div>
-              ) : rfaEligiblePlayersSorted.length === 0 ? (
+              {rfaEligiblePlayersSorted.length === 0 ? (
                 <div className="text-white/60 italic">No players eligible for an RFA tag.</div>
               ) : (
                 <>
@@ -1874,7 +1714,7 @@ export default function ContractManagementPage() {
                   <div className="sm:hidden space-y-3">
                     {rfaEligiblePlayersSorted.map(player => {
                       const choice = rfaTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !rfaTagLimitReached && rfaWindowActive;
+                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam && rfaWindowActive;
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
@@ -1918,7 +1758,6 @@ export default function ContractManagementPage() {
                                   if (apply) setPendingRfaTag({ player });
                                   else if (pendingRfaTag && pendingRfaTag.player.playerId === player.playerId) setPendingRfaTag(null);
                                 }}
-                                disabled={rfaTagLimitReached}
                               >
                                 <option value="none">No Tag</option>
                                 <option value="apply">Apply Tag</option>
@@ -1929,11 +1768,9 @@ export default function ContractManagementPage() {
                             {showFinalize && pendingRfaTag && pendingRfaTag.player.playerId === player.playerId && (
                               <button
                                 className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow disabled:opacity-50"
-                                disabled={finalizeLoading || rfaTagLimitReached || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
+                                disabled={finalizeLoading || hasRfaTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
-                                  const confirmMsg = ignoreTagQuantityLimits
-                                    ? `Are you sure you want to apply an RFA Tag to ${player.playerName}? This cannot be undone.`
-                                    : `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
+                                  const confirmMsg = `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
                                   if (!window.confirm(confirmMsg)) return;
 
                                   setFinalizeLoading(true);
@@ -2001,7 +1838,7 @@ export default function ContractManagementPage() {
                                 {finalizeLoading ? 'Saving...' : 'Finalize RFA Tag'}
                               </button>
                             )}
-                            {rfaTagLimitReached && (
+                            {hasRfaTagThisYearForTeam && (
                               <div className="mt-2 text-yellow-400 text-xs">Limit reached: 1 RFA tag per team per year.</div>
                             )}
                             {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
@@ -2017,7 +1854,7 @@ export default function ContractManagementPage() {
                   <div className="hidden sm:block">
                     {rfaEligiblePlayersSorted.map(player => {
                       const choice = rfaTagChoices[player.playerId] || { apply: false };
-                      const showFinalize = choice.apply && !rfaTagLimitReached && rfaWindowActive;
+                      const showFinalize = choice.apply && !hasRfaTagThisYearForTeam && rfaWindowActive;
                       return (
                         <RFATagCard
                           key={player.playerId}
@@ -2026,7 +1863,7 @@ export default function ContractManagementPage() {
                           showFinalize={showFinalize}
                           pendingTag={pendingRfaTag}
                           finalizeLoading={finalizeLoading}
-                          hasRfaLimitReached={rfaTagLimitReached}
+                          hasRfaLimitReached={hasRfaTagThisYearForTeam}
                           isRfaWindowOpen={isFranchiseWindowOpen() || (isAdmin && isAdminMode)}
                           showLogicChecks={showLogicChecks}
                           logicChecks={buildRfaLogicChecks(player)}
@@ -2036,9 +1873,7 @@ export default function ContractManagementPage() {
                             else if (pendingRfaTag && pendingRfaTag.player.playerId === player.playerId) setPendingRfaTag(null);
                           }}
                           onFinalize={async () => {
-                            const confirmMsg = ignoreTagQuantityLimits
-                              ? `Are you sure you want to apply an RFA Tag to ${player.playerName}? This cannot be undone.`
-                              : `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
+                            const confirmMsg = `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
                             if (!window.confirm(confirmMsg)) return;
 
                             setFinalizeLoading(true);

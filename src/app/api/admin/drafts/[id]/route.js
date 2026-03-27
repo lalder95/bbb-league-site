@@ -54,6 +54,10 @@ export async function PATCH(request, { params }) {
   const body = await request.json();
 
   const updateFields = {};
+  if (typeof body.startDate === 'string') updateFields.startDate = body.startDate;
+  if (typeof body.endDate === 'string') updateFields.endDate = body.endDate;
+  if (typeof body.timeZone === 'string') updateFields.timeZone = body.timeZone;
+  if (typeof body.nomDuration === 'number') updateFields.nomDuration = body.nomDuration;
   if (typeof body.state === 'string') updateFields.state = body.state;
   if (typeof body.blind === 'boolean') updateFields.blind = body.blind;
 

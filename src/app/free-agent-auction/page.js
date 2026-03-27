@@ -37,6 +37,12 @@ function formatDraftDateTime(value, timeZone, pattern = 'MM/dd/yyyy h:mm a zzz')
   return formatInTimeZone(parsedValue, timeZone || 'America/Chicago', pattern);
 }
 
+function formatDraftDateTimeInput(value, timeZone) {
+  const parsedValue = parseDraftDateTime(value, timeZone);
+  if (Number.isNaN(parsedValue.getTime())) return '';
+  return formatInTimeZone(parsedValue, timeZone || 'America/Chicago', "yyyy-MM-dd'T'HH:mm");
+}
+
 function formatCapSpace(value) {
   return `$${value.toFixed(1)}`;
 }
@@ -170,6 +176,8 @@ export default function FreeAgentAuctionPage() {
   const [adminToolSearch, setAdminToolSearch] = useState('');
   const [adminToolPosition, setAdminToolPosition] = useState('ALL');
   const [adminToolStartDelays, setAdminToolStartDelays] = useState({});
+  const [adminToolStartDate, setAdminToolStartDate] = useState('');
+  const [adminToolEndDate, setAdminToolEndDate] = useState('');
   const initialLoadDone = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -668,6 +676,13 @@ export default function FreeAgentAuctionPage() {
     };
   }, [showAdminToolsModal, isAdmin]);
 
+  useEffect(() => {
+    if (!showAdminToolsModal || !draft) return;
+    const draftTimeZone = getDraftTimeZone(draft);
+    setAdminToolStartDate(formatDraftDateTimeInput(draft.startDate, draftTimeZone));
+    setAdminToolEndDate(formatDraftDateTimeInput(draft.endDate, draftTimeZone));
+  }, [showAdminToolsModal, draft]);
+
   const contractedPlayerIdSet = React.useMemo(
     () => new Set(Object.values(activeContractsByTeam).flatMap(playerSet => Array.from(playerSet || []))),
     [activeContractsByTeam]
@@ -744,6 +759,55 @@ export default function FreeAgentAuctionPage() {
     const nextResults = (draft.results || []).filter(result => String(result.playerId) !== String(player.playerId));
     const nextBidLog = (draft.bidLog || []).filter(bid => String(bid.playerId) !== String(player.playerId));
     await updateDraftPlayers(nextPlayers, nextResults, nextBidLog);
+  };
+
+  const handleAdminUpdateSchedule = async () => {
+    if (!draft?._id) return;
+
+    const draftTimeZone = getDraftTimeZone(draft);
+    const nextStartDate = adminToolStartDate ? fromZonedTime(adminToolStartDate, draftTimeZone).toISOString() : '';
+    const nextEndDate = adminToolEndDate ? fromZonedTime(adminToolEndDate, draftTimeZone).toISOString() : '';
+
+    if (!nextStartDate || Number.isNaN(new Date(nextStartDate).getTime())) {
+      setAdminToolError('Please provide a valid draft start time.');
+      return;
+    }
+
+    if (!nextEndDate || Number.isNaN(new Date(nextEndDate).getTime())) {
+      setAdminToolError('Please provide a valid draft end time.');
+      return;
+    }
+
+    if (new Date(nextEndDate) <= new Date(nextStartDate)) {
+      setAdminToolError('Draft end time must be after the start time.');
+      return;
+    }
+
+    setAdminToolSaving(true);
+    setAdminToolError('');
+
+    try {
+      const patchRes = await fetch(`/api/admin/drafts/${draft._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: nextStartDate,
+          endDate: nextEndDate,
+        })
+      });
+
+      if (!patchRes.ok) {
+        throw new Error(await patchRes.text());
+      }
+
+      const updatedDraft = await patchRes.json();
+      setDraft(updatedDraft);
+      setSuccess('Draft schedule updated.');
+    } catch (err) {
+      setAdminToolError(err.message || 'Failed to update the draft schedule.');
+    } finally {
+      setAdminToolSaving(false);
+    }
   };
 
   const filteredPlayers = React.useMemo(() => {
@@ -2100,12 +2164,55 @@ export default function FreeAgentAuctionPage() {
               &times;
             </button>
             <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Admin Tools</h2>
-            <p className="text-sm text-white/70 mb-4">Add or remove players from the active auction player pool.</p>
+            <p className="text-sm text-white/70 mb-4">Update the draft schedule and manage the active auction player pool.</p>
             {adminToolError && (
               <div className="mb-4 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
                 {adminToolError}
               </div>
             )}
+            <div className="mb-6 rounded border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Draft Schedule</h3>
+                  <p className="text-sm text-white/60 mt-1">
+                    Times are edited in {getDraftTimeZone(draft)} and saved back to the active draft.
+                  </p>
+                </div>
+                <button
+                  className="px-4 py-2 bg-blue-700 rounded text-white hover:bg-blue-800 disabled:opacity-50"
+                  onClick={handleAdminUpdateSchedule}
+                  disabled={adminToolSaving}
+                >
+                  {adminToolSaving ? 'Saving…' : 'Save Schedule'}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-white/70 mb-2">Start Time</label>
+                  <input
+                    type="datetime-local"
+                    value={adminToolStartDate}
+                    onChange={(e) => setAdminToolStartDate(e.target.value)}
+                    className="w-full rounded border border-white/10 bg-black/30 px-3 py-2 text-white"
+                  />
+                  <div className="mt-2 text-xs text-white/50">
+                    Current: {draft?.startDate ? formatDraftDateTime(draft.startDate, getDraftTimeZone(draft)) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-white/70 mb-2">End Time</label>
+                  <input
+                    type="datetime-local"
+                    value={adminToolEndDate}
+                    onChange={(e) => setAdminToolEndDate(e.target.value)}
+                    className="w-full rounded border border-white/10 bg-black/30 px-3 py-2 text-white"
+                  />
+                  <div className="mt-2 text-xs text-white/50">
+                    Current: {draft?.endDate ? formatDraftDateTime(draft.endDate, getDraftTimeZone(draft)) : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 overflow-hidden flex-1">
               <div className="border border-white/10 rounded bg-white/5 p-4 overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between mb-3">
