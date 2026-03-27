@@ -9,6 +9,7 @@ export default function SalaryCap() {
   const [sortConfig, setSortConfig] = useState({ key: 'team', direction: 'asc' });
   const [isMobile, setIsMobile] = useState(false);
   const [leagueId, setLeagueId] = useState(null);
+  const [leagueSeason, setLeagueSeason] = useState(null);
   const [teamAvatars, setTeamAvatars] = useState({});
   const [contracts, setContracts] = useState([]);
   const [modalInfo, setModalInfo] = useState(null);
@@ -27,10 +28,12 @@ export default function SalaryCap() {
     async function findBBBLeague() {
       try {
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        if (!seasonResponse.ok) throw new Error('Failed to fetch NFL state');
         const seasonState = await seasonResponse.json();
         const currentSeason = seasonState.season;
 
         const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
+        if (!userLeaguesResponse.ok) throw new Error('Failed to fetch user leagues');
         const userLeagues = await userLeaguesResponse.json();
 
         let bbbLeagues = userLeagues.filter(league =>
@@ -42,14 +45,43 @@ export default function SalaryCap() {
           )
         );
 
-        if (bbbLeagues.length === 0 && userLeagues.length > 0) {
-          bbbLeagues = [userLeagues[0]];
+        if (bbbLeagues.length === 0) {
+          const prevSeason = (parseInt(currentSeason, 10) - 1).toString();
+          const prevSeasonResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prevSeason}`);
+
+          if (prevSeasonResponse.ok) {
+            const prevSeasonLeagues = await prevSeasonResponse.json();
+            const prevBBBLeagues = prevSeasonLeagues.filter(league =>
+              league.name && (
+                league.name.includes('Budget Blitz Bowl') ||
+                league.name.includes('budget blitz bowl') ||
+                league.name.includes('BBB') ||
+                (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+              )
+            );
+
+            if (prevBBBLeagues.length > 0) {
+              bbbLeagues = prevBBBLeagues;
+            } else if (userLeagues.length > 0) {
+              bbbLeagues = [userLeagues[0]];
+            } else if (prevSeasonLeagues.length > 0) {
+              bbbLeagues = [prevSeasonLeagues[0]];
+            } else {
+              throw new Error('No leagues found for your user ID');
+            }
+          } else if (userLeagues.length > 0) {
+            bbbLeagues = [userLeagues[0]];
+          } else {
+            throw new Error('No leagues found for your user ID');
+          }
         }
 
         const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
         setLeagueId(mostRecentLeague.league_id);
+        setLeagueSeason(parseInt(mostRecentLeague.season, 10) || parseInt(currentSeason, 10));
       } catch (err) {
         setLeagueId(null);
+        setLeagueSeason(new Date().getFullYear());
       }
     }
     findBBBLeague();
@@ -228,6 +260,18 @@ export default function SalaryCap() {
     return 'text-red-500';
   };
 
+  const getCapYearLabel = (yearKey) => {
+    const baseYear = leagueSeason || new Date().getFullYear();
+    const yearOffsetMap = {
+      curYear: 0,
+      year2: 1,
+      year3: 2,
+      year4: 3,
+    };
+
+    return baseYear + (yearOffsetMap[yearKey] || 0);
+  };
+
   // Helper to open modal with player data
   const openPlayerModal = (team, yearKey) => {
     // Map yearKey to correct property names
@@ -349,19 +393,19 @@ export default function SalaryCap() {
                   },
                   {
                     key: 'curYear',
-                    label: 'Cur Year Cap Space'
+                    label: getCapYearLabel('curYear')
                   },
                   {
                     key: 'year2',
-                    label: 'Year 2 Cap Space'
+                    label: getCapYearLabel('year2')
                   },
                   {
                     key: 'year3',
-                    label: 'Year 3 Cap Space'
+                    label: getCapYearLabel('year3')
                   },
                   {
                     key: 'year4',
-                    label: 'Year 4 Cap Space'
+                    label: getCapYearLabel('year4')
                   },
                 ].map(({ key, label }) => (
                   <th 
@@ -442,15 +486,7 @@ export default function SalaryCap() {
               tabIndex={0}
             >×</button>
             <h2 className="text-xl font-bold mb-2 text-[#FF4B1F]">
-              {modalInfo.team} – {(() => {
-                switch (modalInfo.yearKey) {
-                  case 'curYear': return 'Current Year';
-                  case 'year2': return 'Year 2';
-                  case 'year3': return 'Year 3';
-                  case 'year4': return 'Year 4';
-                  default: return '';
-                }
-              })()} Contracts
+              {modalInfo.team} – {getCapYearLabel(modalInfo.yearKey)} Contracts
             </h2>
             {(!modalInfo.groups || modalInfo.groups.length === 0) ? (
               <div className="text-gray-300">No players under contract for this season.</div>

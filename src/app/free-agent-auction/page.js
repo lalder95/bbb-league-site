@@ -151,7 +151,6 @@ export default function FreeAgentAuctionPage() {
   const [playerCountdowns, setPlayerCountdowns] = useState({});
   const [capTeams, setCapTeams] = useState([]);
   const [activeContractsByTeam, setActiveContractsByTeam] = useState({});
-  const [activeContractPlayerIds, setActiveContractPlayerIds] = useState(new Set());
   const [teamAvatars, setTeamAvatars] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: 'countdown', direction: 'asc' });
   const [filterPosition, setFilterPosition] = useState('ALL');
@@ -500,7 +499,6 @@ export default function FreeAgentAuctionPage() {
           }, {});
 
         const teamCaps = {};
-  const activePlayerIds = new Set();
         const rosterMap = {};
 
         contracts.forEach(contract => {
@@ -518,7 +516,6 @@ export default function FreeAgentAuctionPage() {
               rosterMap[contract.team] = new Set();
             }
             rosterMap[contract.team].add(contract.playerId);
-            activePlayerIds.add(contract.playerId);
           }
           const capData = teamCaps[contract.team];
           if (contract.isActive) {
@@ -557,7 +554,6 @@ export default function FreeAgentAuctionPage() {
               .reduce((sum, r) => sum + (Number(r.contractPoints) || 0), 0);
           });
         }
-        setActiveContractPlayerIds(activePlayerIds);
         setActiveContractsByTeam(rosterMap);
         setCapTeams(Object.values(teamCaps));
       } catch (error) {
@@ -645,7 +641,6 @@ export default function FreeAgentAuctionPage() {
             ktc: ktcMap[player.playerId] || ''
           }))
           .filter(player => Number(player.ktc) > 0)
-          .filter(player => !activeContractPlayerIds.has(String(player.playerId)))
           .filter(player => {
             if (seen.has(String(player.playerId))) return false;
             seen.add(String(player.playerId));
@@ -671,7 +666,12 @@ export default function FreeAgentAuctionPage() {
     return () => {
       cancelled = true;
     };
-  }, [showAdminToolsModal, isAdmin, activeContractPlayerIds]);
+  }, [showAdminToolsModal, isAdmin]);
+
+  const contractedPlayerIdSet = React.useMemo(
+    () => new Set(Object.values(activeContractsByTeam).flatMap(playerSet => Array.from(playerSet || []))),
+    [activeContractsByTeam]
+  );
 
   const draftPlayerIdSet = React.useMemo(
     () => new Set((draft?.players || []).map(player => String(player.playerId))),
@@ -1578,27 +1578,27 @@ export default function FreeAgentAuctionPage() {
               <h2 className="text-xl font-bold text-[#FF4B1F]">Available Players</h2>
             </div>
             {/* Filters and status area above the table */}
-            <div className="flex items-center justify-end mb-4 gap-4">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-end">
               {/* Search by player name - placed to the left of filters */}
-              <div>
-                <label htmlFor="searchName" className="mr-2 font-medium">Search:</label>
+              <div className="w-full md:w-auto md:min-w-[260px]">
+                <label htmlFor="searchName" className="mb-1 block font-medium">Search:</label>
                 <input
                   id="searchName"
                   type="text"
                   value={searchName}
                   onChange={e => setSearchName(e.target.value)}
-                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                  className="w-full bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
                   placeholder="Player name..."
                 />
               </div>
               {/* Position Filter */}
-              <div>
-                <label htmlFor="filterPosition" className="mr-2 font-medium">Position:</label>
+              <div className="w-full md:w-auto">
+                <label htmlFor="filterPosition" className="mb-1 block font-medium">Position:</label>
                 <select
                   id="filterPosition"
                   value={filterPosition}
                   onChange={e => setFilterPosition(e.target.value)}
-                  className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                  className="w-full bg-black/40 border border-white/20 rounded px-2 py-1 text-white md:min-w-[120px]"
                 >
                   <option value="ALL">ALL</option>
                   {Array.from(new Set(draft?.players?.map(p => p.position) ?? []))
@@ -2167,7 +2167,14 @@ export default function FreeAgentAuctionPage() {
                     filteredAdminToolPlayers.map(player => (
                       <div key={player.playerId} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center rounded border border-white/10 bg-black/20 p-3">
                         <div>
-                          <div className="font-medium">{player.playerName}</div>
+                          <div className="font-medium flex items-center gap-2 flex-wrap">
+                            <span>{player.playerName}</span>
+                            {contractedPlayerIdSet.has(String(player.playerId)) && (
+                              <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-200 border border-amber-400/20">
+                                Contracted
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-white/60">{player.position} • KTC {player.ktc || '-'} • ID {player.playerId}</div>
                         </div>
                         <div>
