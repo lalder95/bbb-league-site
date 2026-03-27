@@ -63,6 +63,18 @@ const formatContractYearValue = (value) => {
   return formatSalary(num);
 };
 
+const getLeagueYearLabel = (baseSeason, yearKey) => {
+  const resolvedBaseSeason = Number(baseSeason) || new Date().getFullYear();
+  const offsets = {
+    curYear: 0,
+    year2: 1,
+    year3: 2,
+    year4: 3,
+  };
+
+  return String(resolvedBaseSeason + (offsets[yearKey] || 0));
+};
+
 const getValueHeatStyle = (value, min, max) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return undefined;
@@ -343,6 +355,12 @@ function TeamSection({
   const [popupPlayer, setPopupPlayer] = useState(null);
   const availablePlayerAssets = filteredPlayers.filter((player) => !isDraftPickAsset(player));
   const availablePickAssets = filteredPlayers.filter((player) => isDraftPickAsset(player));
+  const contractYearLabels = {
+    curYear: getLeagueYearLabel(participant.currentSeason, 'curYear'),
+    year2: getLeagueYearLabel(participant.currentSeason, 'year2'),
+    year3: getLeagueYearLabel(participant.currentSeason, 'year3'),
+    year4: getLeagueYearLabel(participant.currentSeason, 'year4'),
+  };
 
   const handleAddPlayer = (player) => {
     addPlayer(player);
@@ -509,19 +527,19 @@ function TeamSection({
                                 <div className="text-sm font-bold uppercase tracking-[0.08em] text-white/85">Value</div>
                                 <div className="mt-2 space-y-1 text-sm font-semibold text-[#FFB199]">
                                   <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">Current</span>
+                                    <span className="text-white/70">{contractYearLabels.curYear}</span>
                                     <span>{formatContractYearValue(player.curYear)}</span>
                                   </div>
                                   <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">Year 2</span>
+                                    <span className="text-white/70">{contractYearLabels.year2}</span>
                                     <span>{formatContractYearValue(player.year2)}</span>
                                   </div>
                                   <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">Year 3</span>
+                                    <span className="text-white/70">{contractYearLabels.year3}</span>
                                     <span>{formatContractYearValue(player.year3)}</span>
                                   </div>
                                   <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">Year 4</span>
+                                    <span className="text-white/70">{contractYearLabels.year4}</span>
                                     <span>{formatContractYearValue(player.year4)}</span>
                                   </div>
                                 </div>
@@ -730,11 +748,11 @@ function TeamSection({
               <div className="mt-4 space-y-4">
                 <div>
                   <h3 className="text-sm font-bold mb-2 text-white/70">Before Trade:</h3>
-                  <CapImpactDisplay impact={impact.before} />
+                  <CapImpactDisplay impact={impact.before} currentSeason={participant.currentSeason} />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold mb-2 text-white/70">After Trade:</h3>
-                  <CapImpactDisplay impact={impact.after} />
+                  <CapImpactDisplay impact={impact.after} currentSeason={participant.currentSeason} />
                 </div>
               </div>
             )}
@@ -775,11 +793,11 @@ function TeamSection({
   );
 }
 
-const CapImpactDisplay = ({ impact }) => (
+const CapImpactDisplay = ({ impact, currentSeason }) => (
   <div className="grid grid-cols-4 gap-2 text-sm">
     {Object.entries(impact).map(([year, value]) => (
       <div key={year} className="text-center">
-        <div className="text-white/70">{year}</div>
+        <div className="text-white/70">{getLeagueYearLabel(currentSeason, year)}</div>
         <div className={getValidationColor(value?.remaining)}>
           {formatSalary(value?.remaining)}
         </div>
@@ -831,17 +849,48 @@ export default function Trade() {
   const [incomingMetricIndex, setIncomingMetricIndex] = useState(0);
   const [incomingMetricAutoplay, setIncomingMetricAutoplay] = useState(true);
   const [currentSeason, setCurrentSeason] = useState(new Date().getFullYear());
+  const [contractYearOverride, setContractYearOverride] = useState(null);
+  const capDisplaySeason = Number.isFinite(contractYearOverride) ? contractYearOverride : currentSeason;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchContractSettings() {
+      try {
+        const response = await fetch('/api/contract-management/settings', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Failed to fetch contract settings');
+
+        const data = await response.json();
+        const overrideYear = Number.parseInt(data?.settings?.contractYearOverride, 10);
+
+        if (isMounted) {
+          setContractYearOverride(Number.isFinite(overrideYear) ? overrideYear : null);
+        }
+      } catch {
+        if (isMounted) {
+          setContractYearOverride(null);
+        }
+      }
+    }
+
+    fetchContractSettings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Auto-detect league ID (copied from home page)
   useEffect(() => {
     async function findBBBLeague() {
       try {
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+        if (!seasonResponse.ok) throw new Error('Failed to fetch NFL state');
         const seasonState = await seasonResponse.json();
-        const currentSeason = seasonState.season;
-        setCurrentSeason(Number(currentSeason) || new Date().getFullYear());
+        const detectedSeason = seasonState.season;
 
-        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
+        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${detectedSeason}`);
+        if (!userLeaguesResponse.ok) throw new Error('Failed to fetch user leagues');
         const userLeagues = await userLeaguesResponse.json();
 
         let bbbLeagues = userLeagues.filter(league =>
@@ -853,14 +902,43 @@ export default function Trade() {
           )
         );
 
-        if (bbbLeagues.length === 0 && userLeagues.length > 0) {
-          bbbLeagues = [userLeagues[0]];
+        if (bbbLeagues.length === 0) {
+          const prevSeason = (parseInt(detectedSeason, 10) - 1).toString();
+          const prevSeasonResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prevSeason}`);
+
+          if (prevSeasonResponse.ok) {
+            const prevSeasonLeagues = await prevSeasonResponse.json();
+            const prevBBBLeagues = prevSeasonLeagues.filter(league =>
+              league.name && (
+                league.name.includes('Budget Blitz Bowl') ||
+                league.name.includes('budget blitz bowl') ||
+                league.name.includes('BBB') ||
+                (league.name.toLowerCase().includes('budget') && league.name.toLowerCase().includes('blitz'))
+              )
+            );
+
+            if (prevBBBLeagues.length > 0) {
+              bbbLeagues = prevBBBLeagues;
+            } else if (userLeagues.length > 0) {
+              bbbLeagues = [userLeagues[0]];
+            } else if (prevSeasonLeagues.length > 0) {
+              bbbLeagues = [prevSeasonLeagues[0]];
+            } else {
+              throw new Error('No leagues found for your user ID');
+            }
+          } else if (userLeagues.length > 0) {
+            bbbLeagues = [userLeagues[0]];
+          } else {
+            throw new Error('No leagues found for your user ID');
+          }
         }
 
         const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
         setLeagueId(mostRecentLeague.league_id);
+        setCurrentSeason(Number(mostRecentLeague.season) || Number(detectedSeason) || new Date().getFullYear());
       } catch (err) {
         setLeagueId(null);
+        setCurrentSeason(new Date().getFullYear());
       }
     }
     findBBBLeague();
@@ -1096,7 +1174,7 @@ export default function Trade() {
             Number(entry.slot),
           ])
         );
-        const baseSeason = Number(orderJson?.targetSeason || new Date().getFullYear() + 1);
+        const baseSeason = Number(orderJson?.targetSeason || currentSeason + 1);
         const seasonsToShow = Array.from({ length: 3 }, (_, index) => String(baseSeason + index));
 
         const nextAssets = uniqueTeams.reduce((acc, teamName) => {
@@ -1201,7 +1279,7 @@ export default function Trade() {
     return () => {
       cancelled = true;
     };
-  }, [leagueId, uniqueTeamsKey]);
+  }, [leagueId, uniqueTeamsKey, currentSeason]);
 
   const availablePositions = [...new Set(
     [...players, ...Object.values(draftPickAssetsByTeam).flat()]
@@ -1461,10 +1539,10 @@ export default function Trade() {
     const futureNegatives = [];
     const closeList = [];
     const yearKeys = [
-      { key: 'curYear', label: 'Y1' },
-      { key: 'year2', label: 'Y2' },
-      { key: 'year3', label: 'Y3' },
-      { key: 'year4', label: 'Y4' },
+      { key: 'curYear', label: getLeagueYearLabel(capDisplaySeason, 'curYear') },
+      { key: 'year2', label: getLeagueYearLabel(capDisplaySeason, 'year2') },
+      { key: 'year3', label: getLeagueYearLabel(capDisplaySeason, 'year3') },
+      { key: 'year4', label: getLeagueYearLabel(capDisplaySeason, 'year4') },
     ];
     teams.forEach(teamName => {
       const imp = impactsByTeam[teamName];
@@ -1476,7 +1554,7 @@ export default function Trade() {
       const yearsNeg = [];
       ['year2','year3','year4'].forEach(k => {
         const val = imp.after[k].remaining;
-        if (val < 0) yearsNeg.push({ year: k === 'year2' ? 'Y2' : k === 'year3' ? 'Y3' : 'Y4', remaining: val });
+        if (val < 0) yearsNeg.push({ year: getLeagueYearLabel(capDisplaySeason, k), remaining: val });
       });
       if (yearsNeg.length) futureNegatives.push({ team: teamName, years: yearsNeg });
       yearKeys.forEach(({ key, label }) => {
@@ -1668,7 +1746,6 @@ export default function Trade() {
           <div className="flex items-center gap-4 mb-4 md:mb-0">
             <img 
               src="/logo.png" 
-              alt="BBB League" 
               className="h-16 w-16 transition-transform hover:scale-105"
             />
             <h1 className="text-3xl font-bold text-[#FF4B1F]">Trade Calculator</h1>
@@ -1724,7 +1801,7 @@ export default function Trade() {
                 <div className="text-white font-semibold">{ratioDebug.activeCount}</div>
               </div>
               <div className="bg-black/20 border border-white/10 rounded p-2">
-                <div className="text-white/70">Total Active Salary (Y1)</div>
+                <div className="text-white/70">Total Active Salary ({getLeagueYearLabel(capDisplaySeason, 'curYear')})</div>
                 <div className="text-white font-semibold">${ratioDebug.totalActiveSalary.toFixed(1)}</div>
               </div>
               <div className="bg-black/20 border border-white/10 rounded p-2">
@@ -1760,13 +1837,13 @@ export default function Trade() {
                     <div className="font-semibold text-white truncate">{s.playerName}</div>
                     <div className="text-white/60 text-xs truncate">{s.team}</div>
                   </div>
-                  <div className="text-white text-xs">Y1: ${s.curYear.toFixed(1)}</div>
+                    <div className="text-white text-xs">{getLeagueYearLabel(capDisplaySeason, 'curYear')}: ${s.curYear.toFixed(1)}</div>
                   <div className="text-white text-xs ml-3">KTC: {Math.round(s.ktcValue)}</div>
                 </div>
               ))}
             </div>
             <div className="mt-3 text-xs text-white/60">
-              Formula: Ratio = (Σ Active KTC) / (Σ Active Year 1 Salary). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).
+              Formula: Ratio = (Σ Active KTC) / (Σ Active {getLeagueYearLabel(capDisplaySeason, 'curYear')} Salary). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).
             </div>
           </div>
         )}
@@ -1824,6 +1901,8 @@ export default function Trade() {
             positionRatios={positionRatios}
             usePositionRatios={usePositionRatios}
             avgKtcByPosition={avgKtcByPosition}
+            currentSeason={currentSeason}
+            capDisplaySeason={capDisplaySeason}
           />
         )}
 
@@ -1846,7 +1925,7 @@ export default function Trade() {
               <TeamSection
                 key={p.id}
                 label={`Team ${idx + 1}`}
-                participant={p}
+                participant={{ ...p, currentSeason: capDisplaySeason }}
                 setTeam={(team) => setParticipantTeam(p.id, team)}
                 setSearchTerm={(term) => setParticipantSearch(p.id, term)}
                 setPositionFilter={(position) => setParticipantPositionFilter(p.id, position)}

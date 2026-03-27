@@ -10,6 +10,7 @@ export default function SalaryCap() {
   const [isMobile, setIsMobile] = useState(false);
   const [leagueId, setLeagueId] = useState(null);
   const [leagueSeason, setLeagueSeason] = useState(null);
+  const [contractYearOverride, setContractYearOverride] = useState(null);
   const [teamAvatars, setTeamAvatars] = useState({});
   const [contracts, setContracts] = useState([]);
   const [modalInfo, setModalInfo] = useState(null);
@@ -21,6 +22,34 @@ export default function SalaryCap() {
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchContractSettings() {
+      try {
+        const response = await fetch('/api/contract-management/settings', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Failed to fetch contract settings');
+
+        const data = await response.json();
+        const overrideYear = Number.parseInt(data?.settings?.contractYearOverride, 10);
+
+        if (isMounted) {
+          setContractYearOverride(Number.isFinite(overrideYear) ? overrideYear : null);
+        }
+      } catch {
+        if (isMounted) {
+          setContractYearOverride(null);
+        }
+      }
+    }
+
+    fetchContractSettings();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Auto-detect league ID (copied from home page)
@@ -261,7 +290,7 @@ export default function SalaryCap() {
   };
 
   const getCapYearLabel = (yearKey) => {
-    const baseYear = leagueSeason || new Date().getFullYear();
+    const baseYear = contractYearOverride || leagueSeason || new Date().getFullYear();
     const yearOffsetMap = {
       curYear: 0,
       year2: 1,

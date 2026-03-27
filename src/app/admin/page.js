@@ -3,6 +3,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import ContractAuditModal from './components/ContractAuditModal';
 
 // Use the same name matching logic as PlayerProfileCard (Player Contracts page)
 function getImageFilename(playerName) {
@@ -40,6 +41,10 @@ export default function AdminPage() {
   const [progressKey, setProgressKey] = useState(null);
   const [progressPollId, setProgressPollId] = useState(null);
   const [rounds, setRounds] = useState(7);
+  const [isContractAuditOpen, setIsContractAuditOpen] = useState(false);
+  const [contractAuditLoading, setContractAuditLoading] = useState(false);
+  const [contractAuditError, setContractAuditError] = useState('');
+  const [contractAuditData, setContractAuditData] = useState(null);
   // No external URL needed anymore; we scrape internally
 
   useEffect(() => {
@@ -116,6 +121,31 @@ export default function AdminPage() {
       }
       return { key, direction: "asc" };
     });
+  }
+
+  async function loadContractAudit(forceRefresh = false) {
+    if (contractAuditLoading) return;
+    if (contractAuditData && !forceRefresh) {
+      setIsContractAuditOpen(true);
+      return;
+    }
+
+    setIsContractAuditOpen(true);
+    setContractAuditLoading(true);
+    setContractAuditError('');
+
+    try {
+      const response = await fetch('/api/admin/contract-audit', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to load contract audit');
+      }
+      setContractAuditData(data);
+    } catch (error) {
+      setContractAuditError(error.message || 'Failed to load contract audit');
+    } finally {
+      setContractAuditLoading(false);
+    }
   }
 
   async function handleApproveAndRun() {
@@ -518,6 +548,31 @@ export default function AdminPage() {
             <p className="text-white/70">Configure league settings (Coming Soon)</p>
           </div>
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
+            <h2 className="text-xl font-bold mb-2">Contract Audit</h2>
+            <p className="text-white/70 mb-4">
+              Find rostered players who do not have an active contract with their current owning team.
+            </p>
+            <button
+              type="button"
+              onClick={() => loadContractAudit(false)}
+              disabled={contractAuditLoading}
+              className={`px-4 py-2 rounded-lg ${contractAuditLoading ? 'bg-white/20' : 'bg-[#FF4B1F] hover:bg-[#FF4B1F]/80'} text-white`}
+            >
+              {contractAuditLoading && !contractAuditData ? 'Loading…' : 'Open Contract Audit'}
+            </button>
+            {contractAuditData?.issueCount > 0 && (
+              <div className="mt-3 text-sm text-yellow-300">
+                Last run found {contractAuditData.issueCount} issue{contractAuditData.issueCount === 1 ? '' : 's'}.
+              </div>
+            )}
+            {contractAuditData?.issueCount === 0 && contractAuditData && (
+              <div className="mt-3 text-sm text-green-300">Last run found no contract issues.</div>
+            )}
+            {contractAuditError && !isContractAuditOpen && (
+              <div className="mt-3 text-sm text-red-400">{contractAuditError}</div>
+            )}
+          </div>
+          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
             <h2 className="text-xl font-bold mb-2">Content Management</h2>
             <p className="text-white/70">Manage website content (Coming Soon)</p>
           </div>
@@ -599,6 +654,15 @@ export default function AdminPage() {
           )}
         </div>
       </div>
+
+      <ContractAuditModal
+        isOpen={isContractAuditOpen}
+        onClose={() => setIsContractAuditOpen(false)}
+        onRefresh={() => loadContractAudit(true)}
+        loading={contractAuditLoading}
+        error={contractAuditError}
+        auditData={contractAuditData}
+      />
     </main>
   );
 }

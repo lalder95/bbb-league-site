@@ -27,6 +27,18 @@ const getBudgetValue = (player, { salaryKtcRatio, positionRatios, usePositionRat
   return Number.isNaN(v) ? 0 : v;
 };
 
+const getLeagueYearLabel = (baseSeason, yearKey) => {
+  const resolvedBaseSeason = Number(baseSeason) || new Date().getFullYear();
+  const offsets = {
+    curYear: 0,
+    year2: 1,
+    year3: 2,
+    year4: 3,
+  };
+
+  return String(resolvedBaseSeason + (offsets[yearKey] || 0));
+};
+
 const formatIncomingMetricValue = (value, type) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return '-';
@@ -106,8 +118,11 @@ const TradeSummary = ({
   salaryKtcRatio,
   positionRatios,
   usePositionRatios,
-  avgKtcByPosition
+  avgKtcByPosition,
+  currentSeason,
+  capDisplaySeason
 }) => {
+  const labelSeason = capDisplaySeason || currentSeason;
   const { data: session } = useSession();
   const [showAssistantGM, setShowAssistantGM] = useState(false);
   const [playerContracts, setPlayerContracts] = useState([]);
@@ -232,21 +247,21 @@ const TradeSummary = ({
       const { curYear, year2, year3, year4 } = imp.after;
       if (curYear.remaining < 0) cur.push({ team, remaining: curYear.remaining });
       const yearsNeg = [];
-      if (year2.remaining < 0) yearsNeg.push({ year: 'Y2', remaining: year2.remaining });
-      if (year3.remaining < 0) yearsNeg.push({ year: 'Y3', remaining: year3.remaining });
-      if (year4.remaining < 0) yearsNeg.push({ year: 'Y4', remaining: year4.remaining });
+      if (year2.remaining < 0) yearsNeg.push({ year: getLeagueYearLabel(labelSeason, 'year2'), remaining: year2.remaining });
+      if (year3.remaining < 0) yearsNeg.push({ year: getLeagueYearLabel(labelSeason, 'year3'), remaining: year3.remaining });
+      if (year4.remaining < 0) yearsNeg.push({ year: getLeagueYearLabel(labelSeason, 'year4'), remaining: year4.remaining });
       if (yearsNeg.length) future.push({ team, years: yearsNeg });
       [
-        { y: 'Y1', v: curYear.remaining },
-        { y: 'Y2', v: year2.remaining },
-        { y: 'Y3', v: year3.remaining },
-        { y: 'Y4', v: year4.remaining },
+        { y: getLeagueYearLabel(labelSeason, 'curYear'), v: curYear.remaining },
+        { y: getLeagueYearLabel(labelSeason, 'year2'), v: year2.remaining },
+        { y: getLeagueYearLabel(labelSeason, 'year3'), v: year3.remaining },
+        { y: getLeagueYearLabel(labelSeason, 'year4'), v: year4.remaining },
       ].forEach(({ y, v }) => {
         if (v >= 0 && v < 50) close.push({ team, year: y, remaining: v });
       });
     });
     return { cur, future, close };
-  }, [allTeams, impactsByTeam]);
+  }, [allTeams, impactsByTeam, labelSeason]);
 
   // Helper for bar color
   const getBarColor = (delta) => {
@@ -274,10 +289,10 @@ const TradeSummary = ({
 
   // Helper to build chart data
   const buildCapChartData = (impact) => [
-    { year: "Year 1", value: impact.after.curYear.remaining },
-    { year: "Year 2", value: impact.after.year2.remaining },
-    { year: "Year 3", value: impact.after.year3.remaining },
-    { year: "Year 4", value: impact.after.year4.remaining },
+    { year: getLeagueYearLabel(labelSeason, 'curYear'), value: impact.after.curYear.remaining },
+    { year: getLeagueYearLabel(labelSeason, 'year2'), value: impact.after.year2.remaining },
+    { year: getLeagueYearLabel(labelSeason, 'year3'), value: impact.after.year3.remaining },
+    { year: getLeagueYearLabel(labelSeason, 'year4'), value: impact.after.year4.remaining },
   ];
 
   // Build received players per team
@@ -384,7 +399,7 @@ const TradeSummary = ({
       const y3 = impact?.after?.year3?.remaining;
       const y4 = impact?.after?.year4?.remaining;
       const capStr = (yr!=null && y2!=null && y3!=null && y4!=null)
-        ? `Cap remaining after trade: Y1 $${Number(yr).toFixed(1)}, Y2 $${Number(y2).toFixed(1)}, Y3 $${Number(y3).toFixed(1)}, Y4 $${Number(y4).toFixed(1)}`
+        ? `Cap remaining after trade: ${getLeagueYearLabel(labelSeason, 'curYear')} $${Number(yr).toFixed(1)}, ${getLeagueYearLabel(labelSeason, 'year2')} $${Number(y2).toFixed(1)}, ${getLeagueYearLabel(labelSeason, 'year3')} $${Number(y3).toFixed(1)}, ${getLeagueYearLabel(labelSeason, 'year4')} $${Number(y4).toFixed(1)}`
         : 'Cap remaining after trade: n/a';
       // Build full roster line from playerContracts
       const rosterPlayers = playerContracts
@@ -719,7 +734,7 @@ const TradeSummary = ({
                   users={[]}
                   myDraftPicksList={[]}
                   leagueWeek={null}
-                  leagueYear={null}
+                  leagueYear={currentSeason || null}
                   activeTab="Assistant GM"
                   autoMessage={autoMessage}
                   autoSendTrigger={autoSendTick}
