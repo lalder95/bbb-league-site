@@ -40,6 +40,11 @@ export default function ContractManagementPage() {
   const [currentSeason, setCurrentSeason] = useState(null);
   const [seasonYear, setSeasonYear] = useState(null);
   const [contractYearOverride, setContractYearOverride] = useState(null);
+  const [contractYearOverrideDraft, setContractYearOverrideDraft] = useState('');
+  const [contractYearSettingsLoading, setContractYearSettingsLoading] = useState(true);
+  const [contractYearSettingsSaving, setContractYearSettingsSaving] = useState(false);
+  const [contractYearSettingsMsg, setContractYearSettingsMsg] = useState('');
+  const [contractYearSettingsError, setContractYearSettingsError] = useState('');
   const [playerTotals, setPlayerTotals] = useState({}); // { playerId: totalPoints }
   const [playerWeeks, setPlayerWeeks] = useState({}); // { playerId: countedWeeks }
   const [playerNonPositiveWeeks, setPlayerNonPositiveWeeks] = useState({}); // { playerId: weeks with <= 0 pts }
@@ -115,20 +120,27 @@ export default function ContractManagementPage() {
     let isMounted = true;
 
     async function fetchContractSettings() {
+      setContractYearSettingsLoading(true);
+      setContractYearSettingsError('');
       try {
         const response = await fetch('/api/contract-management/settings', { cache: 'no-store' });
         if (!response.ok) throw new Error('Failed to fetch contract settings');
 
         const data = await response.json();
-        const overrideYear = Number.parseInt(data?.settings?.contractYearOverride, 10);
+        const overrideYear = parseSeasonYear(data?.settings?.contractYearOverride);
 
         if (isMounted) {
-          setContractYearOverride(Number.isFinite(overrideYear) ? overrideYear : null);
+          setContractYearOverride(overrideYear);
+          setContractYearOverrideDraft(overrideYear !== null ? String(overrideYear) : '');
         }
-      } catch {
+      } catch (error) {
         if (isMounted) {
           setContractYearOverride(null);
+          setContractYearOverrideDraft('');
+          setContractYearSettingsError(error.message || 'Failed to fetch contract settings');
         }
+      } finally {
+        if (isMounted) setContractYearSettingsLoading(false);
       }
     }
 
@@ -240,11 +252,7 @@ export default function ContractManagementPage() {
     return d >= start && d <= end;
   }
 
-  const curYear = Number.isFinite(parseInt(contractYearOverride, 10))
-    ? parseInt(contractYearOverride, 10)
-    : Number.isFinite(parseInt(seasonYear, 10))
-      ? parseInt(seasonYear, 10)
-      : new Date().getFullYear();
+  const curYear = parseSeasonYear(contractYearOverride) ?? parseSeasonYear(seasonYear) ?? new Date().getFullYear();
   const CAP = 300;
 
   // Window actives for header badges (respect Admin override where applicable)
@@ -328,6 +336,30 @@ export default function ContractManagementPage() {
     }
   }
 
+  async function saveContractYearOverride(nextOverride) {
+    setContractYearSettingsSaving(true);
+    setContractYearSettingsMsg('');
+    setContractYearSettingsError('');
+    try {
+      const res = await fetch('/api/admin/contract-management/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractYearOverride: nextOverride }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save contract year override');
+
+      const savedOverride = parseSeasonYear(data?.settings?.contractYearOverride);
+      setContractYearOverride(savedOverride);
+      setContractYearOverrideDraft(savedOverride !== null ? String(savedOverride) : '');
+      setContractYearSettingsMsg(savedOverride !== null ? 'Shared contract year override saved.' : 'Shared contract year override cleared.');
+    } catch (error) {
+      setContractYearSettingsError(error.message || 'Failed to save contract year override');
+    } finally {
+      setContractYearSettingsSaving(false);
+    }
+  }
+
   useEffect(() => {
     if (status !== 'authenticated') return;
     if (!teamNameForUI) return;
@@ -373,7 +405,7 @@ export default function ContractManagementPage() {
     const statusOk = String(p.status) === 'Active';
     const typeOk = String(p.contractType).toLowerCase() === 'base';
     const rfaOk = String(p.rfaEligible).toLowerCase() !== 'true';
-    const finalYearOk = String(p.contractFinalYear) === String(curYear);
+    const finalYearOk = parseSeasonYear(p.contractFinalYear) === effectiveContractYear;
     const noFutureOk = !playerIdsWithFuture.has(p.playerId);
     const notRecentlyChangedOk = !recentPlayerChangeIds.has(String(p.playerId).trim());
     return [
@@ -432,7 +464,7 @@ export default function ContractManagementPage() {
       p.status === 'Active' &&
       String(p.contractType).toLowerCase() === 'base' &&
       String(p.rfaEligible).toLowerCase() !== 'true' &&
-      String(p.contractFinalYear) === String(curYear) &&
+      parseSeasonYear(p.contractFinalYear) === effectiveContractYear &&
       !playerIdsWithFuture.has(p.playerId)
   );
 
@@ -854,6 +886,83 @@ export default function ContractManagementPage() {
               <div className="mt-2 text-xs text-white/60">
                 When Admin Mode is enabled, you can select any team and finalize extensions on their behalf.
               </div>
+
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                {!isAdminMode && (
+                  <div className="mb-3 text-xs text-yellow-300">
+                    Enable Admin Mode to change the shared contract year.
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-white font-semibold">Shared Contract Year</div>
+                    <div className="text-xs text-white/60">Defaults to the detected BBB league year. A saved override applies to all users.</div>
+                  </div>
+                  <div className="text-xs text-white/70">
+                    Effective Year: <span className="text-[#1FDDFF] font-semibold">{curYear}</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-white/50">Detected League Year</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{parseSeasonYear(seasonYear) ?? 'Unknown'}</div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-white/50">Saved Override</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{parseSeasonYear(contractYearOverride) ?? 'Default'}</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label className="block text-white/70 text-xs mb-1">Override year</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="2020"
+                      className="w-full rounded px-3 py-2 bg-white text-[#0B1722] focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]"
+                      placeholder={parseSeasonYear(seasonYear) ? String(parseSeasonYear(seasonYear)) : 'Enter year'}
+                      value={contractYearOverrideDraft}
+                      onChange={e => setContractYearOverrideDraft(e.target.value)}
+                      disabled={!isAdminMode || contractYearSettingsLoading || contractYearSettingsSaving}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-[#FF4B1F] text-white rounded font-semibold hover:bg-orange-600 disabled:opacity-50"
+                      disabled={
+                        !isAdminMode ||
+                        contractYearSettingsLoading ||
+                        contractYearSettingsSaving ||
+                        !Number.isFinite(parseInt(contractYearOverrideDraft, 10))
+                      }
+                      onClick={() => saveContractYearOverride(parseInt(contractYearOverrideDraft, 10))}
+                    >
+                      {contractYearSettingsSaving ? 'Saving…' : 'Save Override'}
+                    </button>
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-white/10 text-white rounded font-semibold hover:bg-white/20 disabled:opacity-50"
+                      disabled={
+                        !isAdminMode ||
+                        contractYearSettingsLoading ||
+                        contractYearSettingsSaving ||
+                        parseSeasonYear(contractYearOverride) === null
+                      }
+                      onClick={() => saveContractYearOverride(null)}
+                    >
+                      Use Default
+                    </button>
+                  </div>
+                </div>
+
+                {contractYearSettingsLoading && <div className="mt-2 text-xs text-white/60">Loading shared contract year setting…</div>}
+                {contractYearSettingsMsg && <div className="mt-2 text-sm text-green-300">{contractYearSettingsMsg}</div>}
+                {contractYearSettingsError && <div className="mt-2 text-sm text-red-300">{contractYearSettingsError}</div>}
+              </div>
             </div>
           )}
         </div>
@@ -1105,14 +1214,7 @@ export default function ContractManagementPage() {
 
                                     const refreshRes = await fetch('/api/admin/contract_changes');
                                     const refreshData = await refreshRes.json();
-                                    if (Array.isArray(refreshData)) {
-                                      const oneYearAgo = new Date();
-                                      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                      const recent = refreshData.filter(
-                                        c => c.change_type === 'extension' && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
-                                      );
-                                      setRecentContractChanges(recent);
-                                    }
+                                    setRecentContractChanges(filterTrackedContractChanges(refreshData));
 
                                     setExtensionChoices(prev => {
                                       const updated = { ...prev };
@@ -1240,14 +1342,7 @@ export default function ContractManagementPage() {
 
                           const refreshRes = await fetch('/api/admin/contract_changes');
                           const refreshData = await refreshRes.json();
-                          if (Array.isArray(refreshData)) {
-                            const oneYearAgo = new Date();
-                            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                            const recent = refreshData.filter(
-                              c => c.change_type === 'extension' && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
-                            );
-                            setRecentContractChanges(recent);
-                          }
+                          setRecentContractChanges(filterTrackedContractChanges(refreshData));
 
                           setExtensionChoices(prev => {
                             const updated = { ...prev };
@@ -1524,14 +1619,7 @@ export default function ContractManagementPage() {
 
                                     const refreshRes = await fetch('/api/admin/contract_changes');
                                     const refreshData = await refreshRes.json();
-                                    if (Array.isArray(refreshData)) {
-                                      const oneYearAgo = new Date();
-                                      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                      const recent = refreshData.filter(
-                                        c => (c.change_type === 'extension' || c.change_type === 'franchise_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
-                                      );
-                                      setRecentContractChanges(recent);
-                                    }
+                                    setRecentContractChanges(filterTrackedContractChanges(refreshData));
 
                                     setFranchiseTagChoices(prev => {
                                       const updated = { ...prev };
@@ -1630,14 +1718,7 @@ export default function ContractManagementPage() {
 
                               const refreshRes = await fetch('/api/admin/contract_changes');
                               const refreshData = await refreshRes.json();
-                              if (Array.isArray(refreshData)) {
-                                const oneYearAgo = new Date();
-                                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                const recent = refreshData.filter(
-                                  c => (c.change_type === 'extension' || c.change_type === 'franchise_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
-                                );
-                                setRecentContractChanges(recent);
-                              }
+                              setRecentContractChanges(filterTrackedContractChanges(refreshData));
 
                               setFranchiseTagChoices(prev => {
                                 const updated = { ...prev };
@@ -1813,14 +1894,7 @@ export default function ContractManagementPage() {
 
                                     const refreshRes = await fetch('/api/admin/contract_changes');
                                     const refreshData = await refreshRes.json();
-                                    if (Array.isArray(refreshData)) {
-                                      const oneYearAgo = new Date();
-                                      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                      const recent = refreshData.filter(
-                                        c => (c.change_type === 'extension' || c.change_type === 'franchise_tag' || c.change_type === 'rfa_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
-                                      );
-                                      setRecentContractChanges(recent);
-                                    }
+                                    setRecentContractChanges(filterTrackedContractChanges(refreshData));
 
                                     setRfaTagChoices(prev => {
                                       const updated = { ...prev };
@@ -1916,14 +1990,7 @@ export default function ContractManagementPage() {
 
                               const refreshRes = await fetch('/api/admin/contract_changes');
                               const refreshData = await refreshRes.json();
-                              if (Array.isArray(refreshData)) {
-                                const oneYearAgo = new Date();
-                                oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                                const recent = refreshData.filter(
-                                  c => (c.change_type === 'extension' || c.change_type === 'franchise_tag' || c.change_type === 'rfa_tag') && c.playerId && c.timestamp && new Date(c.timestamp) > oneYearAgo
-                                );
-                                setRecentContractChanges(recent);
-                              }
+                              setRecentContractChanges(filterTrackedContractChanges(refreshData));
 
                               setRfaTagChoices(prev => {
                                 const updated = { ...prev };

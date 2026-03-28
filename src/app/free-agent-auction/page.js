@@ -337,7 +337,7 @@ export default function FreeAgentAuctionPage() {
     const currentResult = latestDraft.results.find(r => r.playerId === selectedPlayer.playerId);
     const currentHighScore = currentResult ? Number(currentResult.contractPoints) : 0;
 
-    if (contractPoints >= currentHighScore + 5 && !showConfirm) {
+    if (!draft?.blind && contractPoints >= currentHighScore + 5 && !showConfirm) {
       setShowConfirm(true);
       return;
     }
@@ -1939,10 +1939,12 @@ export default function FreeAgentAuctionPage() {
                             </tbody>
                           </table>
                         </div>
-                        <div>
-                          <strong>Current High Bid:</strong> ${currentHighSalary} / {currentHighYears}y<br />
-                          <strong>Current Contract Score:</strong> {currentHighScore}
-                        </div>
+                        {!draft?.blind && (
+                          <div>
+                            <strong>Current High Bid:</strong> ${currentHighSalary} / {currentHighYears}y<br />
+                            <strong>Current Contract Score:</strong> {currentHighScore}
+                          </div>
+                        )}
                       </>
                     );
                   })()
@@ -1975,7 +1977,7 @@ export default function FreeAgentAuctionPage() {
                     {error}
                   </div>
                 )}
-                {showConfirm && (
+                {!draft?.blind && showConfirm && (
                   <div className="mt-2 px-3 py-2 bg-yellow-900/80 text-yellow-200 rounded border border-yellow-700">
                     Your bid is {calculateContractScore(bidSalary, bidYears) - currentHighScore} above the current high contract score. Are you sure?
                     <div className="flex gap-2 mt-2">
