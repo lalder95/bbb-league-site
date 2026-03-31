@@ -1132,7 +1132,7 @@ export default function TradeHistoryPage() {
           avgKtcByPosition={avgKtcByPosition}
           currentSeason={Number(selectedSummaryTrade.season) || season || currentSeason}
           capDisplaySeason={Number(selectedSummaryTrade.season) || season || currentSeason}
-          hideCapAnalysis={true}
+          hideCapAnalysis={Number(selectedSummaryTrade.season) !== Number(currentSeason)}
         />
       )}
     </main>
