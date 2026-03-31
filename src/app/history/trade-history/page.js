@@ -2,12 +2,180 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import PlayerProfileCard from '@/app/my-team/components/PlayerProfileCard';
+import TradeSummary from '@/app/trade/TradeSummary';
+import { createDraftPickAsset, DEFAULT_FUTURE_PICK_BUCKET, getAssetKey, isDraftPickAsset } from '@/utils/draftPickTradeUtils';
 
 // Trade History Page
 // Fetches per-season trade data via our API route and allows filtering by season and teams involved.
 // Players are rendered with existing PlayerProfileCard (lightweight mode) to show contract + basic stats.
 
 const START_SEASON = 2024; // first BBB season baseline
+
+const DEFAULT_POSITION_FILTER = 'ALL';
+const DEFAULT_SORT_OPTION = 'name-asc';
+
+const isTruthyFlag = (value) => String(value).toLowerCase() === 'true';
+
+const normalizeTeamName = (value) => String(value || '').trim().toLowerCase();
+
+const buildPlayerAssetsFromContracts = (parsedContracts) => {
+  const groupedContracts = parsedContracts.reduce((acc, contract) => {
+    if (!(contract.isActive || contract.status === 'Future')) return acc;
+
+    const key = `${contract.id}-${contract.team}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(contract);
+    return acc;
+  }, {});
+
+  return Object.values(groupedContracts)
+    .map((contractGroup) => {
+      const primaryContract = contractGroup.find((contract) => contract.isActive) || contractGroup[0];
+      const uniqueContractTypes = [...new Set(contractGroup.map((contract) => contract.contractType).filter(Boolean))];
+      const maxFinalYear = contractGroup.reduce((maxYear, contract) => {
+        const contractYear = Number(contract.contractFinalYear);
+        if (!Number.isFinite(contractYear)) return maxYear;
+        return Math.max(maxYear, contractYear);
+      }, Number.NEGATIVE_INFINITY);
+
+      return {
+        ...primaryContract,
+        uniqueKey: `player-${primaryContract.id}-${primaryContract.team}`,
+        contractRowKeys: contractGroup.map((contract) => contract.uniqueKey),
+        contractType: uniqueContractTypes.length <= 1 ? (uniqueContractTypes[0] || primaryContract.contractType) : 'Multiple',
+        curYear: contractGroup.reduce((sum, contract) => sum + (Number(contract.curYear) || 0), 0),
+        year2: contractGroup.reduce((sum, contract) => sum + (Number(contract.year2) || 0), 0),
+        year3: contractGroup.reduce((sum, contract) => sum + (Number(contract.year3) || 0), 0),
+        year4: contractGroup.reduce((sum, contract) => sum + (Number(contract.year4) || 0), 0),
+        contractFinalYear: Number.isFinite(maxFinalYear) ? String(maxFinalYear) : (primaryContract.contractFinalYear || '-'),
+        rfaEligible: contractGroup.some((contract) => isTruthyFlag(contract.rfaEligible)),
+        franchiseTagEligible: contractGroup.some((contract) => isTruthyFlag(contract.franchiseTagEligible)),
+      };
+    })
+    .filter((player) => player.isActive)
+    .sort((a, b) => a.playerName.localeCompare(b.playerName));
+};
+
+const resolveKnownTeamName = (teamName, knownTeams) => {
+  const normalizedTeam = normalizeTeamName(teamName);
+  if (!normalizedTeam) return teamName;
+
+  return (
+    knownTeams.find((knownTeam) => normalizeTeamName(knownTeam) === normalizedTeam) ||
+    knownTeams.find((knownTeam) => normalizeTeamName(knownTeam).includes(normalizedTeam) || normalizedTeam.includes(normalizeTeamName(knownTeam))) ||
+    teamName
+  );
+};
+
+const createEmptyCap = () => ({
+  curYear: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+  year2: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+  year3: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+  year4: { total: 300, active: 0, dead: 0, fines: 0, remaining: 300 },
+});
+
+const addAssetCapHit = (cap, asset) => {
+  if (isDraftPickAsset(asset)) return;
+  cap.curYear.active += Number(asset?.curYear) || 0;
+  cap.year2.active += Number(asset?.year2) || 0;
+  cap.year3.active += Number(asset?.year3) || 0;
+  cap.year4.active += Number(asset?.year4) || 0;
+};
+
+const calculateTradeImpactsForParticipants = ({ participants, contractAssets, finesByTeam, knownTeams }) => {
+  const calculateTeamCapSpace = (displayTeamName, excludeAssets = []) => {
+    const resolvedTeamName = resolveKnownTeamName(displayTeamName, knownTeams);
+    const excludedContractKeys = new Set(
+      (excludeAssets || []).flatMap((asset) => (
+        Array.isArray(asset?.contractRowKeys) && asset.contractRowKeys.length
+          ? asset.contractRowKeys
+          : [getAssetKey(asset)]
+      ))
+    );
+
+    const teamContracts = contractAssets.filter(
+      (contract) => contract.team === resolvedTeamName && !excludedContractKeys.has(getAssetKey(contract))
+    );
+
+    const cap = createEmptyCap();
+    teamContracts.forEach((contract) => {
+      cap.curYear.active += Number(contract.curYear) || 0;
+      cap.curYear.dead += Number(contract.deadCurYear) || 0;
+      cap.year2.active += Number(contract.year2) || 0;
+      cap.year2.dead += Number(contract.deadYear2) || 0;
+      cap.year3.active += Number(contract.year3) || 0;
+      cap.year3.dead += Number(contract.deadYear3) || 0;
+      cap.year4.active += Number(contract.year4) || 0;
+      cap.year4.dead += Number(contract.deadYear4) || 0;
+    });
+
+    const teamFines = finesByTeam[resolvedTeamName] || finesByTeam[displayTeamName] || { curYear: 0, year2: 0, year3: 0, year4: 0 };
+    cap.curYear.fines = Number(teamFines.curYear) || 0;
+    cap.year2.fines = Number(teamFines.year2) || 0;
+    cap.year3.fines = Number(teamFines.year3) || 0;
+    cap.year4.fines = Number(teamFines.year4) || 0;
+
+    ['curYear', 'year2', 'year3', 'year4'].forEach((year) => {
+      cap[year].remaining = cap[year].total - cap[year].active - cap[year].dead - cap[year].fines;
+    });
+
+    return cap;
+  };
+
+  const calculateTradeImpact = (teamName, incomingAssets, outgoingAssets) => {
+    const before = calculateTeamCapSpace(teamName);
+    const afterCap = calculateTeamCapSpace(teamName, outgoingAssets);
+    incomingAssets.forEach((asset) => addAssetCapHit(afterCap, asset));
+
+    ['curYear', 'year2', 'year3', 'year4'].forEach((year) => {
+      afterCap[year].remaining = afterCap[year].total - afterCap[year].active - afterCap[year].dead - afterCap[year].fines;
+    });
+
+    return {
+      before: {
+        curYear: before.curYear,
+        year2: before.year2,
+        year3: before.year3,
+        year4: before.year4,
+      },
+      after: {
+        curYear: afterCap.curYear,
+        year2: afterCap.year2,
+        year3: afterCap.year3,
+        year4: afterCap.year4,
+      },
+    };
+  };
+
+  const teamToIncoming = {};
+  const teamToOutgoing = {};
+  const teams = participants.map((participant) => participant.team).filter(Boolean);
+  const uniqueTeams = [...new Set(teams)];
+  const isTwoTeamTrade = uniqueTeams.length === 2;
+
+  participants.forEach((participant) => {
+    if (!participant.team) return;
+    teamToIncoming[participant.team] = [];
+    teamToOutgoing[participant.team] = participant.selectedPlayers.map((asset) => ({ ...asset }));
+  });
+
+  participants.forEach((participant) => {
+    participant.selectedPlayers.forEach((asset) => {
+      let destination = asset.toTeam;
+      if (!destination && isTwoTeamTrade && participant.team) {
+        destination = uniqueTeams.find((team) => team !== participant.team);
+      }
+      if (destination && teamToIncoming[destination]) {
+        teamToIncoming[destination].push({ ...asset });
+      }
+    });
+  });
+
+  return teams.reduce((acc, teamName) => {
+    acc[teamName] = calculateTradeImpact(teamName, teamToIncoming[teamName] || [], teamToOutgoing[teamName] || []);
+    return acc;
+  }, {});
+};
 
 export default function TradeHistoryPage() {
   const { data: session } = useSession();
@@ -27,6 +195,12 @@ export default function TradeHistoryPage() {
   const loadingPlayersRef = useRef(false);
   const [contractsMap, setContractsMap] = useState(null); // sleeperId -> { salary, ktcValue }
   const loadingContractsRef = useRef(false);
+  const [contractAssets, setContractAssets] = useState([]);
+  const [finesByTeam, setFinesByTeam] = useState({});
+  const [salaryKtcRatio, setSalaryKtcRatio] = useState(0);
+  const [positionRatios, setPositionRatios] = useState({});
+  const [avgKtcByPosition, setAvgKtcByPosition] = useState({});
+  const [summaryTradeId, setSummaryTradeId] = useState(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [openDebug, setOpenDebug] = useState(new Set());
   const [openPickDebug, setOpenPickDebug] = useState(new Set());
@@ -112,37 +286,153 @@ export default function TradeHistoryPage() {
     })();
   }, [playersMap]);
 
-  // Load BBB_Contracts.csv once and build a map of player_id -> { salary, ktcValue }
+  // Load contract/fine data once for totals and Trade Summary modal support.
   useEffect(() => {
     if (contractsMap || loadingContractsRef.current) return;
     loadingContractsRef.current = true;
     (async () => {
       try {
-        const resp = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
-        const text = await resp.text();
+        const [contractsResp, finesResp] = await Promise.all([
+          fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv'),
+          fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv'),
+        ]);
+
+        const [text, finesText] = await Promise.all([
+          contractsResp.text(),
+          finesResp.text(),
+        ]);
+
         const rows = text.split('\n').filter(Boolean);
-        if (rows.length < 2) { setContractsMap(new Map()); return; }
+        if (rows.length < 2) {
+          setContractsMap(new Map());
+          setContractAssets([]);
+          setFinesByTeam({});
+          return;
+        }
+
         const header = rows[0].split(',').map(h => h.trim());
-        const idx = (name, def = -1) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
+        const idx = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
         const idIdx = idx('Player ID');
-        const relY1Idx = idx('Relative Year 1 Salary');
-        const ktcIdx = idx('Current KTC Value');
+        const nameIdx = idx('Player Name');
+        const contractTypeIdx = idx('Contract Type');
         const statusIdx = idx('Status');
+        const teamIdx = idx('TeamDisplayName');
+        const relY1Idx = idx('Relative Year 1 Salary');
+        const relY2Idx = idx('Relative Year 2 Salary');
+        const relY3Idx = idx('Relative Year 3 Salary');
+        const relY4Idx = idx('Relative Year 4 Salary');
         const deadY1Idx = idx('Relative Year 1 Dead');
-        const map = new Map();
+        const deadY2Idx = idx('Relative Year 2 Dead');
+        const deadY3Idx = idx('Relative Year 3 Dead');
+        const deadY4Idx = idx('Relative Year 4 Dead');
+        const positionIdx = idx('Position');
+        const nflTeamIdx = idx('NFL Team');
+        const finalYearIdx = idx('Contract Final Year');
+        const ageIdx = idx('Age');
+        const ktcIdx = idx('Current KTC Value');
+        const rfaIdx = idx('Will Be RFA?');
+        const franchiseIdx = idx('Franchise Tag Eligible?');
+
+        const parsedContracts = [];
         for (let i = 1; i < rows.length; i++) {
           const values = rows[i].split(',');
           if (values.length < header.length) continue;
           const pid = String(values[idIdx] ?? '').trim();
           if (!pid) continue;
           const status = (values[statusIdx] ?? '').trim();
-          const salaryVal = status === 'Active' || status === 'Future' ? parseFloat(values[relY1Idx] || '0') : parseFloat(values[deadY1Idx] || '0');
-          const ktcVal = values[ktcIdx] ? parseInt(values[ktcIdx], 10) : null;
-          map.set(pid, { salary: isFinite(salaryVal) ? salaryVal : 0, ktcValue: isFinite(ktcVal) ? ktcVal : null });
+
+          parsedContracts.push({
+            uniqueKey: `${pid}-${values[finalYearIdx] || ''}-${values[contractTypeIdx] || ''}-${status}-${i}`,
+            id: pid,
+            playerName: values[nameIdx] || `Player ${pid}`,
+            contractType: values[contractTypeIdx] || '',
+            team: values[teamIdx] || '',
+            status,
+            isActive: status === 'Active',
+            curYear: parseFloat(values[relY1Idx]) || 0,
+            year2: parseFloat(values[relY2Idx]) || 0,
+            year3: parseFloat(values[relY3Idx]) || 0,
+            year4: parseFloat(values[relY4Idx]) || 0,
+            deadCurYear: parseFloat(values[deadY1Idx]) || 0,
+            deadYear2: parseFloat(values[deadY2Idx]) || 0,
+            deadYear3: parseFloat(values[deadY3Idx]) || 0,
+            deadYear4: parseFloat(values[deadY4Idx]) || 0,
+            position: values[positionIdx] || '',
+            nflTeam: values[nflTeamIdx] || '',
+            contractFinalYear: values[finalYearIdx] || '-',
+            age: values[ageIdx] || '',
+            ktcValue: values[ktcIdx] ? parseInt(values[ktcIdx], 10) : null,
+            rfaEligible: values[rfaIdx] || false,
+            franchiseTagEligible: values[franchiseIdx] || false,
+          });
         }
-        setContractsMap(map);
+
+        const aggregatedAssets = buildPlayerAssetsFromContracts(parsedContracts);
+        const assetByPlayerId = new Map();
+        aggregatedAssets.forEach((asset) => {
+          if (!assetByPlayerId.has(String(asset.id))) {
+            assetByPlayerId.set(String(asset.id), asset);
+          }
+        });
+
+        const displayMap = new Map();
+        assetByPlayerId.forEach((asset, playerId) => {
+          displayMap.set(playerId, {
+            salary: Number(asset.curYear) || 0,
+            ktcValue: Number(asset.ktcValue) || null,
+          });
+        });
+
+        const activeContracts = parsedContracts.filter(c => c.isActive || c.status === 'Active');
+        const totalActiveSalary = activeContracts.reduce((sum, c) => sum + (parseFloat(c.curYear) || 0), 0);
+        const totalActiveKtc = activeContracts.reduce((sum, c) => sum + (parseFloat(c.ktcValue) || 0), 0);
+        const ratio = totalActiveSalary > 0 ? (totalActiveKtc / totalActiveSalary) : 0;
+        const byPosition = activeContracts.reduce((acc, contract) => {
+          const pos = (contract.position || 'UNKNOWN').toUpperCase();
+          if (!acc[pos]) acc[pos] = { salary: 0, ktc: 0, count: 0 };
+          acc[pos].salary += parseFloat(contract.curYear) || 0;
+          acc[pos].ktc += parseFloat(contract.ktcValue) || 0;
+          acc[pos].count += 1;
+          return acc;
+        }, {});
+
+        const nextPositionRatios = Object.keys(byPosition).reduce((acc, pos) => {
+          acc[pos] = byPosition[pos].salary > 0 ? (byPosition[pos].ktc / byPosition[pos].salary) : 0;
+          return acc;
+        }, {});
+
+        const nextAvgKtcByPosition = Object.keys(byPosition).reduce((acc, pos) => {
+          acc[pos] = byPosition[pos].count > 0 ? (byPosition[pos].ktc / byPosition[pos].count) : 0;
+          return acc;
+        }, {});
+
+        const finesRows = finesText.split('\n').filter(Boolean);
+        const nextFines = finesRows.slice(1).reduce((acc, row) => {
+          const [team, year1, year2, year3, year4] = row.split(',');
+          const key = String(team || '').trim();
+          if (!key) return acc;
+          acc[key] = {
+            curYear: parseFloat(year1) || 0,
+            year2: parseFloat(year2) || 0,
+            year3: parseFloat(year3) || 0,
+            year4: parseFloat(year4) || 0,
+          };
+          return acc;
+        }, {});
+
+        setContractsMap(displayMap);
+        setContractAssets(aggregatedAssets);
+        setFinesByTeam(nextFines);
+        setSalaryKtcRatio(ratio);
+        setPositionRatios(nextPositionRatios);
+        setAvgKtcByPosition(nextAvgKtcByPosition);
       } catch {
         setContractsMap(new Map());
+        setContractAssets([]);
+        setFinesByTeam({});
+        setSalaryKtcRatio(0);
+        setPositionRatios({});
+        setAvgKtcByPosition({});
       } finally {
         loadingContractsRef.current = false;
       }
@@ -265,6 +555,110 @@ export default function TradeHistoryPage() {
     return opts;
   }, [currentSeason]);
 
+  const selectedSummaryTrade = useMemo(() => {
+    if (!summaryTradeId) return null;
+    return trades.find((trade) => String(trade.trade_id) === String(summaryTradeId)) || null;
+  }, [summaryTradeId, trades]);
+
+  const tradeSummaryContext = useMemo(() => {
+    if (!selectedSummaryTrade || !contractAssets.length) return null;
+
+    const knownTeams = [...new Set(contractAssets.map((asset) => asset.team).filter(Boolean))];
+    const contractAssetByPlayerId = new Map();
+    contractAssets.forEach((asset) => {
+      if (!contractAssetByPlayerId.has(String(asset.id))) {
+        contractAssetByPlayerId.set(String(asset.id), asset);
+      }
+    });
+
+    const teamNameByRosterId = new Map(
+      selectedSummaryTrade.teams.map((team) => [Number(team.roster_id), team.owner_name || `Roster ${team.roster_id}`])
+    );
+
+    const participants = selectedSummaryTrade.teams.map((teamObj, teamIndex) => {
+      const rosterId = Number(teamObj.roster_id);
+      const fromTeamName = teamObj.owner_name || `Roster ${teamObj.roster_id}`;
+
+      const outgoingPlayers = selectedSummaryTrade.players
+        .filter((player) => Number(player.from_roster_id) === rosterId)
+        .map((player, assetIndex) => {
+          const playerId = String(player.player_id);
+          const baseAsset = contractAssetByPlayerId.get(playerId);
+          const sleeper = playersMap?.get(playerId);
+          const toTeamName = teamNameByRosterId.get(Number(player.to_roster_id)) || 'Unknown';
+
+          return {
+            ...(baseAsset || {}),
+            id: playerId,
+            uniqueKey: `history-player-${selectedSummaryTrade.trade_id}-${playerId}-${rosterId}-${assetIndex}`,
+            playerName: baseAsset?.playerName || sleeper?.playerName || `Player ${playerId}`,
+            position: baseAsset?.position || sleeper?.position || '',
+            team: fromTeamName,
+            nflTeam: baseAsset?.nflTeam || sleeper?.team || '',
+            status: baseAsset?.status || 'Active',
+            contractType: baseAsset?.contractType || 'Unknown',
+            curYear: Number(baseAsset?.curYear) || 0,
+            year2: Number(baseAsset?.year2) || 0,
+            year3: Number(baseAsset?.year3) || 0,
+            year4: Number(baseAsset?.year4) || 0,
+            deadCurYear: Number(baseAsset?.deadCurYear) || 0,
+            deadYear2: Number(baseAsset?.deadYear2) || 0,
+            deadYear3: Number(baseAsset?.deadYear3) || 0,
+            deadYear4: Number(baseAsset?.deadYear4) || 0,
+            contractFinalYear: baseAsset?.contractFinalYear || '-',
+            age: baseAsset?.age || '',
+            ktcValue: baseAsset?.ktcValue ?? null,
+            rfaEligible: baseAsset?.rfaEligible || false,
+            franchiseTagEligible: baseAsset?.franchiseTagEligible || false,
+            toTeam: toTeamName,
+          };
+        });
+
+      const outgoingPicks = selectedSummaryTrade.picks
+        .filter((pick) => Number(pick.from_roster_id ?? pick.previous_owner_id) === rosterId)
+        .map((pick, assetIndex) => {
+          const computedSlot = Number(pick?.match_debug?.computed_slot);
+          const slotKnown = Number.isFinite(computedSlot) && computedSlot > 0;
+          const toTeamName = teamNameByRosterId.get(Number(pick.to_roster_id ?? pick.roster_id)) || pick.to_owner_name || 'Unknown';
+          const pickAsset = createDraftPickAsset({
+            season: String(pick.season),
+            round: Number(pick.round),
+            pickPosition: slotKnown ? computedSlot : 6,
+            originalOwner: pick.slot_owner_name || pick.previous_owner_name || fromTeamName,
+            currentOwner: fromTeamName,
+            bucketOverride: slotKnown ? undefined : DEFAULT_FUTURE_PICK_BUCKET,
+            mappedSlotDebug: slotKnown ? String(computedSlot) : (pick?.match_debug?.reason || 'history fallback'),
+            slotDetermined: slotKnown,
+          });
+
+          return {
+            ...pickAsset,
+            uniqueKey: `history-pick-${selectedSummaryTrade.trade_id}-${rosterId}-${assetIndex}-${pick.season}-${pick.round}`,
+            toTeam: toTeamName,
+          };
+        });
+
+      return {
+        id: teamIndex + 1,
+        team: fromTeamName,
+        searchTerm: '',
+        positionFilter: DEFAULT_POSITION_FILTER,
+        sortOption: DEFAULT_SORT_OPTION,
+        selectedPlayers: [...outgoingPlayers, ...outgoingPicks],
+      };
+    });
+
+    return {
+      participants,
+      impactsByTeam: calculateTradeImpactsForParticipants({
+        participants,
+        contractAssets,
+        finesByTeam,
+        knownTeams,
+      }),
+    };
+  }, [selectedSummaryTrade, contractAssets, finesByTeam, playersMap]);
+
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-[#0B1220] via-[#0A1A2B] to-[#0B1220]">
       {/* Decorative background accents */}
@@ -380,8 +774,15 @@ export default function TradeHistoryPage() {
                         <span className="text-white/30">•</span>
                         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/80 hidden sm:inline-flex">TX #{trade.trade_id}</span>
                       </div>
-                      {isAdmin && (
-                        <div className="hidden sm:flex items-center gap-2 sm:gap-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSummaryTradeId(trade.trade_id)}
+                          disabled={!contractAssets.length}
+                          className={`px-2 py-1 rounded text-xs border transition-colors ${contractAssets.length ? 'bg-white/5 border-white/15 text-white/80 hover:border-white/40 hover:bg-white/10' : 'bg-white/5 border-white/10 text-white/40 cursor-not-allowed'}`}
+                        >Trade Summary</button>
+                        {isAdmin && (
+                          <div className="hidden sm:flex items-center gap-2 sm:gap-3">
                           <div className="text-xs text-white/60">Status: <span className="text-white">{trade.status || 'unknown'}</span></div>
                           <button
                             type="button"
@@ -401,8 +802,9 @@ export default function TradeHistoryPage() {
                             })}
                             className={`px-2 py-1 rounded text-xs border transition-colors ${openPickDebug.has(trade.trade_id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white/5 border-white/15 text-white/80 hover:border-white/40'}`}
                           >{openPickDebug.has(trade.trade_id) ? 'Hide Pick Match' : 'Pick Match Debug'}</button>
-                        </div>
-                      )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {openDebug.has(trade.trade_id) && (
@@ -683,6 +1085,21 @@ export default function TradeHistoryPage() {
             }] : []} expanded={true} />
           </div>
         </div>
+      )}
+
+      {selectedSummaryTrade && tradeSummaryContext && (
+        <TradeSummary
+          participants={tradeSummaryContext.participants}
+          impactsByTeam={tradeSummaryContext.impactsByTeam}
+          onClose={() => setSummaryTradeId(null)}
+          teamAvatars={{}}
+          salaryKtcRatio={salaryKtcRatio}
+          positionRatios={positionRatios}
+          usePositionRatios={true}
+          avgKtcByPosition={avgKtcByPosition}
+          currentSeason={Number(selectedSummaryTrade.season) || season || currentSeason}
+          capDisplaySeason={Number(selectedSummaryTrade.season) || season || currentSeason}
+        />
       )}
     </main>
   );
