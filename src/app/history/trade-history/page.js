@@ -617,9 +617,42 @@ export default function TradeHistoryPage() {
       const outgoingPicks = selectedSummaryTrade.picks
         .filter((pick) => Number(pick.from_roster_id ?? pick.previous_owner_id) === rosterId)
         .map((pick, assetIndex) => {
+          const toTeamName = teamNameByRosterId.get(Number(pick.to_roster_id ?? pick.roster_id)) || pick.to_owner_name || 'Unknown';
+          const draftedPlayerId = String(pick?.drafted_player?.player_id || '').trim();
+
+          if (draftedPlayerId) {
+            const baseAsset = contractAssetByPlayerId.get(draftedPlayerId);
+            const sleeper = playersMap?.get(draftedPlayerId);
+
+            return {
+              ...(baseAsset || {}),
+              id: draftedPlayerId,
+              uniqueKey: `history-drafted-player-${selectedSummaryTrade.trade_id}-${rosterId}-${assetIndex}-${draftedPlayerId}`,
+              playerName: baseAsset?.playerName || pick.drafted_player?.name || sleeper?.playerName || `Player ${draftedPlayerId}`,
+              position: baseAsset?.position || pick.drafted_player?.position || sleeper?.position || '',
+              team: fromTeamName,
+              nflTeam: baseAsset?.nflTeam || pick.drafted_player?.team || sleeper?.team || '',
+              status: baseAsset?.status || 'Active',
+              contractType: baseAsset?.contractType || `Drafted from ${pick.season} Round ${pick.round}`,
+              curYear: Number(baseAsset?.curYear) || Number(contractsMap?.get(draftedPlayerId)?.salary) || 0,
+              year2: Number(baseAsset?.year2) || 0,
+              year3: Number(baseAsset?.year3) || 0,
+              year4: Number(baseAsset?.year4) || 0,
+              deadCurYear: Number(baseAsset?.deadCurYear) || 0,
+              deadYear2: Number(baseAsset?.deadYear2) || 0,
+              deadYear3: Number(baseAsset?.deadYear3) || 0,
+              deadYear4: Number(baseAsset?.deadYear4) || 0,
+              contractFinalYear: baseAsset?.contractFinalYear || '-',
+              age: baseAsset?.age || '',
+              ktcValue: baseAsset?.ktcValue ?? contractsMap?.get(draftedPlayerId)?.ktcValue ?? null,
+              rfaEligible: baseAsset?.rfaEligible || false,
+              franchiseTagEligible: baseAsset?.franchiseTagEligible || false,
+              toTeam: toTeamName,
+            };
+          }
+
           const computedSlot = Number(pick?.match_debug?.computed_slot);
           const slotKnown = Number.isFinite(computedSlot) && computedSlot > 0;
-          const toTeamName = teamNameByRosterId.get(Number(pick.to_roster_id ?? pick.roster_id)) || pick.to_owner_name || 'Unknown';
           const pickAsset = createDraftPickAsset({
             season: String(pick.season),
             round: Number(pick.round),
@@ -657,7 +690,7 @@ export default function TradeHistoryPage() {
         knownTeams,
       }),
     };
-  }, [selectedSummaryTrade, contractAssets, finesByTeam, playersMap]);
+  }, [selectedSummaryTrade, contractAssets, finesByTeam, playersMap, contractsMap]);
 
   return (
     <main className="relative min-h-screen text-white bg-gradient-to-br from-[#0B1220] via-[#0A1A2B] to-[#0B1220]">
@@ -1099,6 +1132,7 @@ export default function TradeHistoryPage() {
           avgKtcByPosition={avgKtcByPosition}
           currentSeason={Number(selectedSummaryTrade.season) || season || currentSeason}
           capDisplaySeason={Number(selectedSummaryTrade.season) || season || currentSeason}
+          hideCapAnalysis={true}
         />
       )}
     </main>

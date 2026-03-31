@@ -120,7 +120,8 @@ const TradeSummary = ({
   usePositionRatios,
   avgKtcByPosition,
   currentSeason,
-  capDisplaySeason
+  capDisplaySeason,
+  hideCapAnalysis = false,
 }) => {
   const labelSeason = capDisplaySeason || currentSeason;
   const { data: session } = useSession();
@@ -228,13 +229,15 @@ const TradeSummary = ({
 
   // --- Custom trade validation for summary banner (aggregate across teams) ---
   const allTeams = participants.map(p => p.team).filter(Boolean);
-  const isInvalid = allTeams.some(t => impactsByTeam?.[t]?.after?.curYear?.remaining < 0);
-  const isWarning = !isInvalid && allTeams.some(t => (
+  const hasCapIssue = allTeams.some(t => impactsByTeam?.[t]?.after?.curYear?.remaining < 0);
+  const hasCapWarning = !hasCapIssue && allTeams.some(t => (
     impactsByTeam?.[t]?.after?.year2?.remaining < 0 ||
     impactsByTeam?.[t]?.after?.year3?.remaining < 0 ||
     impactsByTeam?.[t]?.after?.year4?.remaining < 0 ||
     impactsByTeam?.[t]?.after?.curYear?.remaining < 50
   ));
+  const isInvalid = hideCapAnalysis ? false : hasCapIssue;
+  const isWarning = hideCapAnalysis ? false : hasCapWarning;
 
   // Build detailed, specific cap messages for the banner
   const detailedMessages = useMemo(() => {
@@ -436,63 +439,64 @@ const TradeSummary = ({
           </p>
         </div>
 
-        {/* Trade Status Banner */}
-        <div className={`px-4 py-3 ${
-          isInvalid ? 'bg-red-500/20 border-b border-red-500/50' :
-          isWarning ? 'bg-yellow-500/20 border-b border-yellow-500/50' :
-          'bg-green-500/20 border-b border-green-500/50'
-        }`}>
-          <div className="font-bold flex items-center mb-1">
-            {isInvalid ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Cap issues detected
-              </>
-            ) : isWarning ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                Near cap threshold
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                All teams remain under the cap
-              </>
-            )}
-          </div>
-          {(isInvalid || isWarning) && (
-            <div className="text-sm text-white/80 space-y-1">
-              {detailedMessages.cur.length > 0 && (
-                <div>
-                  Current year over cap: {detailedMessages.cur.map(d => `${d.team} ($${Math.abs(d.remaining).toFixed(1)} over)`).join(', ')}
-                </div>
-              )}
-              {detailedMessages.future.length > 0 && (
-                <div>
-                  Future years over cap: {detailedMessages.future.map(d => `${d.team} (${d.years.map(y => `${y.year} -$${Math.abs(y.remaining).toFixed(1)}`).join(', ')})`).join('; ')}
-                </div>
-              )}
-              {detailedMessages.close.length > 0 && (
-                <div>
-                  Close to cap (&lt;$50 remaining): {(() => {
-                    const byTeam = detailedMessages.close.reduce((acc, c) => {
-                      acc[c.team] = acc[c.team] || [];
-                      acc[c.team].push(c);
-                      return acc;
-                    }, {});
-                    return Object.entries(byTeam).map(([team, arr]) => `${team} (${arr.map(a => `${a.year} $${a.remaining.toFixed(1)}`).join(', ')})`).join('; ');
-                  })()}
-                </div>
+        {!hideCapAnalysis && (
+          <div className={`px-4 py-3 ${
+            isInvalid ? 'bg-red-500/20 border-b border-red-500/50' :
+            isWarning ? 'bg-yellow-500/20 border-b border-yellow-500/50' :
+            'bg-green-500/20 border-b border-green-500/50'
+          }`}>
+            <div className="font-bold flex items-center mb-1">
+              {isInvalid ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Cap issues detected
+                </>
+              ) : isWarning ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Near cap threshold
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  All teams remain under the cap
+                </>
               )}
             </div>
-          )}
-        </div>
+            {(isInvalid || isWarning) && (
+              <div className="text-sm text-white/80 space-y-1">
+                {detailedMessages.cur.length > 0 && (
+                  <div>
+                    Current year over cap: {detailedMessages.cur.map(d => `${d.team} ($${Math.abs(d.remaining).toFixed(1)} over)`).join(', ')}
+                  </div>
+                )}
+                {detailedMessages.future.length > 0 && (
+                  <div>
+                    Future years over cap: {detailedMessages.future.map(d => `${d.team} (${d.years.map(y => `${y.year} -$${Math.abs(y.remaining).toFixed(1)}`).join(', ')})`).join('; ')}
+                  </div>
+                )}
+                {detailedMessages.close.length > 0 && (
+                  <div>
+                    Close to cap (&lt;$50 remaining): {(() => {
+                      const byTeam = detailedMessages.close.reduce((acc, c) => {
+                        acc[c.team] = acc[c.team] || [];
+                        acc[c.team].push(c);
+                        return acc;
+                      }, {});
+                      return Object.entries(byTeam).map(([team, arr]) => `${team} (${arr.map(a => `${a.year} $${a.remaining.toFixed(1)}`).join(', ')})`).join('; ');
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Trade Content */}
         <div className={`p-3 md:p-6`}>
@@ -588,7 +592,7 @@ const TradeSummary = ({
                   </div>
 
                   {/* Cap Space Impact */}
-                  {capImpact && (
+                  {!hideCapAnalysis && capImpact && (
                     <div>
                       <h4 className="font-semibold text-xs md:text-sm border-b border-white/10 pb-1 mb-2">Cap Space After Trade</h4>
                       <ResponsiveContainer width="100%" height={180}>
