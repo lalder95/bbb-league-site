@@ -1748,39 +1748,47 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
         button: 'bg-[#FF4B1F] text-white hover:bg-[#ff6a45] shadow-[0_10px_30px_rgba(255,75,31,0.28)]',
       };
 
+  const curYearIssueCount = tradeValidation?.details?.curYearNegatives?.length || 0;
+  const futureIssueCount = tradeValidation?.details?.futureNegatives?.length || 0;
+  const closeIssueCount = tradeValidation?.details?.closeList?.length || 0;
+
   const tradeBannerHeading = tradeValidation?.unassigned
-    ? 'Finish assigning destinations'
+    ? 'Assign destinations'
     : tradeValidation?.isInvalidCurYear
-    ? 'Trade fails current-year cap rules'
+    ? 'Over current cap'
     : tradeValidation?.isFutureYearOverCap
-    ? 'Trade creates future cap issues'
+    ? 'Future cap warning'
     : tradeValidation?.isClose
-    ? 'Trade is valid, but tight on cap room'
-    : 'Trade looks valid';
+    ? 'Cap is tight'
+    : 'Trade is valid';
 
-  const tradeBannerSubheading = tradeValidation?.unassigned
-    ? 'Every selected asset needs a valid receiving team before the summary can be generated.'
+  const tradeBannerSummary = tradeValidation?.unassigned
+    ? 'Every asset needs a destination.'
     : tradeValidation?.isInvalidCurYear
-    ? 'One or more teams are immediately over the cap after this trade.'
+    ? `${curYearIssueCount} team${curYearIssueCount === 1 ? '' : 's'} over the current cap.`
     : tradeValidation?.isFutureYearOverCap
-    ? 'Current-year cap may work, but future cap years still need attention.'
+    ? `${futureIssueCount} team${futureIssueCount === 1 ? '' : 's'} with future cap issues.`
     : tradeValidation?.isClose
-    ? 'No team is over the cap right now, but some teams are close to the threshold.'
-    : 'All involved teams stay under the cap across the evaluated contract years.';
+    ? `${closeIssueCount} cap check${closeIssueCount === 1 ? '' : 's'} running close.`
+    : 'All teams stay under the cap.';
 
-  const tradeBannerItems = tradeValidation ? [
-    ...(tradeValidation.details?.curYearNegatives?.map((d) => ({
-      label: 'Current year over cap',
-      value: `${d.team} • $${Math.abs(d.remaining).toFixed(1)} over`,
-    })) || []),
-    ...(tradeValidation.details?.futureNegatives?.map((d) => ({
-      label: 'Future cap issue',
-      value: `${d.team} • ${d.years.map(y => `${y.year} -$${Math.abs(y.remaining).toFixed(1)}`).join(', ')}`,
-    })) || []),
-    ...(tradeValidation.details?.closeList?.map((d) => ({
-      label: 'Close to cap',
-      value: `${d.team} • ${d.year} $${d.remaining.toFixed(1)} left`,
-    })) || []),
+  const tradeBannerBadges = tradeValidation ? [
+    ...(curYearIssueCount ? [{
+      label: 'Current',
+      value: `${curYearIssueCount} over`,
+    }] : []),
+    ...(futureIssueCount ? [{
+      label: 'Future',
+      value: `${futureIssueCount} issue${futureIssueCount === 1 ? '' : 's'}`,
+    }] : []),
+    ...(closeIssueCount ? [{
+      label: 'Close',
+      value: `${closeIssueCount} flagged`,
+    }] : []),
+    ...(!tradeValidation.unassigned && !curYearIssueCount && !futureIssueCount && !closeIssueCount ? [{
+      label: 'Status',
+      value: 'Clear',
+    }] : []),
   ] : [];
 
   const canShareTrade = Boolean(leagueId)
@@ -1829,26 +1837,56 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
             />
             <h1 className="text-3xl font-bold text-[#FF4B1F]">Trade Calculator</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowImport(true)}
-              className="px-4 py-2 bg-white/10 border border-white/20 rounded text-white hover:bg-white/20"
-            >
-              Import Sleeper Screenshot
-            </button>
-            <button
-              onClick={handleShareTrade}
-              disabled={!canShareTrade}
-              className={`px-4 py-2 rounded border transition-colors ${canShareTrade ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-white/5 border-white/10 text-white/35 cursor-not-allowed'}`}
-            >
-              Copy Share Link
-            </button>
-            <button
-              onClick={handleReset}
-              className="px-4 py-2 bg-white/10 border border-white/20 rounded text-white hover:bg-[#FF4B1F]/80 hover:text-white transition-colors"
-            >
-              Reset Trade
-            </button>
+          <div className="flex items-start gap-5">
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20"
+                title="Import Sleeper Screenshot"
+                aria-label="Import Sleeper Screenshot"
+                type="button"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3v10" />
+                  <path d="m8 9 4 4 4-4" />
+                  <path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <span className="text-xs font-medium text-white/80">Import</span>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleShareTrade}
+                disabled={!canShareTrade}
+                className={`flex h-12 w-12 items-center justify-center rounded-full border transition-colors ${canShareTrade ? 'border-white/20 bg-white/10 text-white hover:bg-white/20' : 'cursor-not-allowed border-white/10 bg-white/5 text-white/35'}`}
+                title="Copy Share Link"
+                aria-label="Copy Share Link"
+                type="button"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.9 5.02" />
+                  <path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 1 0 7.07 7.07l1.19-1.19" />
+                </svg>
+              </button>
+              <span className={`text-xs font-medium ${canShareTrade ? 'text-white/80' : 'text-white/35'}`}>Share</span>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleReset}
+                className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-[#FF4B1F]/80 hover:text-white"
+                title="Reset Trade"
+                aria-label="Reset Trade"
+                type="button"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.71" />
+                  <path d="M3 4v5h5" />
+                </svg>
+              </button>
+              <span className="text-xs font-medium text-white/80">Reset</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1970,14 +2008,14 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
                     Trade Status
                   </div>
                   <h3 className={`mt-3 text-xl font-bold ${tradeBannerTone.title}`}>{tradeBannerHeading}</h3>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/75">{tradeBannerSubheading}</p>
+                  <p className="mt-1 text-sm text-white/75">{tradeBannerSummary}</p>
 
-                  {!tradeValidation.unassigned && tradeBannerItems.length > 0 && (
+                  {tradeBannerBadges.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-2">
-                      {tradeBannerItems.map((item, index) => (
-                        <div key={`${item.label}-${item.value}-${index}`} className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white/85">
-                          <span className="font-semibold text-white">{item.label}:</span>{' '}
-                          <span className={tradeBannerTone.accent}>{item.value}</span>
+                      {tradeBannerBadges.map((item, index) => (
+                        <div key={`${item.label}-${item.value}-${index}`} className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-xs text-white/85">
+                          <span className="font-semibold text-white/70">{item.label}</span>
+                          <span className={`ml-2 font-semibold ${tradeBannerTone.accent}`}>{item.value}</span>
                         </div>
                       ))}
                     </div>
