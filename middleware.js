@@ -7,7 +7,7 @@ export async function middleware(request) {
   const path = request.nextUrl.pathname;
   
   // Public paths that don't require authentication
-  const isPublicPath = path === '/login';
+  const isPublicPath = path === '/login' || path === '/trade/share' || path.startsWith('/trade/share/');
   
   // Admin paths
   const isAdminPath = path === '/admin' || path.startsWith('/admin/');

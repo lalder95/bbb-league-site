@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import TradeSummary from './TradeSummary';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -7,6 +7,7 @@ import SleeperImportModal from './components/SleeperImportModal';
 import { useSession } from 'next-auth/react';
 import { estimateDraftPositions, getTeamName } from '@/utils/draftUtils';
 import { createDraftPickAsset, DEFAULT_FUTURE_PICK_BUCKET, getAssetBudgetValue, getAssetKey, getDisplayDraftSlot, isDraftPickAsset } from '@/utils/draftPickTradeUtils';
+import { buildInitialParticipantsFromSharePayload, buildTradeSharePayload, createDefaultTradeParticipants, decodeTradeSharePayload, encodeTradeSharePayload, hydrateParticipantsFromSharePayload } from '@/utils/tradeShareUtils';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 const DEFAULT_POSITION_FILTER = 'ALL';
@@ -819,22 +820,25 @@ const getValidationColor = (value) => {
   return 'text-green-400';
 };
 
-export default function Trade() {
+export function TradePage({ shareMode = false, shareToken = '' }) {
   const { data: session } = useSession();
+  const sharedPayload = useMemo(() => decodeTradeSharePayload(shareToken), [shareToken]);
   const [contracts, setContracts] = useState([]);
   const [fines, setFines] = useState({});
   const [loading, setLoading] = useState(true);
   // Multi-team participants: {id, team, searchTerm, selectedPlayers:[{...player, toTeam?:string}]}
-  const [participants, setParticipants] = useState([
-    { id: 1, team: '', searchTerm: '', positionFilter: DEFAULT_POSITION_FILTER, sortOption: DEFAULT_SORT_OPTION, selectedPlayers: [] },
-    { id: 2, team: '', searchTerm: '', positionFilter: DEFAULT_POSITION_FILTER, sortOption: DEFAULT_SORT_OPTION, selectedPlayers: [] },
-  ]);
-  const [showSummary, setShowSummary] = useState(false);
+  const [participants, setParticipants] = useState(() => (
+    sharedPayload
+      ? buildInitialParticipantsFromSharePayload(sharedPayload)
+      : createDefaultTradeParticipants()
+  ));
+  const [showSummary, setShowSummary] = useState(Boolean(sharedPayload?.s));
   const [teamAvatars, setTeamAvatars] = useState({});
-  const [leagueId, setLeagueId] = useState(null);
+  const [leagueId, setLeagueId] = useState(sharedPayload?.l || null);
   const [players, setPlayers] = useState([]);
   const [showImport, setShowImport] = useState(false);
   const [draftPickAssetsByTeam, setDraftPickAssetsByTeam] = useState({});
+  const [draftAssetsLoaded, setDraftAssetsLoaded] = useState(false);
   // KTC-to-Salary ratio (KTC points per $1 of salary), computed on refresh
   const [ktcPerDollar, setKtcPerDollar] = useState(null);
   // Position-specific ratios (KTC per $1) for Active contracts
@@ -848,8 +852,11 @@ export default function Trade() {
   const [showRatioDebug, setShowRatioDebug] = useState(false);
   const [incomingMetricIndex, setIncomingMetricIndex] = useState(0);
   const [incomingMetricAutoplay, setIncomingMetricAutoplay] = useState(true);
-  const [currentSeason, setCurrentSeason] = useState(new Date().getFullYear());
+  const [currentSeason, setCurrentSeason] = useState(Number(sharedPayload?.y) || new Date().getFullYear());
   const [contractYearOverride, setContractYearOverride] = useState(null);
+  const [shareWarnings, setShareWarnings] = useState([]);
+  const [shareStatus, setShareStatus] = useState(null);
+  const [hydratedShareToken, setHydratedShareToken] = useState('');
   const capDisplaySeason = Number.isFinite(contractYearOverride) ? contractYearOverride : currentSeason;
 
   useEffect(() => {
@@ -882,6 +889,8 @@ export default function Trade() {
 
   // Auto-detect league ID (copied from home page)
   useEffect(() => {
+    if (sharedPayload?.l) return;
+
     async function findBBBLeague() {
       try {
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
@@ -942,7 +951,7 @@ export default function Trade() {
       }
     }
     findBBBLeague();
-  }, []);
+  }, [sharedPayload?.l]);
 
   // Fetch contract data (KTC from contracts CSV)
   useEffect(() => {
@@ -1094,6 +1103,10 @@ export default function Trade() {
     let cancelled = false;
 
     async function fetchDraftAssets() {
+      if (!cancelled) {
+        setDraftAssetsLoaded(false);
+      }
+
       try {
         const [usersRes, rostersRes, tradedRes, draftsRes, orderRes] = await Promise.all([
           fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`, { cache: 'no-store' }),
@@ -1263,6 +1276,7 @@ export default function Trade() {
 
         if (!cancelled) {
           setDraftPickAssetsByTeam(nextAssets);
+          setDraftAssetsLoaded(true);
         }
       } catch {
         if (!cancelled) {
@@ -1270,6 +1284,7 @@ export default function Trade() {
             acc[teamName] = [];
             return acc;
           }, {}));
+          setDraftAssetsLoaded(true);
         }
       }
     }
@@ -1280,6 +1295,35 @@ export default function Trade() {
       cancelled = true;
     };
   }, [leagueId, uniqueTeamsKey, currentSeason]);
+
+  useEffect(() => {
+    if (!shareMode || !shareToken) {
+      setShareWarnings([]);
+      return;
+    }
+
+    if (!sharedPayload) {
+      setShareWarnings([{ message: 'This shared trade link is invalid or no longer supported.' }]);
+      setHydratedShareToken(shareToken);
+    }
+  }, [shareMode, shareToken, sharedPayload]);
+
+  useEffect(() => {
+    if (!shareMode || !shareToken || !sharedPayload) return;
+    if (!players.length || !draftAssetsLoaded) return;
+    if (hydratedShareToken === shareToken) return;
+
+    const { participants: hydratedParticipants, missingAssets } = hydrateParticipantsFromSharePayload({
+      payload: sharedPayload,
+      players,
+      draftPickAssetsByTeam,
+    });
+
+    setParticipants(hydratedParticipants);
+    setShareWarnings(missingAssets);
+    setShowSummary(Boolean(sharedPayload?.s));
+    setHydratedShareToken(shareToken);
+  }, [draftAssetsLoaded, draftPickAssetsByTeam, hydratedShareToken, players, shareMode, shareToken, sharedPayload]);
 
   const availablePositions = [...new Set(
     [...players, ...Object.values(draftPickAssetsByTeam).flat()]
@@ -1739,6 +1783,41 @@ export default function Trade() {
     })) || []),
   ] : [];
 
+  const canShareTrade = Boolean(leagueId)
+    && participants.filter((participant) => participant.team).length >= 2
+    && participants.some((participant) => participant.selectedPlayers.length > 0);
+
+  const handleShareTrade = async () => {
+    if (!canShareTrade || typeof window === 'undefined') return;
+
+    const payload = buildTradeSharePayload({
+      participants,
+      leagueId,
+      currentSeason,
+      showSummary,
+    });
+    const encodedPayload = encodeTradeSharePayload(payload);
+
+    if (!encodedPayload) {
+      setShareStatus({ tone: 'error', message: 'Could not generate a shareable trade link.' });
+      return;
+    }
+
+    const shareUrl = `${window.location.origin}/trade/share?s=${encodedPayload}`;
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareStatus({ tone: 'success', message: 'Share link copied to clipboard.' });
+        return;
+      }
+
+      setShareStatus({ tone: 'warning', message: shareUrl });
+    } catch {
+      setShareStatus({ tone: 'warning', message: shareUrl });
+    }
+  };
+
   return (
     <main className={`min-h-screen bg-[#001A2B] text-white ${showIncomingTradeBar ? 'pb-64 md:pb-56' : ''}`}>
       <div className="bg-black/30 p-6 border-b border-white/10">
@@ -1758,6 +1837,13 @@ export default function Trade() {
               Import Sleeper Screenshot
             </button>
             <button
+              onClick={handleShareTrade}
+              disabled={!canShareTrade}
+              className={`px-4 py-2 rounded border transition-colors ${canShareTrade ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-white/5 border-white/10 text-white/35 cursor-not-allowed'}`}
+            >
+              Copy Share Link
+            </button>
+            <button
               onClick={handleReset}
               className="px-4 py-2 bg-white/10 border border-white/20 rounded text-white hover:bg-[#FF4B1F]/80 hover:text-white transition-colors"
             >
@@ -1768,6 +1854,30 @@ export default function Trade() {
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
+        {shareMode && (
+          <div className="mb-4 rounded-2xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+            <div className="font-semibold">Shared trade link</div>
+            <div className="mt-1 text-sky-100/80">This public calculator rebuilds shared trades from current live league data.</div>
+          </div>
+        )}
+
+        {shareStatus && (
+          <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${shareStatus.tone === 'success' ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100' : shareStatus.tone === 'error' ? 'border-red-400/25 bg-red-500/10 text-red-100' : 'border-amber-400/25 bg-amber-500/10 text-amber-100'}`}>
+            {shareStatus.message}
+          </div>
+        )}
+
+        {shareWarnings.length > 0 && (
+          <div className="mb-4 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <div className="font-semibold">Some shared assets could not be rebuilt.</div>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-100/85">
+              {shareWarnings.map((warning, index) => (
+                <li key={`${warning.message}-${index}`}>{warning.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Ratio Debug Controls */}
         <div className="mb-4 flex items-center justify-between">
           <div className="text-white/60 text-xs">Ratio: {ktcPerDollar != null ? ktcPerDollar.toFixed(6) : 'n/a'}</div>
@@ -1970,6 +2080,10 @@ export default function Trade() {
       )}
     </main>
   );
+}
+
+export default function Trade() {
+  return <TradePage />;
 }
 
 // --- Add this CSS file in your project (src/app/trade/playerCardAnimations.css) ---
