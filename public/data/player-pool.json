@@ -14,15 +14,15 @@
     "value": 0
   },
   {
-    "id": "1961",
-    "name": "Makai Lemon",
+    "id": "1959",
+    "name": "Carnell Tate",
     "position": "WR",
     "rank": 3,
     "value": 0
   },
   {
-    "id": "1959",
-    "name": "Carnell Tate",
+    "id": "1961",
+    "name": "Makai Lemon",
     "position": "WR",
     "rank": 4,
     "value": 0
@@ -35,79 +35,79 @@
     "value": 0
   },
   {
-    "id": "1962",
-    "name": "Denzel Boston",
-    "position": "WR",
-    "rank": 6,
-    "value": 0
-  },
-  {
     "id": "2005",
     "name": "Kenyon Sadiq",
     "position": "TE",
-    "rank": 7,
-    "value": 0
-  },
-  {
-    "id": "1939",
-    "name": "Jonah Coleman",
-    "position": "RB",
-    "rank": 8,
+    "rank": 6,
     "value": 0
   },
   {
     "id": "1963",
     "name": "KC Concepcion",
     "position": "WR",
-    "rank": 9,
+    "rank": 7,
     "value": 0
   },
   {
     "id": "1964",
     "name": "Omar Cooper Jr.",
     "position": "WR",
-    "rank": 10,
+    "rank": 8,
     "value": 0
   },
   {
-    "id": "1938",
-    "name": "Nicholas Singleton",
-    "position": "RB",
-    "rank": 11,
-    "value": 0
-  },
-  {
-    "id": "1935",
-    "name": "Jadarian Price",
-    "position": "RB",
-    "rank": 12,
-    "value": 0
-  },
-  {
-    "id": "1973",
-    "name": "Malachi Fields",
+    "id": "1962",
+    "name": "Denzel Boston",
     "position": "WR",
-    "rank": 13,
+    "rank": 9,
     "value": 0
   },
   {
     "id": "1925",
     "name": "Ty Simpson",
     "position": "QB",
-    "rank": 14,
+    "rank": 10,
     "value": 0
   },
   {
-    "id": "1969",
-    "name": "Zachariah Branch",
-    "position": "WR",
-    "rank": 15,
+    "id": "1935",
+    "name": "Jadarian Price",
+    "position": "RB",
+    "rank": 11,
+    "value": 0
+  },
+  {
+    "id": "1939",
+    "name": "Jonah Coleman",
+    "position": "RB",
+    "rank": 12,
+    "value": 0
+  },
+  {
+    "id": "2006",
+    "name": "Eli Stowers",
+    "position": "TE",
+    "rank": 13,
+    "value": 0
+  },
+  {
+    "id": "1938",
+    "name": "Nicholas Singleton",
+    "position": "RB",
+    "rank": 14,
     "value": 0
   },
   {
     "id": "1967",
     "name": "Elijah Sarratt",
     "position": "WR",
+    "rank": 15,
+    "value": 0
+  },
+  {
+    "id": "1944",
+    "name": "Mike Washington Jr.",
+    "position": "RB",
     "rank": 16,
     "value": 0
   },
@@ -119,199 +119,178 @@
     "value": 0
   },
   {
-    "id": "1968",
-    "name": "Chris Bell",
-    "position": "WR",
+    "id": "1936",
+    "name": "Emmett Johnson",
+    "position": "RB",
     "rank": 18,
     "value": 0
   },
   {
-    "id": "1926",
-    "name": "Trinidad Chambliss",
-    "position": "QB",
+    "id": "1969",
+    "name": "Zachariah Branch",
+    "position": "WR",
     "rank": 19,
-    "value": 0
-  },
-  {
-    "id": "1936",
-    "name": "Emmett Johnson",
-    "position": "RB",
-    "rank": 20,
-    "value": 0
-  },
-  {
-    "id": "1940",
-    "name": "Kaytron Allen",
-    "position": "RB",
-    "rank": 21,
-    "value": 0
-  },
-  {
-    "id": "1965",
-    "name": "Germie Bernard",
-    "position": "WR",
-    "rank": 22,
-    "value": 0
-  },
-  {
-    "id": "1944",
-    "name": "Mike Washington Jr.",
-    "position": "RB",
-    "rank": 23,
-    "value": 0
-  },
-  {
-    "id": "1979",
-    "name": "Ja'Kobi Lane",
-    "position": "WR",
-    "rank": 24,
-    "value": 0
-  },
-  {
-    "id": "2006",
-    "name": "Eli Stowers",
-    "position": "TE",
-    "rank": 25,
-    "value": 0
-  },
-  {
-    "id": "2009",
-    "name": "Max Klare",
-    "position": "TE",
-    "rank": 26,
-    "value": 0
-  },
-  {
-    "id": "1974",
-    "name": "Antonio Williams",
-    "position": "WR",
-    "rank": 27,
-    "value": 0
-  },
-  {
-    "id": "2008",
-    "name": "Michael Trigg",
-    "position": "TE",
-    "rank": 28,
-    "value": 0
-  },
-  {
-    "id": "1970",
-    "name": "Skyler Bell",
-    "position": "WR",
-    "rank": 29,
-    "value": 0
-  },
-  {
-    "id": "1982",
-    "name": "Ted Hurst",
-    "position": "WR",
-    "rank": 30,
-    "value": 0
-  },
-  {
-    "id": "1943",
-    "name": "Demond Claiborne",
-    "position": "RB",
-    "rank": 31,
-    "value": 0
-  },
-  {
-    "id": "2007",
-    "name": "Jack Endries",
-    "position": "TE",
-    "rank": 32,
     "value": 0
   },
   {
     "id": "1927",
     "name": "Garrett Nussmeier",
     "position": "QB",
-    "rank": 33,
+    "rank": 20,
+    "value": 0
+  },
+  {
+    "id": "1926",
+    "name": "Trinidad Chambliss",
+    "position": "QB",
+    "rank": 21,
+    "value": 0
+  },
+  {
+    "id": "1968",
+    "name": "Chris Bell",
+    "position": "WR",
+    "rank": 22,
+    "value": 0
+  },
+  {
+    "id": "1973",
+    "name": "Malachi Fields",
+    "position": "WR",
+    "rank": 23,
+    "value": 0
+  },
+  {
+    "id": "1940",
+    "name": "Kaytron Allen",
+    "position": "RB",
+    "rank": 24,
+    "value": 0
+  },
+  {
+    "id": "1979",
+    "name": "Ja'Kobi Lane",
+    "position": "WR",
+    "rank": 25,
+    "value": 0
+  },
+  {
+    "id": "1965",
+    "name": "Germie Bernard",
+    "position": "WR",
+    "rank": 26,
+    "value": 0
+  },
+  {
+    "id": "1970",
+    "name": "Skyler Bell",
+    "position": "WR",
+    "rank": 27,
+    "value": 0
+  },
+  {
+    "id": "2009",
+    "name": "Max Klare",
+    "position": "TE",
+    "rank": 28,
+    "value": 0
+  },
+  {
+    "id": "1974",
+    "name": "Antonio Williams",
+    "position": "WR",
+    "rank": 29,
+    "value": 0
+  },
+  {
+    "id": "2008",
+    "name": "Michael Trigg",
+    "position": "TE",
+    "rank": 30,
     "value": 0
   },
   {
     "id": "1990",
     "name": "Kevin Coleman",
     "position": "WR",
-    "rank": 34,
+    "rank": 31,
     "value": 0
   },
   {
-    "id": "1937",
-    "name": "Seth McGowan",
+    "id": "1943",
+    "name": "Demond Claiborne",
     "position": "RB",
-    "rank": 35,
+    "rank": 32,
     "value": 0
   },
   {
-    "id": "1966",
-    "name": "CJ Daniels",
+    "id": "1982",
+    "name": "Ted Hurst",
     "position": "WR",
-    "rank": 36,
-    "value": 0
-  },
-  {
-    "id": "2003",
-    "name": "Barion Brown",
-    "position": "WR",
-    "rank": 37,
-    "value": 0
-  },
-  {
-    "id": "1972",
-    "name": "Deion Burks",
-    "position": "WR",
-    "rank": 38,
-    "value": 0
-  },
-  {
-    "id": "1932",
-    "name": "Luke Altmyer",
-    "position": "QB",
-    "rank": 39,
-    "value": 0
-  },
-  {
-    "id": "1948",
-    "name": "Jam Miller",
-    "position": "RB",
-    "rank": 40,
+    "rank": 33,
     "value": 0
   },
   {
     "id": "1941",
     "name": "Le'Veon Moss",
     "position": "RB",
-    "rank": 41,
-    "value": 0
-  },
-  {
-    "id": "1949",
-    "name": "J'Mari Taylor",
-    "position": "RB",
-    "rank": 42,
-    "value": 0
-  },
-  {
-    "id": "1988",
-    "name": "Reggie Virgil",
-    "position": "WR",
-    "rank": 43,
+    "rank": 34,
     "value": 0
   },
   {
     "id": "1929",
     "name": "Cade Klubnik",
     "position": "QB",
-    "rank": 44,
+    "rank": 35,
     "value": 0
   },
   {
-    "id": "1950",
-    "name": "Terion Stewart",
+    "id": "1948",
+    "name": "Jam Miller",
     "position": "RB",
-    "rank": 45,
+    "rank": 36,
+    "value": 0
+  },
+  {
+    "id": "1949",
+    "name": "J'Mari Taylor",
+    "position": "RB",
+    "rank": 37,
+    "value": 0
+  },
+  {
+    "id": "1937",
+    "name": "Seth McGowan",
+    "position": "RB",
+    "rank": 38,
+    "value": 0
+  },
+  {
+    "id": "1972",
+    "name": "Deion Burks",
+    "position": "WR",
+    "rank": 39,
+    "value": 0
+  },
+  {
+    "id": "1966",
+    "name": "CJ Daniels",
+    "position": "WR",
+    "rank": 40,
+    "value": 0
+  },
+  {
+    "id": "2007",
+    "name": "Jack Endries",
+    "position": "TE",
+    "rank": 41,
+    "value": 0
+  },
+  {
+    "id": "2003",
+    "name": "Barion Brown",
+    "position": "WR",
+    "rank": 42,
     "value": 0
   }
 ]

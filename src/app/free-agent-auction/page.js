@@ -61,16 +61,22 @@ function getPlayerStartTime(draftStartDate, startDelay, draftTimeZone = 'America
 }
 
 // End date is at least 24 hours after the most recent bid for this player
-function getPlayerEndTime(draftStartDate, startDelay, nomDuration, contractPoints = 0, bidLog = [], playerId, draftBlind = false, draftTimeZone = 'America/Chicago') {
+function getPlayerEndTime(draftStartDate, startDelay, nomDuration, contractPoints = 0, bidLog = [], playerId, draftBlind = false, draftTimeZone = 'America/Chicago', draftEndDate = null) {
   const start = getPlayerStartTime(draftStartDate, startDelay, draftTimeZone);
 
-  // If draft is blind, do NOT reduce the timer and do NOT enforce 24-hour minimum after each bid
-  let effectiveDuration;
+  // Blind auctions should run until the configured draft end date.
+  // Do NOT reduce the timer and do NOT enforce a 24-hour minimum after each bid.
   if (draftBlind) {
-    effectiveDuration = Number(nomDuration || 0);
+    const explicitEnd = parseDraftDateTime(draftEndDate, draftTimeZone);
+    if (!Number.isNaN(explicitEnd.getTime())) {
+      return explicitEnd;
+    }
+
+    const effectiveDuration = Number(nomDuration || 0);
     const calculatedEnd = new Date(start.getTime() + effectiveDuration * 60 * 1000);
     return calculatedEnd;
   } else {
+    let effectiveDuration;
     const reductionPercent = Math.min(Number(contractPoints) * 0.0138, 0.95);
     effectiveDuration = Number(nomDuration || 0) * (1 - reductionPercent);
     const calculatedEnd = new Date(start.getTime() + effectiveDuration * 60 * 1000);
@@ -202,7 +208,7 @@ export default function FreeAgentAuctionPage() {
         const result = draft.results?.find(r => r.playerId === p.playerId);
         const contractPoints = result ? Number(result.contractPoints) : 0;
         const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
-        const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone);
+          const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate);
         let group = 'Ended';
         if (now < playerStartTime) group = 'Upcoming';
         else if (now >= playerStartTime && now < playerEndTime) group = 'Active';
@@ -787,12 +793,15 @@ export default function FreeAgentAuctionPage() {
     setAdminToolError('');
 
     try {
+        const nextNomDuration = Math.round((new Date(nextEndDate).getTime() - new Date(nextStartDate).getTime()) / 60000);
+
       const patchRes = await fetch(`/api/admin/drafts/${draft._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           startDate: nextStartDate,
           endDate: nextEndDate,
+            nomDuration: nextNomDuration,
         })
       });
 
@@ -842,8 +851,8 @@ export default function FreeAgentAuctionPage() {
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft));
-        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft));
+        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
+        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
       }
       if (sortConfig.key === 'countdown') {
         const now = getCurrentTime();
@@ -851,8 +860,8 @@ export default function FreeAgentAuctionPage() {
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft));
-        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft));
+        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
+        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
         aValue = aEnd - now;
         bValue = bEnd - now;
       }
@@ -875,7 +884,7 @@ export default function FreeAgentAuctionPage() {
       return 0;
     });
     return playersCopy;
-  }, [filteredPlayers, draft?.results, sortConfig, draft?.startDate, draft?.nomDuration, draft?.bidLog]);
+  }, [filteredPlayers, draft?.results, sortConfig, draft?.startDate, draft?.endDate, draft?.nomDuration, draft?.bidLog, draft?.blind]);
 
   const groupedPlayers = React.useMemo(() => {
     if (!sortedPlayers) return { Active: [], Upcoming: [], Ended: [] };
@@ -886,7 +895,7 @@ export default function FreeAgentAuctionPage() {
       const result = draft.results?.find(r => r.playerId === p.playerId);
       const contractPoints = result ? Number(result.contractPoints) : 0;
       const start = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
-      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone);
+      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate);
 
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         groups.Ended.push(p);
@@ -899,7 +908,7 @@ export default function FreeAgentAuctionPage() {
       }
     });
     return groups;
-  }, [sortedPlayers, draft?.startDate, draft?.nomDuration, draft?.results, draft?.bidLog]);
+  }, [sortedPlayers, draft?.startDate, draft?.endDate, draft?.nomDuration, draft?.results, draft?.bidLog, draft?.blind]);
 
   function handleSort(key) {
     setSortConfig(prev => {
@@ -925,7 +934,8 @@ export default function FreeAgentAuctionPage() {
       draft.bidLog,
       p.playerId,
       draft.blind,
-      draftTimeZone
+        draftTimeZone,
+        draft.endDate
     );
     const now = getCurrentTime();
     const alreadyRosteredByUser = userHasActiveContractWithPlayer(session, activeContractsByTeam, p.playerId);
@@ -1147,7 +1157,8 @@ export default function FreeAgentAuctionPage() {
         draft.bidLog,
         player.playerId,
         draft.blind,
-        draftTimeZone
+          draftTimeZone,
+          draft.endDate
       );
       const now = getCurrentTime();
       const alreadyRosteredByUser = userHasActiveContractWithPlayer(session, activeContractsByTeam, player.playerId);
