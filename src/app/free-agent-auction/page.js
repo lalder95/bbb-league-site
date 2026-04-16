@@ -1332,10 +1332,22 @@ export default function FreeAgentAuctionPage() {
             </div>
 
             {!draft?.blind && (
-              <div className="mt-4 rounded-2xl border border-[#FFB800]/20 bg-[#FFB800]/8 px-4 py-3 text-center">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-[#FFB800]/70">High score</div>
-                <div className="mt-1 font-mono text-3xl font-bold text-[#FFB800]">{result ? contractScore : '-'}</div>
-                {result ? <div className="mt-1 text-xs text-sky-200">${result.salary} / {result.years}y</div> : null}
+              <div className="mt-4 rounded-2xl border border-[#FFB800]/20 bg-[#FFB800]/8 px-4 py-4 text-yellow-100">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-[#FFB800]/70">High bid</div>
+                {result ? (
+                  <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                    <div className="text-left">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">Contract</div>
+                      <div className="mt-2 font-mono text-xl text-sky-200">${result.salary} / {result.years}y</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">Score</div>
+                      <div className="mt-2 font-mono text-3xl font-bold text-[#FFB800]">{contractScore}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 text-sm text-white/55">No bids yet</div>
+                )}
               </div>
             )}
           </div>
