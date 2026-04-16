@@ -1,14 +1,131 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import Link from 'next/link';
-import { useSession, signIn } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import Papa from 'papaparse';
-import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
-import Image from 'next/image'; // Add this import
+import Image from 'next/image';
 
 const USER_ID = '456973480269705216';
+
+function cn(...classes) {
+  return classes.filter(Boolean).join(' ');
+}
+
+function getGroupTheme(group) {
+  switch (group) {
+    case 'Active':
+      return {
+        pill: 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200',
+        section: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100',
+        surface: 'border-emerald-400/35 bg-emerald-500/8',
+      };
+    case 'Upcoming':
+      return {
+        pill: 'border-sky-400/30 bg-sky-500/15 text-sky-200',
+        section: 'border-sky-400/30 bg-sky-500/10 text-sky-100',
+        surface: 'border-sky-400/35 bg-sky-500/8',
+      };
+    default:
+      return {
+        pill: 'border-white/15 bg-white/8 text-slate-200',
+        section: 'border-white/15 bg-white/8 text-slate-100',
+        surface: 'border-white/20 bg-black/20',
+      };
+  }
+}
+
+function SurfaceButton({ tone = 'orange', className = '', children, ...props }) {
+  const tones = {
+    orange: 'border-[#FF4B1F]/40 bg-[#FF4B1F] text-white hover:bg-[#ff6a3c] focus-visible:ring-[#FF4B1F]/40',
+    ghost: 'border-white/15 bg-white/5 text-white hover:bg-white/10 focus-visible:ring-white/20',
+    purple: 'border-purple-400/30 bg-purple-600/85 text-white hover:bg-purple-500 focus-visible:ring-purple-400/40',
+    yellow: 'border-amber-400/30 bg-amber-500/85 text-white hover:bg-amber-400 focus-visible:ring-amber-300/40',
+    blue: 'border-sky-400/30 bg-sky-600/85 text-white hover:bg-sky-500 focus-visible:ring-sky-400/40',
+    danger: 'border-red-400/30 bg-red-700/90 text-white hover:bg-red-600 focus-visible:ring-red-400/40',
+    green: 'border-emerald-400/30 bg-emerald-600/85 text-white hover:bg-emerald-500 focus-visible:ring-emerald-400/40',
+  };
+
+  return (
+    <button
+      className={cn(
+        'inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50',
+        tones[tone] || tones.orange,
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TeamIdentity({ username, avatarId, size = 10, subtitle }) {
+  const dimension = size * 4;
+
+  return (
+    <div className="flex items-center gap-3 min-w-0">
+      {avatarId ? (
+        <Image
+          src={`https://sleepercdn.com/avatars/${avatarId}`}
+          alt={username}
+          width={dimension}
+          height={dimension}
+          className="rounded-full border border-white/10 object-cover"
+          loading="lazy"
+          unoptimized={String(username || '').startsWith('http')}
+        />
+      ) : (
+        <span
+          className="inline-block rounded-full border border-white/10 bg-white/10"
+          style={{ width: dimension, height: dimension }}
+        />
+      )}
+      <div className="min-w-0">
+        <div className="truncate font-medium text-white">{username || '-'}</div>
+        {subtitle ? <div className="truncate text-xs text-white/45">{subtitle}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ eyebrow, title, detail, accent = 'orange' }) {
+  const accents = {
+    orange: 'from-[#FF4B1F]/18 via-[#FF4B1F]/8 to-transparent border-[#FF4B1F]/20',
+    blue: 'from-sky-500/18 via-sky-500/8 to-transparent border-sky-400/20',
+    green: 'from-emerald-500/18 via-emerald-500/8 to-transparent border-emerald-400/20',
+    slate: 'from-white/10 via-white/5 to-transparent border-white/10',
+  };
+
+  return (
+    <div className={cn('rounded-3xl border bg-gradient-to-br px-4 py-4 backdrop-blur-sm', accents[accent] || accents.orange)}>
+      <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">{eyebrow}</div>
+      <div className="mt-2 text-2xl font-semibold text-white">{title}</div>
+      {detail ? <div className="mt-1 text-sm text-white/60">{detail}</div> : null}
+    </div>
+  );
+}
+
+function ModalShell({ title, subtitle, onClose, children, maxWidth = 'max-w-2xl' }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020817]/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className={cn('relative flex max-h-[88vh] w-full flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#020817]/95 shadow-2xl shadow-black/40', maxWidth)}>
+        <div className="border-b border-white/10 bg-white/[0.03] px-5 py-4 sm:px-6">
+          <button
+            className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xl text-white/70 transition hover:bg-white/10 hover:text-white"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            &times;
+          </button>
+          <h2 className="pr-12 text-xl font-semibold text-white sm:text-2xl">{title}</h2>
+          {subtitle ? <p className="mt-1 pr-12 text-sm text-white/60">{subtitle}</p> : null}
+        </div>
+        <div className="overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 function getDraftTimeZone(draft) {
   return draft?.timeZone || 'America/Chicago';
@@ -910,6 +1027,17 @@ export default function FreeAgentAuctionPage() {
     return groups;
   }, [sortedPlayers, draft?.startDate, draft?.endDate, draft?.nomDuration, draft?.results, draft?.bidLog, draft?.blind]);
 
+  const resetPlayerBid = async (playerId) => {
+    const updatedResults = draft.results.filter(r => r.playerId !== playerId);
+    await fetch(`/api/admin/drafts/${draft._id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ results: updatedResults, bidLog: draft.bidLog }),
+    });
+    setResetConfirmId(null);
+    await fetchDraft();
+  };
+
   function handleSort(key) {
     setSortConfig(prev => {
       if (prev.key === key) {
@@ -924,6 +1052,7 @@ export default function FreeAgentAuctionPage() {
     const salary = result ? Number(result.salary) : 0;
     const contractScore = result ? Number(result.contractPoints) : 0;
     const years = result ? Number(result.years) : null;
+    const theme = getGroupTheme(group);
     const draftTimeZone = getDraftTimeZone(draft);
     const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
     const playerEndTime = getPlayerEndTime(
@@ -970,108 +1099,101 @@ export default function FreeAgentAuctionPage() {
     return (
       <tr
         key={p.playerId}
-        className={`
-          ${highlightRow
-            ? 'bg-yellow-400/20'
-            : group === 'Active'
-            ? (p.__rowIndex % 2 === 0 ? 'bg-green-900/20' : 'bg-green-900/10')
-            : group === 'Upcoming'
-            ? (p.__rowIndex % 2 === 0 ? 'bg-blue-900/20' : 'bg-blue-900/10')
-            : (p.__rowIndex % 2 === 0 ? 'bg-gray-800/20' : 'bg-gray-800/10')
-          }
-          hover:opacity-90
-        `}
+        className={cn(
+          'border-b border-white/5 transition-colors hover:bg-white/[0.03]',
+          highlightRow
+            ? 'bg-amber-400/10'
+            : p.__rowIndex % 2 === 0
+            ? 'bg-black/10'
+            : 'bg-transparent'
+        )}
       >
-        <td className="py-2 px-3 text-center align-middle"></td>
         {!draft?.blind && (
-          <td className="py-2 px-3 font-extrabold text-[#FFB800] text-center align-middle">
+          <td className="px-3 py-4 text-center align-middle">
             {result
-              ? <>
-                  <span className="font-mono font-extrabold text-4xl text-[#FFB800]">
+              ? <div className="inline-flex min-w-[110px] flex-col rounded-2xl border border-[#FFB800]/20 bg-[#FFB800]/8 px-4 py-3 text-center">
+                  <span className="font-mono text-3xl font-bold text-[#FFB800]">
                     {contractScore}
                   </span>
-                  <br />
-                  <span className="text-xs text-blue-300 whitespace-nowrap">
+                  <span className="mt-1 text-xs text-sky-200 whitespace-nowrap">
                     ${salary} / {years}y
                   </span>
-                </>
-              : '-'}
+                </div>
+              : <span className="text-sm text-white/40">—</span>}
           </td>
         )}
-        <td className="py-2 px-3 text-center align-middle">{p.playerName}</td>
-        <td className="py-2 px-3 text-center align-middle">{p.position}</td>
-        <td className="py-2 px-3 text-center align-middle">{p.ktc ?? '-'}</td>
+        <td className="px-3 py-4 align-middle">
+          <div className="flex flex-col items-start gap-1 text-left">
+            <span className="text-sm font-semibold text-white sm:text-[15px]">{p.playerName}</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
+              <span>ID {p.playerId}</span>
+              {Number(p.startDelay || 0) > 0 ? <span>Starts +{Number(p.startDelay || 0)}h</span> : null}
+            </div>
+          </div>
+        </td>
+        <td className="px-3 py-4 text-center align-middle">
+          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-white/80">
+            {p.position}
+          </span>
+        </td>
+        <td className="px-3 py-4 text-center align-middle">
+          <span className="text-sm font-semibold text-white/80">{p.ktc ?? '-'}</span>
+        </td>
         {draft?.blind && (
-          <td className="py-2 px-3 text-center align-middle">
+          <td className="px-3 py-4 text-center align-middle">
             {group === 'Ended' ? (
-              // Reveal high bid and bidder when player is Final
               result ? (
-                <>
-                  <span className="font-mono font-extrabold text-[#FFB800]">
+                <div className="inline-flex min-w-[140px] flex-col rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-center">
+                  <span className="font-mono text-xl font-bold text-[#FFB800]">
                     {result.contractPoints}
                   </span>
-                  <br />
-                  <span className="text-xs text-blue-300 whitespace-nowrap">
+                  <span className="mt-1 text-xs text-sky-200 whitespace-nowrap">
                     ${result.salary} / {result.years}y
                   </span>
-                  <br />
-                  <span className="text-xs text-green-300">
+                  <span className="mt-1 text-xs text-emerald-200">
                     Winner: {result.username}
                   </span>
-                </>
+                </div>
               ) : (
                 <span className="text-gray-500 italic">No bids</span>
               )
             ) : userLastBid ? (
-              <>
-                <span className="font-mono font-extrabold text-[#FFB800]">
-                  {userLastBid.contractPoints}
-                </span>
-                <br />
-                <span className="text-xs text-blue-300 whitespace-nowrap">
-  ${userLastBid.salary} / {userLastBid.years}y
-</span>
-<br />
-<span className="text-gray-400 text-xs">{formatTimeAgo(userLastBid.timestamp)}</span>
-<br /> {/* Add this line break before the button */}
-{/* Cancel Bid button for table view */}
-{session?.user?.name && (
-  <button
-    className="mt-2 px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
-    onClick={() => setRetractConfirmPlayerId(p.playerId)}
-  >
-    Cancel Bid
-  </button>
-)}
-              </>
+              <div className="inline-flex min-w-[140px] flex-col rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
+                <span className="font-mono text-xl font-bold text-[#FFB800]">{userLastBid.contractPoints}</span>
+                <span className="mt-1 text-xs text-sky-200 whitespace-nowrap">${userLastBid.salary} / {userLastBid.years}y</span>
+                <span className="mt-1 text-xs text-white/45">{formatTimeAgo(userLastBid.timestamp)}</span>
+                {session?.user?.name && (
+                  <SurfaceButton
+                    tone="danger"
+                    className="mt-3 rounded-xl px-3 py-1.5 text-xs"
+                    onClick={() => setRetractConfirmPlayerId(p.playerId)}
+                  >
+                    Cancel Bid
+                  </SurfaceButton>
+                )}
+              </div>
             ) : (
               <span className="text-gray-500 italic">No bids</span>
             )}
           </td>
         )}
         {!draft?.blind && (
-          <td className="py-2 px-3 text-center align-middle">
-            <div className="flex items-center justify-center gap-2">
-              {result?.username && teamAvatars[result.username] ? (
-                <Image
-                  src={`https://sleepercdn.com/avatars/${teamAvatars[result.username]}`}
-                  alt={result.username}
-                  width={48}
-                  height={48}
-                  className="rounded-full"
-                  loading="lazy"
-                  unoptimized={result.username.startsWith('http')}
+          <td className="px-3 py-4 align-middle">
+            <div className="flex justify-center">
+              <div className="min-w-[180px] rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <TeamIdentity
+                  username={result ? result.username : '-'}
+                  avatarId={result?.username ? teamAvatars[result.username] : null}
+                  size={10}
+                  subtitle={result ? 'Current leader' : 'No leader yet'}
                 />
-              ) : (
-                <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
-              )}
-              <span>{result ? result.username : '-'}</span>
+              </div>
             </div>
           </td>
         )}
-        <td className="py-2 px-3 text-center align-middle">
-          <span
-            className="cursor-help"
+        <td className="px-3 py-4 text-center align-middle">
+          <div
+            className="inline-flex min-w-[140px] flex-col rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center cursor-help"
             title={
               (playerStartTime instanceof Date && !isNaN(playerStartTime) && playerEndTime instanceof Date && !isNaN(playerEndTime))
                 ? `Start: ${formatDraftDateTime(playerStartTime, draftTimeZone)}\n` +
@@ -1079,74 +1201,57 @@ export default function FreeAgentAuctionPage() {
                 : 'Invalid time'
             }
           >
-            {playerCountdowns[p.playerId] ?? ''}
-          </span>
-        </td>
-        <td
-  className="py-0 px-3 align-middle"
-  style={{ height: '64px', minWidth: '80px', verticalAlign: 'middle' }}
->
-  <div className="flex items-center justify-center h-full w-full">
-    {canBid && (
-      <button
-        className="px-2 py-1 bg-[#FF4B1F] border-2 border-[#001A2B] rounded-xl text-white hover:bg-[#ff6a3c] text-xs font flex justify-center items-center text-center"
-        style={{
-          fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
-          letterSpacing: '2px'
-        }}
-        onClick={() => setSelectedPlayer(p)}
-      >
-        Bid
-      </button>
-    )}
-    {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === p.playerId) && (
-      <>
-        <button
-          className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
-          title="Reset Bid"
-          onClick={() => setResetConfirmId(p.playerId)}
-        >
-          Reset
-        </button>
-        {resetConfirmId === p.playerId && (
-          <div className="absolute z-10 mt-2 bg-black border border-red-700 rounded p-3 text-sm text-red-200 shadow-lg">
-            <div>Are you sure you want to reset this player's bid?</div>
-            <div className="flex gap-2 mt-2">
-              <button
-                className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                onClick={async () => {
-                  const updatedResults = draft.results.filter(r => r.playerId !== p.playerId);
-                  await fetch(`/api/admin/drafts/${draft._id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ results: updatedResults, bidLog: draft.bidLog }),
-                  });
-                  setResetConfirmId(null);
-                  await fetchDraft();
-                }}
-              >
-                Yes, Reset
-              </button>
-              <button
-                className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                onClick={() => setResetConfirmId(null)}
-              >
-                Cancel
-              </button>
-            </div>
+            <span className="text-[11px] uppercase tracking-[0.18em] text-white/40">{group === 'Ended' ? 'Closed' : group === 'Active' ? 'Time left' : 'Starts in'}</span>
+            <span className="mt-2 text-base font-semibold text-white">{playerCountdowns[p.playerId] ?? <span className="text-white/35">—</span>}</span>
           </div>
-        )}
-      </>
-    )}
-  </div>
-</td>
+        </td>
+        <td className="relative px-3 py-4 align-middle">
+          <div className="flex min-h-[72px] items-center justify-center gap-2">
+            {canBid ? (
+              <SurfaceButton className="min-w-[90px] px-4 py-2 text-sm" onClick={() => setSelectedPlayer(p)}>
+                Place bid
+              </SurfaceButton>
+            ) : (
+              <span className="text-xs uppercase tracking-[0.18em] text-white/30">
+                {alreadyRosteredByUser ? 'Rostered' : group === 'Ended' ? 'Closed' : group === 'Upcoming' ? 'Pending' : 'Watching'}
+              </span>
+            )}
+            {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === p.playerId) && (
+              <>
+                <SurfaceButton
+                  tone="danger"
+                  className="rounded-xl px-3 py-2 text-xs"
+                  title="Reset Bid"
+                  onClick={() => setResetConfirmId(p.playerId)}
+                >
+                  Reset
+                </SurfaceButton>
+                {resetConfirmId === p.playerId && (
+                  <div className="absolute right-0 top-full z-10 mt-2 w-56 rounded-2xl border border-red-400/20 bg-[#020817] p-3 text-sm text-red-100 shadow-xl shadow-black/40">
+                    <div className="font-medium">Reset this player&apos;s bid?</div>
+                    <div className="mt-1 text-xs text-red-100/70">This removes the current winning result while leaving the bid log intact.</div>
+                    <div className="mt-3 flex gap-2">
+                      <SurfaceButton tone="danger" className="flex-1 rounded-xl px-3 py-2 text-xs" onClick={() => resetPlayerBid(p.playerId)}>
+                        Reset
+                      </SurfaceButton>
+                      <SurfaceButton tone="ghost" className="flex-1 rounded-xl px-3 py-2 text-xs" onClick={() => setResetConfirmId(null)}>
+                        Cancel
+                      </SurfaceButton>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </td>
         </tr>
       );
     }
 
-    function PlayerCard({ player, group, draft, playerCountdowns, session, setSelectedPlayer, setResetConfirmId, resetConfirmId, fetchDraft, countdown }) {
+    function PlayerCard({ player, group, draft, playerCountdowns, session, setSelectedPlayer, setResetConfirmId, resetConfirmId, countdown }) {
       const result = draft.results?.find(r => r.playerId === player.playerId);
       const contractScore = result ? Number(result.contractPoints) : 0;
+      const theme = getGroupTheme(group);
       const draftTimeZone = getDraftTimeZone(draft);
       const playerStartTime = getPlayerStartTime(draft.startDate, player.startDelay, draftTimeZone);
       const playerEndTime = getPlayerEndTime(
@@ -1173,297 +1278,180 @@ export default function FreeAgentAuctionPage() {
         result && session?.user?.name &&
         result.username === session.user.name;
 
-      // Only highlight if not blind
-      let cardBg = '';
-      if (isUserHighBidder && !draft?.blind) {
-        cardBg = 'bg-yellow-400/20';
-      } else if (group === 'Active') {
-        cardBg = 'bg-green-900/10';
-      } else if (group === 'Upcoming') {
-        cardBg = 'bg-blue-900/10';
-      } else {
-        cardBg = 'bg-gray-800/10';
-      }
-
-      const getPlayerNameFontSize = (name) => {
-        if (!name) return 24;
-        if (name.length <= 10) return 30;
-        if (name.length <= 14) return 24;
-        if (name.length <= 18) return 20;
-        if (name.length <= 24) return 16;
-        return 12;
-      };
-      const playerNameFontSize = getPlayerNameFontSize(player.playerName);
-
-      const playerNameRef = useRef(null);
-      const fontSizeSet = useRef(false);
-
-      useEffect(() => {
-        if (fontSizeSet.current) return;
-        const container = playerNameRef.current?.parentElement;
-        const span = playerNameRef.current;
-        if (!container || !span) return;
-
-        let fontSize = 36;
-        span.style.fontSize = fontSize + 'px';
-
-        while (span.scrollWidth > container.offsetWidth - 40 && fontSize > 14) {
-          fontSize -= 1;
-          span.style.fontSize = fontSize + 'px';
-        }
-        fontSizeSet.current = true;
-      }, []);
-
-      function isCountdownOver24Hours(countdownValue) {
-        if (!countdownValue) return false;
-        // If it's a string, check for 'Days'
-        if (typeof countdownValue === 'string') {
-          return countdownValue.includes('Days');
-        }
-        // If it's a React fragment/element, check its children for 'Days'
-        if (typeof countdownValue === 'object' && countdownValue !== null && countdownValue.props && countdownValue.props.children) {
-          // children can be an array or a single value
-          const children = countdownValue.props.children;
-          if (Array.isArray(children)) {
-            return children.some(child => typeof child === 'string' && child.includes('Days'));
-          }
-          return typeof children === 'string' && children.includes('Days');
-        }
-        return false;
-      }
+      const userBids = (draft.bidLog || []).filter(
+        b => b.playerId === player.playerId && b.username === session?.user?.name
+      );
+      const userLastBid = userBids.length > 0
+        ? userBids.reduce((latest, b) =>
+            !latest || new Date(b.timestamp) > new Date(latest.timestamp) ? b : latest,
+            null
+          )
+        : null;
 
       return (
         <div
           key={player.playerId}
-          className={`relative rounded-lg shadow p-4 border-l-4 flex flex-col gap-2
-            ${cardBg}
-            bg-gradient-to-br from-[#001A2B] via-[#001A2B] via-55% to-[#FF4B1F] lg:bg-none
-            ${
-              group === 'Active'
-                ? 'border-green-400'
-                : group === 'Upcoming'
-                ? 'border-blue-400'
-                : 'border-gray-400'
-            }`}
-          style={{ minHeight: 200 }}
+          className={cn(
+            'relative overflow-hidden rounded-[30px] border-2 p-4 shadow-[0_20px_55px_rgba(0,0,0,0.34)] backdrop-blur-sm ring-1 ring-white/10',
+            theme.surface,
+            !draft?.blind && isUserHighBidder ? 'ring-1 ring-amber-300/40' : ''
+          )}
         >
-          <div className="w-full flex justify-center mb-2 relative">
-            <span
-              className="font-bold text-center pr-10"
-              style={{
-                fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
-                letterSpacing: '3px',
-                fontSize: playerNameFontSize,
-                display: 'inline-block',
-                maxWidth: '100%',
-                whiteSpace: 'normal',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                paddingLeft: '4px'
-              }}
-            >
-              {player.playerName}
-            </span>
-            <span className="absolute right-0 top-0 flex flex-col items-end">
-              <span className="text-xs px-2 py-1 rounded bg-[#222] text-[#FF4B1F]">
-                {player.position}
-              </span>
-            </span>
-          </div>
-          {/* Countdown timer (in the card) */}
-          <div className="w-full flex justify-center mb-4" style={{ minHeight: 32, maxHeight: 40 }}>
-            <span
-              className="cursor-help text-center flex justify-center items-center"
-              style={{
-                fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
-                letterSpacing: '1px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                fontSize: isCountdownOver24Hours(
-                  typeof playerCountdowns[player.playerId] === 'string'
-                    ? playerCountdowns[player.playerId]
-                    : (playerCountdowns[player.playerId]?.props?.children ?? '')
-                )
-                  ? '1.5rem'
-                  : '3rem'
-              }}
-              title={
-                (playerStartTime instanceof Date && !isNaN(playerStartTime) && playerEndTime instanceof Date && !isNaN(playerEndTime))
-                  ? `Start: ${formatDraftDateTime(playerStartTime, draftTimeZone)}\n` +
-                    `End: ${formatDraftDateTime(playerEndTime, draftTimeZone)}`
-                  : 'Invalid time'
-              }
-            >
-              {playerCountdowns[player.playerId] ?? ''}
-            </span>
-          </div>
-          <div className="mb-2 flex flex-col gap-2 pr-16 w-full" style={{ maxWidth: 160 }}>
-            {canBid && (
-              <button
-                className="w-full px-4 py-3 bg-[#FF4B1F] border-2 border-[#001A2B] rounded-xl text-white hover:bg-[#ff6a3c] text-lg font flex justify-center items-center text-center"
-                style={{ fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif', letterSpacing: '2px' }}
-                onClick={() => setSelectedPlayer(player)}
-              >
-                PLACE BID
-              </button>
+          <div
+            className={cn(
+              'pointer-events-none absolute inset-x-0 top-0 h-1.5',
+              group === 'Active'
+                ? 'bg-gradient-to-r from-emerald-300 via-emerald-400 to-emerald-500'
+                : group === 'Upcoming'
+                ? 'bg-gradient-to-r from-sky-300 via-sky-400 to-sky-500'
+                : 'bg-gradient-to-r from-slate-300 via-slate-200 to-slate-400'
             )}
-            {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === player.playerId) && (
-              <>
-                <button
-                  className="w-full px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs mt-1"
-                  title="Reset Bid"
-                  onClick={() => setResetConfirmId(player.playerId)}
-                  style={{ maxWidth: 160 }}
-                >
-                  Reset
-                </button>
-                {resetConfirmId === player.playerId && (
-                  <div className="mt-2 bg-black border border-red-700 rounded p-2 text-xs text-red-200 shadow-lg">
-                    <div>Reset this player's bid?</div>
-                    <div className="flex gap-2 mt-1">
-                      <button
-                        className="px-2 py-1 bg-red-700 rounded text-white hover:bg-red-800"
-                        onClick={async () => {
-                          const updatedResults = draft.results.filter(r => r.playerId !== player.playerId);
-                          await fetch(`/api/admin/drafts/${draft._id}`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ results: updatedResults, bidLog: draft.bidLog }),
-                          });
-                          setResetConfirmId(null);
-                          await fetchDraft();
-                        }}
-                      >
-                        Yes
-                      </button>
-                      <button
-                        className="px-2 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                        onClick={() => setResetConfirmId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
+          />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_18%,transparent_82%,rgba(255,255,255,0.03))]" />
+          <div className="relative">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 pr-24">
+                <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]', theme.pill)}>
+                  {group === 'Ended' ? 'Final' : group}
+                </span>
+                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
+                  {player.position}
+                </span>
+              </div>
+              <div className="absolute right-0 top-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right shadow-lg shadow-black/20">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">KTC</div>
+                <div className="mt-1 text-lg font-semibold text-white">{player.ktc || '-'}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 text-center">
+              <h3 className="text-2xl font-semibold tracking-tight text-white">{player.playerName}</h3>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs text-white/45">
+                {Number(player.startDelay || 0) > 0 ? <span>Starts +{Number(player.startDelay || 0)}h</span> : null}
+              </div>
+            </div>
+
+            {!draft?.blind && (
+              <div className="mt-4 rounded-2xl border border-[#FFB800]/20 bg-[#FFB800]/8 px-4 py-3 text-center">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-[#FFB800]/70">High score</div>
+                <div className="mt-1 font-mono text-3xl font-bold text-[#FFB800]">{result ? contractScore : '-'}</div>
+                {result ? <div className="mt-1 text-xs text-sky-200">${result.salary} / {result.years}y</div> : null}
+              </div>
             )}
           </div>
-          {/* Bottom-right info (contract points, salary/years, bidder) */}
+          <div
+            className="mt-4 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 text-center"
+            title={
+              (playerStartTime instanceof Date && !isNaN(playerStartTime) && playerEndTime instanceof Date && !isNaN(playerEndTime))
+                ? `Start: ${formatDraftDateTime(playerStartTime, draftTimeZone)}\nEnd: ${formatDraftDateTime(playerEndTime, draftTimeZone)}`
+                : 'Invalid time'
+            }
+          >
+            <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{group === 'Ended' ? 'Closed' : group === 'Upcoming' ? 'Starts in' : 'Time left'}</div>
+            <div className="mt-3 text-3xl font-semibold tracking-tight text-white">{playerCountdowns[player.playerId] ?? <span className="text-white/35">—</span>}</div>
+          </div>
+
           {!draft?.blind && (
-            <div className="absolute bottom-4 right-4 flex flex-col items-end">
-              <span
-                className="font-extrabold text-3xl text-[#FFB800]"
-                style={{
-                  fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
-                  letterSpacing: '3px'
-                }}
-              >
-                {result ? contractScore : '-'}
-              </span>
-              {result && (
-                <span
-                  className="font-bold mb-1"
-                  style={{
-                    color: '#60a5fa',
-                    fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
-                    fontSize: '1.15em'
-                  }}
-                >
-                  ${result.salary} / {result.years}y
-                </span>
-              )}
-              <div className="flex items-center gap-1 mt-1">
-                {result?.username && teamAvatars[result.username] ? (
-                  <Image
-                    src={`https://sleepercdn.com/avatars/${teamAvatars[result.username]}`}
-                    alt={result.username}
-                    width={48}
-                    height={48}
-                    className="rounded-full"
-                    loading="lazy"
-                    unoptimized={result.username.startsWith('http')}
-                  />
-                ) : (
-                  <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
-                )}
-                <span
-                  style={{
-                    fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif'
-                  }}
-                >
-                  {result?.username ?? '-'}
-                </span>
+            <div className="mt-4 rounded-[24px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Current leader</div>
+              <div className="mt-3">
+                <TeamIdentity
+                  username={result?.username ?? '-'}
+                  avatarId={result?.username ? teamAvatars[result.username] : null}
+                  size={12}
+                  subtitle={result ? 'Top active offer' : 'No bids yet'}
+                />
               </div>
             </div>
           )}
-          {/* Show user's own high bid if draft is blind */}
           {draft?.blind && session?.user?.name && (() => {
             if (group === 'Ended') {
-              // Reveal high bid and bidder when player is Final
               if (result) {
                 return (
-                  <div className="mt-2 text-xs text-green-200 bg-black/30 rounded p-2">
-                    <div className="font-bold text-white/80 mb-1">Final Result</div>
+                  <div className="mt-4 rounded-[24px] border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-200/70">Final result</div>
                     <div>
-                      <span className="font-mono text-lg text-[#FFB800]">
+                      <span className="mt-3 inline-block font-mono text-lg text-[#FFB800]">
                         ${result.salary} / {result.years}y
                       </span>
-                      <span className="ml-2 text-blue-300">Score: {result.contractPoints}</span>
+                      <span className="ml-2 text-sky-200">Score: {result.contractPoints}</span>
                     </div>
-                    <div className="text-green-300 mt-1">
+                    <div className="mt-2 text-emerald-200">
                       Winner: {result.username}
                     </div>
                   </div>
                 );
               } else {
                 return (
-                  <div className="mt-2 text-xs text-gray-400 bg-black/30 rounded p-2">
+                  <div className="mt-4 rounded-[24px] border border-white/10 bg-black/20 p-4 text-sm text-white/55">
                     No bids
                   </div>
                 );
               }
             }
-            // Otherwise, show user's last bid
-            const userBids = (draft.bidLog || []).filter(
-              b => b.playerId === player.playerId && b.username === session.user.name
-            );
-            if (userBids.length === 0) return null;
-            const userLastBid = userBids.reduce((latest, b) =>
-              !latest || new Date(b.timestamp) > new Date(latest.timestamp) ? b : latest,
-              null
-            );
+            if (!userLastBid) return null;
             return (
-              <div className="mt-2 text-xs text-yellow-200 bg-black/30 rounded p-2">
-                <div className="font-bold text-white/80 mb-1">Your Last Bid</div>
-                <div className="flex flex-col items-start gap-1">
-                  <span className="font-mono text-lg text-blue-300">
-                    ${userLastBid.salary} / {userLastBid.years}y
-                  </span>
-                  <span
-                    className="font-extrabold text-2xl text-[#FFB800]"
-                    style={{
-                      fontFamily: '"Black Ops One", "Saira Stencil One", Impact, fantasy, sans-serif',
-                      letterSpacing: '2px',
-                      marginTop: '-2px',
-                    }}
-                  >
-                    Score: {userLastBid.contractPoints}
-                  </span>
+              <div className="mt-4 rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm text-yellow-100">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Your last bid</div>
+                  <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] text-white/50">
+                    {formatTimeAgo(userLastBid.timestamp)}
+                  </div>
                 </div>
-                <div className="text-gray-400 mt-1">
-                  {formatTimeAgo(userLastBid.timestamp)}
+                <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Contract</div>
+                    <span className="mt-2 block font-mono text-xl text-sky-200">
+                      ${userLastBid.salary} / {userLastBid.years}y
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Score</div>
+                    <span className="mt-2 block font-mono text-3xl font-bold text-[#FFB800]">{userLastBid.contractPoints}</span>
+                  </div>
                 </div>
-                {/* Cancel Bid button */}
-                <button
-                  className="mt-2 px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 text-xs"
+                <SurfaceButton
+                  tone="danger"
+                  className="mt-3 w-full rounded-2xl"
                   onClick={() => setRetractConfirmPlayerId(player.playerId)}
                 >
                   Cancel Bid
-                </button>
+                </SurfaceButton>
               </div>
             );
           })()}
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            {canBid ? (
+              <SurfaceButton className="flex-1" onClick={() => setSelectedPlayer(player)}>
+                Place bid
+              </SurfaceButton>
+            ) : (
+              <div className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-xs uppercase tracking-[0.2em] text-white/40">
+                {alreadyRosteredByUser ? 'Already rostered' : group === 'Ended' ? 'Auction closed' : group === 'Upcoming' ? 'Not live yet' : 'Watching only'}
+              </div>
+            )}
+            {session?.user?.role === 'admin' && showResetButtons && draft.results?.some(r => r.playerId === player.playerId) && (
+              <div className="flex-1">
+                <SurfaceButton tone="danger" className="w-full" title="Reset Bid" onClick={() => setResetConfirmId(player.playerId)}>
+                  Reset bid
+                </SurfaceButton>
+                {resetConfirmId === player.playerId && (
+                  <div className="mt-2 rounded-2xl border border-red-400/20 bg-[#020817] p-3 text-xs text-red-100 shadow-xl shadow-black/30">
+                    <div className="font-medium">Reset this player&apos;s bid?</div>
+                    <div className="mt-1 text-red-100/70">This clears the active result while preserving the bid log.</div>
+                    <div className="mt-3 flex gap-2">
+                      <SurfaceButton tone="danger" className="flex-1 rounded-xl px-3 py-2 text-xs" onClick={() => resetPlayerBid(player.playerId)}>
+                        Reset
+                      </SurfaceButton>
+                      <SurfaceButton tone="ghost" className="flex-1 rounded-xl px-3 py-2 text-xs" onClick={() => setResetConfirmId(null)}>
+                        Cancel
+                      </SurfaceButton>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           </div>
         )
       }
@@ -1558,325 +1546,428 @@ export default function FreeAgentAuctionPage() {
     return filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   }, [draft?.bidLog, draft?.players, bidLogSearch, bidLogBidder]);
 
+  const bidLogBidders = React.useMemo(
+    () => Array.from(new Set((draft?.bidLog || []).map(bid => bid.username))).sort((a, b) => a.localeCompare(b)),
+    [draft?.bidLog]
+  );
+
+  const totalPlayers = draft?.players?.length ?? 0;
+  const filteredPlayerCount = sortedPlayers.length;
+  const totalTeams = draft?.users?.length ?? 0;
+  const auctionStarted = countdown === 'Auction Started!' || countdown === '';
+  const draftTimeZone = getDraftTimeZone(draft);
+  const currentUserCap = capTeams.find(team => team.team === session?.user?.name) || null;
+  const topCapTeams = [...capTeams]
+    .sort((a, b) => Number(b?.curYear?.remaining || 0) - Number(a?.curYear?.remaining || 0))
+    .slice(0, 5);
+  const tableColumnCount = draft?.blind ? 6 : 7;
+  const phaseSummary = {
+    Active: groupedPlayers.Active.length,
+    Upcoming: groupedPlayers.Upcoming.length,
+    Ended: groupedPlayers.Ended.length,
+  };
+
+  const auctionStatus = !draft
+    ? 'No active auction'
+    : !draft?.startDate
+    ? 'Schedule pending'
+    : auctionStarted
+    ? 'Auction live'
+    : 'Pre-auction';
+
   if (status === 'loading') return null;
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#001A2B] flex items-center justify-center flex-col">
-        <p className="text-lg text-white/70">No active draft found.</p>
+      <main className="min-h-screen bg-[#001A2B] px-4 py-10 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-[70vh] max-w-4xl items-center justify-center">
+          <div className="w-full rounded-[32px] border border-white/10 bg-white/[0.04] p-8 text-center shadow-2xl shadow-black/20 backdrop-blur-sm">
+            <div className="mx-auto h-12 w-12 animate-pulse rounded-full border border-[#FF4B1F]/40 bg-[#FF4B1F]/20" />
+            <h1 className="mt-6 text-2xl font-semibold">Loading auction board</h1>
+            <p className="mt-2 text-sm text-white/60">Fetching the latest draft, timers, and bids.</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!draft) {
+    return (
+      <main className="min-h-screen bg-[#001A2B] px-4 py-10 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-[70vh] max-w-4xl items-center justify-center">
+          <div className="w-full rounded-[32px] border border-white/10 bg-white/[0.04] p-8 text-center shadow-2xl shadow-black/20 backdrop-blur-sm">
+            <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Free Agent Auction</div>
+            <h1 className="mt-4 text-3xl font-semibold">No active draft found</h1>
+            <p className="mt-3 text-sm text-white/60">Start or activate a draft from the admin tools to populate the live auction experience.</p>
+          </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#001A2B] text-white">
-      {/* Header Banner */}
-      <div className="p-6 bg-black/30 border-b border-white/10">
-        <div className="max-w-7xl mx-auto flex flex-col items-center justify-center">
-          <img
-            src="/logo.png"
-            alt="BBB League"
-            className="h-16 w-16 transition-transform hover:scale-105 mb-2"
-          />
-          {draft?.startDate && countdown !== 'Auction Started!' && (
-            <div className="mt-2 text-xl font-bold text-[#FF4B1F]">
-              Auction Starts In: <span className="font-mono">{countdown}</span>
-            </div>
-          )}
-          {draft?.startDate && (
-            <div className="mt-2 text-center text-sm text-white/70">
+    <main className="min-h-screen overflow-x-hidden bg-[#001A2B] text-white">
+      <div className="relative isolate overflow-hidden border-b border-white/10">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,75,31,0.22),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_30%),linear-gradient(180deg,_rgba(2,6,23,0.45),_rgba(2,6,23,0.12))]" />
+        <div className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+          <div className="rounded-[32px] border border-white/10 bg-white/[0.045] p-6 shadow-2xl shadow-black/20 backdrop-blur-sm sm:p-8">
+            <div className="grid gap-8 xl:grid-cols-[minmax(0,1.45fr)_minmax(330px,0.8fr)] xl:items-start">
               <div>
-                <span className="font-semibold">Schedule:</span>{' '}
-                {formatDraftDateTime(draft.startDate, getDraftTimeZone(draft))}
-                {draft?.endDate ? ` → ${formatDraftDateTime(draft.endDate, getDraftTimeZone(draft))}` : ''}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/20">
+                    <img src="/logo.png" alt="BBB League" className="h-10 w-10 object-contain" />
+                  </div>
+                  <span className={cn('inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]', draft?.blind ? 'border-violet-400/30 bg-violet-500/15 text-violet-200' : 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200')}>
+                    {draft?.blind ? 'Blind auction' : 'Open auction'}
+                  </span>
+                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
+                    {auctionStatus}
+                  </span>
+                </div>
+
+                <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">Free Agent Auction</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/65 sm:text-base">
+                  A live auction board optimized for fast scanning, cleaner decision-making, and full parity across desktop and mobile.
+                </p>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <span className="inline-flex rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/70">{totalTeams} teams</span>
+                  <span className="inline-flex rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/70">{totalPlayers} players</span>
+                  <span className="inline-flex rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/70">{filteredPlayerCount} in view</span>
+                </div>
+
+                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                  <MetricCard eyebrow="Active now" title={phaseSummary.Active} detail="Bidding windows currently open" accent="green" />
+                  <MetricCard eyebrow="Upcoming" title={phaseSummary.Upcoming} detail="Players still waiting to open" accent="blue" />
+                  <MetricCard eyebrow="Final" title={phaseSummary.Ended} detail="Players with closed windows" accent="slate" />
+                </div>
               </div>
-              <div>{getDraftTimeZone(draft)}</div>
+
+              <div className="space-y-4">
+                <div className="rounded-[28px] border border-white/10 bg-[#020817]/65 p-5 shadow-lg shadow-black/20">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">
+                    {auctionStarted ? 'Auction status' : 'Auction countdown'}
+                  </div>
+                  <div className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                    {auctionStarted ? 'Live now' : (countdown || 'Pending')}
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-white/60">
+                    <div>Start: {draft?.startDate ? formatDraftDateTime(draft.startDate, draftTimeZone) : '—'}</div>
+                    <div>End: {draft?.endDate ? formatDraftDateTime(draft.endDate, draftTimeZone) : '—'}</div>
+                    <div>{draftTimeZone}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                  <SurfaceButton className="w-full" onClick={() => setShowCapModal(true)}>View cap space</SurfaceButton>
+                  <SurfaceButton className="w-full" tone="ghost" onClick={() => setShowBidLogModal(true)}>View bid log</SurfaceButton>
+                  {isAdmin && (
+                    <SurfaceButton className="w-full" tone="purple" onClick={() => setShowAdminToolsModal(true)}>Admin tools</SurfaceButton>
+                  )}
+                  {session?.user?.role === 'admin' && (
+                    <SurfaceButton className="w-full" tone={showResetButtons ? 'yellow' : 'ghost'} onClick={() => setShowResetButtons(v => !v)}>
+                      {showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
+                    </SurfaceButton>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-          {/* Move Cap Space and Bid Log buttons here */}
-          <div className="flex justify-end mt-4 w-full max-w-2xl mx-auto">
-            {/* Admin-only Toggle Reset Buttons */}
-            {session?.user?.role === 'admin' && (
-              <button
-                className={`px-4 py-2 rounded text-white transition-colors mr-2 ${showResetButtons ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-gray-700 hover:bg-gray-800'}`}
-                onClick={() => setShowResetButtons(v => !v)}
-              >
-                {showResetButtons ? 'Hide Reset Buttons' : 'Show Reset Buttons'}
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                className="px-4 py-2 bg-purple-700 rounded text-white hover:bg-purple-800 transition-colors mr-2"
-                onClick={() => setShowAdminToolsModal(true)}
-              >
-                Admin Tools
-              </button>
-            )}
-            <button
-              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors mr-2"
-              onClick={() => setShowCapModal(true)}
-            >
-              View Cap Space
-            </button>
-            <button
-              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
-              onClick={() => setShowBidLogModal(true)}
-            >
-              View Bid Log
-            </button>
           </div>
         </div>
       </div>
 
-      {/* Info Banner */}
-      <div className="bg-gradient-to-r from-[#FF4B1F]/20 to-transparent">
-        <div className="max-w-7xl mx-auto p-6 flex flex-col md:flex-row items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Free Agent Auction</h2>
-          </div>
-        </div>
-      </div>
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_340px]">
+          <section className="space-y-6">
+            {success && (
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+                {success}
+              </div>
+            )}
+            {error && (
+              <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                {error}
+              </div>
+            )}
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Auction Table */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* REMOVE the Cap Space and Bid Log buttons from here */}
-          {/* Subtle error message at the top of the table */}
-          {error && (
-            <div className="mb-4 px-4 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
-              {error}
-            </div>
-          )}
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-[#FF4B1F]">Available Players</h2>
-            </div>
-            {/* Filters and status area above the table */}
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-end">
-              {/* Search by player name - placed to the left of filters */}
-              <div className="w-full md:w-auto md:min-w-[260px]">
-                <label htmlFor="searchName" className="mb-1 block font-medium">Search:</label>
-                <input
-                  id="searchName"
-                  type="text"
-                  value={searchName}
-                  onChange={e => setSearchName(e.target.value)}
-                  className="w-full bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
-                  placeholder="Player name..."
-                />
+            <div className="rounded-[32px] border border-white/10 bg-white/[0.04] p-4 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">Marketplace</div>
+                  <h2 className="mt-2 text-2xl font-semibold">Available players</h2>
+                  <p className="mt-1 text-sm text-white/60">
+                    {draft?.blind
+                      ? 'Blind auctions hide competing bids until a player closes. Your own latest bid remains visible.'
+                      : 'Live auctions show the current leader, contract score, and real-time bidding pressure.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(phaseSummary).map(([group, count]) => (
+                    <span key={group} className={cn('inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]', getGroupTheme(group).pill)}>
+                      {group === 'Ended' ? 'Final' : group}: {count}
+                    </span>
+                  ))}
+                </div>
               </div>
-              {/* Position Filter */}
-              <div className="w-full md:w-auto">
-                <label htmlFor="filterPosition" className="mb-1 block font-medium">Position:</label>
-                <select
-                  id="filterPosition"
-                  value={filterPosition}
-                  onChange={e => setFilterPosition(e.target.value)}
-                  className="w-full bg-black/40 border border-white/20 rounded px-2 py-1 text-white md:min-w-[120px]"
-                >
-                  <option value="ALL">ALL</option>
-                  {Array.from(new Set(draft?.players?.map(p => p.position) ?? []))
-                    .sort()
-                    .map(pos => (
-                      <option key={pos} value={pos}>{pos}</option>
-                    ))}
-                </select>
-              </div>
-            </div>
-            {/* Mobile Card List */}
-            {isMobile ? (
-              <div>
-                {/* Card Sorting Controls */}
-                <div className="flex gap-2 mb-4 items-center px-2">
-                  <label htmlFor="cardSort" className="font-medium">Sort by:</label>
+
+              <div className={cn('mt-6 grid gap-3', isMobile ? 'xl:grid-cols-[minmax(0,1.1fr)_repeat(3,minmax(0,0.55fr))]' : 'xl:grid-cols-[minmax(0,1.15fr)_repeat(2,minmax(0,0.6fr))]')}>
+                <div>
+                  <label htmlFor="searchName" className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Search player</label>
+                  <input
+                    id="searchName"
+                    type="text"
+                    value={searchName}
+                    onChange={e => setSearchName(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                    placeholder="Type a name..."
+                  />
+                </div>
+                <div>
+                  <label htmlFor="filterPosition" className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Position</label>
+                  <select
+                    id="filterPosition"
+                    value={filterPosition}
+                    onChange={e => setFilterPosition(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                  >
+                    <option value="ALL">All positions</option>
+                    {Array.from(new Set(draft?.players?.map(p => p.position) ?? []))
+                      .sort()
+                      .map(pos => (
+                        <option key={pos} value={pos}>{pos}</option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="cardSort" className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Sort by</label>
                   <select
                     id="cardSort"
                     value={sortConfig.key}
                     onChange={e => setSortConfig({ key: e.target.value, direction: 'asc' })}
-                    className="bg-black/40 border border-white/20 rounded px-2 py-1 text-white"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
                   >
                     <option value="countdown">Countdown</option>
+                    <option value="playerName">Player</option>
+                    <option value="position">Position</option>
                     <option value="ktc">KTC</option>
-                    <option value="highBid">High Bid</option>
+                    {!draft?.blind && <option value="highBid">High bid</option>}
+                    {!draft?.blind && <option value="highBidder">High bidder</option>}
                   </select>
-                  <button
-                    className="px-2 py-1 rounded border border-white/20 text-white bg-black/30 hover:bg-black/50"
-                    onClick={() =>
-                      setSortConfig(prev => ({
-                        ...prev,
-                        direction: prev.direction === 'asc' ? 'desc' : 'asc'
-                      }))
-                    }
-                    title={`Sort ${sortConfig.direction === 'asc' ? 'Descending' : 'Ascending'}`}
-                  >
-                    {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                  </button>
                 </div>
-                <div className="flex flex-col gap-4 p-2">
-                  {['Active', 'Upcoming', 'Ended'].map(group => (
-                    groupedPlayers[group].length > 0 && (
-                      <React.Fragment key={group}>
-                        <div
-                          className={`font-bold px-2 py-1 mb-2 rounded border-l-8 ${
-                            group === 'Active'
-                              ? 'bg-green-900/80 text-green-200 border-green-400'
-                              : group === 'Upcoming'
-                              ? 'bg-blue-900/80 text-blue-200 border-blue-400'
-                              : 'bg-gray-800/80 text-gray-200 border-gray-400'
-                          }`}
-                        >
-                          {group === 'Ended' ? 'Final' : group}
-                        </div>
-                        {groupedPlayers[group].map(p => (
-                          <PlayerCard
-                            key={p.playerId}
-                            player={p}
-                            group={group}
-                            draft={draft}
-                            playerCountdowns={playerCountdowns}
-                            session={session}
-                            setSelectedPlayer={setSelectedPlayer}
-                            setResetConfirmId={setResetConfirmId}
-                            resetConfirmId={resetConfirmId}
-                            fetchDraft={fetchDraft}
-                            countdown={countdown}
-                          />
-                        ))}
-                      </React.Fragment>
-                    )
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="overflow-x-auto max-h-[70vh] border border-white/10 rounded bg-white/5">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="bg-[#FF4B1F]/20 text-white/90">
-                      <th className="py-2 px-3 text-center align-middle"></th>
-                      {!draft?.blind && (
-                        <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('highBid')}>
-                          High Bid {sortConfig.key === 'highBid' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </th>
-                      )}
-                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('playerName')}>
-                        Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('position')}>
-                        Position {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('ktc')}>
-                        KTC {sortConfig.key === 'ktc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                      {draft?.blind && (
-                        <th className="py-2 px-3 text-center align-middle">
-                          Your Last Bid
-                        </th>
-                      )}
-                      {!draft?.blind && (
-                        <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('highBidder')}>
-                          High Bidder {sortConfig.key === 'highBidder' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                        </th>
-                      )}
-                      <th className="py-2 px-3 text-center align-middle cursor-pointer" onClick={() => handleSort('countdown')}>
-                        Countdown {sortConfig.key === 'countdown' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                      <th className="py-2 px-3 text-center align-middle"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Active */}
-                    {groupedPlayers.Active.length > 0 && (
-                      <>
-                        <tr>
-                          <td colSpan="9" className="bg-green-900/80 text-green-200 font-bold px-3 py-2 border-l-8 border-green-400">
-                            Active
-                          </td>
-                        </tr>
-                        {groupedPlayers.Active.map((p, idx) => renderPlayerRow({ ...p, __rowIndex: idx }, 'Active'))}
-                      </>
-                    )}
-                    {/* Upcoming */}
-                    {groupedPlayers.Upcoming.length > 0 && (
-                      <>
-                        <tr>
-                          <td colSpan="9" className="bg-blue-900/80 text-blue-200 font-bold px-3 py-2 border-l-8 border-blue-400">
-                            Upcoming
-                          </td>
-                        </tr>
-                        {groupedPlayers.Upcoming.map((p, idx) => renderPlayerRow({ ...p, __rowIndex: idx }, 'Upcoming'))}
-                      </>
-                    )}
-                    {/* Ended */}
-                    {groupedPlayers.Ended.length > 0 && (
-                      <>
-                        <tr>
-                          <td colSpan="9" className="bg-gray-800/80 text-gray-200 font-bold px-3 py-2 border-l-8 border-gray-400">
-                            Final
-                          </td>
-                        </tr>
-                        {groupedPlayers.Ended.map((p, idx) => renderPlayerRow({ ...p, __rowIndex: idx }, 'Ended'))}
-                      </>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          {selectedPlayer && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-              <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-md w-full shadow-2xl relative">
-                <button
-                  className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
-                  onClick={() => {
-                    setSelectedPlayer(null);
-                    setBidSalary('');
-                    setBidYears('');
-                  }}
-                  disabled={placingBid}
-                  aria-label="Close"
-                >
-                  &times;
-                </button>
-                <h3 className="text-lg font-bold mb-2 text-[#FF4B1F]">
-                  Bid on {selectedPlayer.playerName}
-                </h3>
-                {selectedPlayerAlreadyRostered && (
-                  <div className="mb-3 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
-                    You already have this player on an active contract, so bidding is disabled.
+                {isMobile && (
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Direction</label>
+                    <SurfaceButton
+                      tone="ghost"
+                      className="w-full"
+                      onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                      title={`Sort ${sortConfig.direction === 'asc' ? 'descending' : 'ascending'}`}
+                    >
+                      {sortConfig.direction === 'asc' ? 'Ascending ↑' : 'Descending ↓'}
+                    </SurfaceButton>
                   </div>
                 )}
-                <div className="mb-2">
-                  <label className="block mb-1">Salary ($):</label>
+              </div>
+
+              <div className="mt-6 rounded-[28px] border border-white/10 bg-black/20 p-3 sm:p-4">
+                {filteredPlayerCount === 0 ? (
+                  <div className="rounded-[24px] border border-dashed border-white/10 px-6 py-14 text-center">
+                    <div className="text-lg font-medium text-white">No players match the current filters</div>
+                    <p className="mt-2 text-sm text-white/55">Try clearing the search or switching to another position group.</p>
+                  </div>
+                ) : isMobile ? (
+                  <div className="space-y-6">
+                    {['Active', 'Upcoming', 'Ended'].map(group => (
+                      groupedPlayers[group].length > 0 && (
+                        <React.Fragment key={group}>
+                          <div className={cn('rounded-2xl border px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em]', getGroupTheme(group).section)}>
+                            {group === 'Ended' ? 'Final' : group} · {groupedPlayers[group].length}
+                          </div>
+                          <div className="space-y-5">
+                            {groupedPlayers[group].map(p => (
+                              <PlayerCard
+                                key={p.playerId}
+                                player={p}
+                                group={group}
+                                draft={draft}
+                                playerCountdowns={playerCountdowns}
+                                session={session}
+                                setSelectedPlayer={setSelectedPlayer}
+                                setResetConfirmId={setResetConfirmId}
+                                resetConfirmId={resetConfirmId}
+                                countdown={countdown}
+                              />
+                            ))}
+                          </div>
+                        </React.Fragment>
+                      )
+                    ))}
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#020817]/55">
+                    <div className="max-h-[72vh] overflow-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="sticky top-0 z-10 bg-[#08111f]/95 backdrop-blur-sm">
+                          <tr className="border-b border-white/10 text-white/75">
+                            {!draft?.blind && (
+                              <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-[0.2em]">
+                                <button className="w-full" onClick={() => handleSort('highBid')}>High bid {sortConfig.key === 'highBid' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</button>
+                              </th>
+                            )}
+                            <th className="px-3 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em]">
+                              <button className="w-full text-left" onClick={() => handleSort('playerName')}>Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</button>
+                            </th>
+                            <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-[0.2em]">
+                              <button className="w-full" onClick={() => handleSort('position')}>Position {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</button>
+                            </th>
+                            <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-[0.2em]">
+                              <button className="w-full" onClick={() => handleSort('ktc')}>KTC {sortConfig.key === 'ktc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</button>
+                            </th>
+                            {draft?.blind ? (
+                              <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-[0.2em]">Your last bid</th>
+                            ) : (
+                              <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-[0.2em]">
+                                <button className="w-full" onClick={() => handleSort('highBidder')}>High bidder {sortConfig.key === 'highBidder' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</button>
+                              </th>
+                            )}
+                            <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-[0.2em]">
+                              <button className="w-full" onClick={() => handleSort('countdown')}>Countdown {sortConfig.key === 'countdown' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</button>
+                            </th>
+                            <th className="px-3 py-4 text-center text-xs font-semibold uppercase tracking-[0.2em]">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {['Active', 'Upcoming', 'Ended'].map(group => (
+                            groupedPlayers[group].length > 0 ? (
+                              <React.Fragment key={group}>
+                                <tr>
+                                  <td colSpan={tableColumnCount} className={cn('px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em]', getGroupTheme(group).section)}>
+                                    {group === 'Ended' ? 'Final' : group} · {groupedPlayers[group].length}
+                                  </td>
+                                </tr>
+                                {groupedPlayers[group].map((p, idx) => renderPlayerRow({ ...p, __rowIndex: idx }, group))}
+                              </React.Fragment>
+                            ) : null
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-xl shadow-black/10 backdrop-blur-sm">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">Live summary</div>
+              <div className="mt-4 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/45">Your status</div>
+                  <div className="mt-2 text-lg font-semibold">{isUserInDraft(session, draft) ? 'Eligible to bid' : 'View only'}</div>
+                  <p className="mt-1 text-sm text-white/55">
+                    {isUserInDraft(session, draft)
+                      ? draft?.blind ? 'Your private bids remain visible only to you until the player closes.' : 'You can challenge live offers as each player window remains active.'
+                      : 'You are not listed in this auction, so bidding is disabled.'}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/45">Your cap</div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {currentUserCap ? formatCapSpace(currentUserCap.curYear.remaining) : '—'}
+                  </div>
+                  <div className="mt-1 text-sm text-white/55">
+                    {currentUserCap
+                      ? `Current spend ${formatCapSpace(currentUserCap.spend || 0)}`
+                      : 'Open the cap modal for league-wide cap context.'}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/45">Auction notes</div>
+                  <ul className="mt-3 space-y-2 text-sm text-white/60">
+                    <li>• {draft?.blind ? 'Blind mode hides competing offers until the player reaches Final.' : 'Live mode always shows the current leader and contract score.'}</li>
+                    <li>• Active players can be bid immediately while their countdown is live.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-xl shadow-black/10 backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">Cap leaderboard</div>
+                  <h3 className="mt-2 text-lg font-semibold">{draft?.blind ? 'Most cap space' : 'Most remaining cap space'}</h3>
+                </div>
+                <SurfaceButton tone="ghost" className="px-3 py-2 text-xs" onClick={() => setShowCapModal(true)}>
+                  Full table
+                </SurfaceButton>
+              </div>
+              <div className="mt-4 space-y-3">
+                {topCapTeams.length > 0 ? topCapTeams.map(team => (
+                  <div key={team.team} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                    <TeamIdentity username={team.team} avatarId={teamAvatars[team.team]} subtitle={draft?.blind && session?.user?.name !== team.team ? 'Spend hidden' : `Spend ${formatCapSpace(team.spend || 0)}`} size={10} />
+                    <span className={cn('text-sm font-semibold', getCapSpaceColor(team.curYear.remaining))}>{formatCapSpace(team.curYear.remaining)}</span>
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/50">Cap data will appear once contract records are loaded.</div>
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      {selectedPlayer && (
+        <ModalShell
+          title={`Bid on ${selectedPlayer.playerName}`}
+          subtitle={draft?.blind ? 'Your private offer stays hidden until the player closes.' : 'Your new contract score must beat the current leader.'}
+          onClose={() => {
+            setSelectedPlayer(null);
+            setBidSalary('');
+            setBidYears('');
+          }}
+          maxWidth="max-w-3xl"
+        >
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-4">
+              {selectedPlayerAlreadyRostered && (
+                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                  You already have this player on an active contract, so bidding is disabled.
+                </div>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Salary ($)</label>
                   <input
                     type="number"
                     min={1}
                     max={200}
                     step={0.1}
-                    className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
                     placeholder="Enter salary"
                     value={bidSalary}
                     disabled={selectedPlayerAlreadyRostered}
                     onChange={e => {
-                      // Allow numbers with up to one decimal place
                       const val = e.target.value.replace(/[^0-9.]/g, '');
                       setBidSalary(val);
                     }}
                   />
                 </div>
-                <div className="mb-2">
-                  <label className="block mb-1">Years (1-4):</label>
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Years (1-4)</label>
                   <input
                     type="number"
                     min={1}
                     max={4}
                     step={1}
-                    className="w-full p-2 rounded bg-white/10 border border-white/10 text-white mb-2"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
                     placeholder="Enter years"
                     value={bidYears}
                     disabled={selectedPlayerAlreadyRostered}
                     onChange={e => {
-                      // Only allow 1, 2, 3, or 4
                       const val = e.target.value.replace(/[^0-9]/g, '');
                       if (['1', '2', '3', '4'].includes(val)) {
                         setBidYears(val);
@@ -1886,241 +1977,189 @@ export default function FreeAgentAuctionPage() {
                     }}
                   />
                 </div>
-                <div className="mb-2">
-                  <strong>Contract Score:</strong>{' '}
-                  {bidSalary && bidYears
-                    ? calculateContractScore(bidSalary, bidYears)
-                    : '-'}
-                </div>
-                <div className="mb-2 text-xs text-blue-200">
-                  <div>
-                    <strong>How it's calculated:</strong>
-                  </div>
-                  {bidSalary && bidYears ? (() => {
-                    let y1 = Number(bidSalary);
-                    let y2 = Math.ceil(y1 * 1.1 * 10) / 10;
-                    let y3 = Math.ceil(y2 * 1.1 * 10) / 10;
-                    let y4 = Math.ceil(y3 * 1.1 * 10) / 10;
-                    let rows = [];
-                    if (bidYears >= 1) rows.push({
-                      year: 1,
-                      salary: y1,
-                      percent: '100%',
-                      score: y1
-                    });
-                    if (bidYears >= 2) rows.push({
-                      year: 2,
-                      salary: y2,
-                      percent: '80%',
-                      score: y2 * 0.8
-                    });
-                    if (bidYears >= 3) rows.push({
-                      year: 3,
-                      salary: y3,
-                      percent: '60%',
-                      score: y3 * 0.6
-                    });
-                    if (bidYears >= 4) rows.push({
-                      year: 4,
-                      salary: y4,
-                      percent: '40%',
-                      score: y4 * 0.4
-                    });
-                    return (
-                      <>
-                        <div className="flex justify-center">
-                          <table className="text-sm mt-2 mb-1 border-separate" style={{ minWidth: 320 }}>
-                            <thead>
-                              <tr>
-                                <th className="pr-3 text-left">Year</th>
-                                <th className="pr-3 text-left">Salary</th>
-                                <th className="pr-3 text-left">Weight</th>
-                                <th className="pr-3 text-left">Score</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rows.map(r => (
-                                <tr key={r.year}>
-                                  <td className="pr-3">Year {r.year}</td>
-                                  <td className="pr-3">${r.salary.toFixed(1)}</td>
-                                  <td className="pr-3">{r.percent}</td>
-                                  <td className="pr-3">{r.score.toFixed(1)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        {!draft?.blind && (
-                          <div>
-                            <strong>Current High Bid:</strong> ${currentHighSalary} / {currentHighYears}y<br />
-                            <strong>Current Contract Score:</strong> {currentHighScore}
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()
-                  :
-                  null}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
-                    onClick={handleBid}
-                    disabled={placingBid || !bidSalary || !bidYears || selectedPlayerAlreadyRostered}
-                  >
-                    {placingBid ? 'Placing Bid...' : 'Place Bid'}
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
-                    onClick={() => {
-                      setSelectedPlayer(null);
-                      setBidSalary('');
-                      setBidYears('');
-                    }}
-                    disabled={placingBid}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                {success && <div className="text-green-400 mt-2">{success}</div>}
-                {error && (
-                  <div className="mt-2 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
-                    {error}
-                  </div>
-                )}
-                {!draft?.blind && showConfirm && (
-                  <div className="mt-2 px-3 py-2 bg-yellow-900/80 text-yellow-200 rounded border border-yellow-700">
-                    Your bid is {calculateContractScore(bidSalary, bidYears) - currentHighScore} above the current high contract score. Are you sure?
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        className="px-3 py-1 bg-yellow-600 rounded text-white hover:bg-yellow-700"
-                        onClick={() => handleBid()}
-                        disabled={placingBid || selectedPlayerAlreadyRostered}
-                      >
-                        Yes, Place Bid
-                      </button>
-                      <button
-                        className="px-3 py-1 bg-gray-600 rounded text-white hover:bg-gray-700"
-                        onClick={() => setShowConfirm(false)}
-                        disabled={placingBid}
-                      >
-                        Cancel
-                      </button>
+              </div>
+
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">How the score works</div>
+                {bidSalary && bidYears ? (() => {
+                  let y1 = Number(bidSalary);
+                  let y2 = Math.ceil(y1 * 1.1 * 10) / 10;
+                  let y3 = Math.ceil(y2 * 1.1 * 10) / 10;
+                  let y4 = Math.ceil(y3 * 1.1 * 10) / 10;
+                  let rows = [];
+                  if (bidYears >= 1) rows.push({ year: 1, salary: y1, percent: '100%', score: y1 });
+                  if (bidYears >= 2) rows.push({ year: 2, salary: y2, percent: '80%', score: y2 * 0.8 });
+                  if (bidYears >= 3) rows.push({ year: 3, salary: y3, percent: '60%', score: y3 * 0.6 });
+                  if (bidYears >= 4) rows.push({ year: 4, salary: y4, percent: '40%', score: y4 * 0.4 });
+                  return (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-white/10 text-left text-white/55">
+                            <th className="pb-2 pr-4 font-medium">Year</th>
+                            <th className="pb-2 pr-4 font-medium">Salary</th>
+                            <th className="pb-2 pr-4 font-medium">Weight</th>
+                            <th className="pb-2 font-medium">Score</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map(r => (
+                            <tr key={r.year} className="border-b border-white/5 last:border-0">
+                              <td className="py-2 pr-4">Year {r.year}</td>
+                              <td className="py-2 pr-4">${r.salary.toFixed(1)}</td>
+                              <td className="py-2 pr-4">{r.percent}</td>
+                              <td className="py-2">{r.score.toFixed(1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  </div>
+                  );
+                })() : (
+                  <p className="mt-3 text-sm text-white/55">Enter a salary and term to see the full weighted score breakdown.</p>
                 )}
               </div>
             </div>
-          )}
-          {/* Bid Log Table Button */}
-          <div className="flex justify-end mt-4">
-            <button
-              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors mr-2"
-              onClick={() => setShowCapModal(true)}
-            >
-              View Cap Space
-            </button>
-            <button
-              className="px-4 py-2 bg-[#FF4B1F] rounded text-white hover:bg-[#FF4B1F]/80 transition-colors"
-              onClick={() => setShowBidLogModal(true)}
-            >
-              View Bid Log
-            </button>
-          </div>
-        </div>
-        {/* Sidebar */}
-        <div className="space-y-6"></div>
-      </div>
-      {/* Cap Space Modal */}
-      {showCapModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-2xl w-full shadow-2xl relative">
-            <button
-              className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
-              onClick={() => setShowCapModal(false)}
-              aria-label="Close"
-            >
-              &times;
-            </button>
-            <h2 className="text-xl font-bold mb-4 text-[#FF4B1F]">Cap Space</h2>
-            <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-black/40 border-b border-white/10">
-                    <th className="p-3 text-left">Team</th>
-                    <th className="p-3 text-left">Cap Space</th>
-                    {/* Only show Spend column if not blind, or if this is the active user */}
-                    {(!draft?.blind || capTeams.some(team => session?.user?.name === team.team)) && (
-                      <th className="p-3 text-left">Spend</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {capTeams
-                    .sort((a, b) => a.team.localeCompare(b.team))
-                    .map((team, idx) => {
-                      const isActiveUser = session?.user?.name === team.team;
-                      return (
-                        <tr key={team.team || idx} className="hover:bg-white/10 transition-colors border-b border-white/5 last:border-0">
-                          <td className="p-3 font-medium flex items-center gap-2">
-                            {teamAvatars[team.team] ? (
-                              <Image
-                                src={`https://sleepercdn.com/avatars/${teamAvatars[team.team]}`}
-                                alt={team.team}
-                                width={48}
-                                height={48}
-                                className="rounded-full"
-                                loading="lazy"
-                                unoptimized={team.team.startsWith('http')}
-                              />
-                            ) : null}
-                            {team.team}
-                          </td>
-                          <td className="p-3 text-right">
-                            <span className={getCapSpaceColor(team.curYear.remaining)}>
-                              {formatCapSpace(team.curYear.remaining)}
-                            </span>
-                          </td>
-                          {/* Only show Spend if not blind, or this is the active user */}
-                          {(!draft?.blind || isActiveUser) && (
-                            <td className="p-3 text-right">
-                              {formatCapSpace(team.spend)}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">Contract score</div>
+                <div className="mt-3 text-4xl font-semibold text-[#FFB800]">
+                  {bidSalary && bidYears ? calculateContractScore(bidSalary, bidYears) : '-'}
+                </div>
+                {!draft?.blind && (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/65">
+                    <div><span className="text-white/45">Current high bid</span><br />${currentHighSalary} / {currentHighYears}y</div>
+                    <div className="mt-3"><span className="text-white/45">Current contract score</span><br />{currentHighScore}</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <SurfaceButton
+                  className="w-full"
+                  onClick={handleBid}
+                  disabled={placingBid || !bidSalary || !bidYears || selectedPlayerAlreadyRostered}
+                >
+                  {placingBid ? 'Placing bid…' : 'Place bid'}
+                </SurfaceButton>
+                <SurfaceButton
+                  tone="ghost"
+                  className="w-full"
+                  onClick={() => {
+                    setSelectedPlayer(null);
+                    setBidSalary('');
+                    setBidYears('');
+                  }}
+                  disabled={placingBid}
+                >
+                  Cancel
+                </SurfaceButton>
+              </div>
+
+              {!draft?.blind && showConfirm && (
+                <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                  Your bid is {calculateContractScore(bidSalary, bidYears) - currentHighScore} above the current high contract score.
+                  <div className="mt-3 flex gap-2">
+                    <SurfaceButton tone="yellow" className="flex-1" onClick={() => handleBid()} disabled={placingBid || selectedPlayerAlreadyRostered}>
+                      Yes, place bid
+                    </SurfaceButton>
+                    <SurfaceButton tone="ghost" className="flex-1" onClick={() => setShowConfirm(false)} disabled={placingBid}>
+                      Cancel
+                    </SurfaceButton>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
-      {/* Bid Log Modal */}
+
+      {showCapModal && (
+        <ModalShell
+          title="Cap Space"
+          subtitle="Current year cap room across the league, with spend visibility respecting blind-auction rules."
+          onClose={() => setShowCapModal(false)}
+          maxWidth="max-w-4xl"
+        >
+          <div className="overflow-x-auto rounded-[24px] border border-white/10 bg-black/20">
+            <table className="w-full min-w-[680px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-white/10 bg-white/5 text-left text-white/70">
+                  <th className="px-4 py-3 font-semibold">Team</th>
+                  <th className="px-4 py-3 font-semibold">Cap Space</th>
+                  {(!draft?.blind || capTeams.some(team => session?.user?.name === team.team)) && (
+                    <th className="px-4 py-3 font-semibold">Spend</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {capTeams
+                  .slice()
+                  .sort((a, b) => a.team.localeCompare(b.team))
+                  .map((team, idx) => {
+                    const isActiveUser = session?.user?.name === team.team;
+                    return (
+                      <tr key={team.team || idx} className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
+                        <td className="px-4 py-3">
+                          <TeamIdentity username={team.team} avatarId={teamAvatars[team.team]} size={11} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={cn('text-sm font-semibold', getCapSpaceColor(team.curYear.remaining))}>{formatCapSpace(team.curYear.remaining)}</span>
+                        </td>
+                        {(!draft?.blind || isActiveUser) && (
+                          <td className="px-4 py-3 text-right text-white/75">{formatCapSpace(team.spend || 0)}</td>
+                        )}
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </ModalShell>
+      )}
+
       {showBidLogModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-2xl w-full shadow-2xl relative">
-            <button
-              className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
-              onClick={() => setShowBidLogModal(false)}
-              aria-label="Close"
-            >
-              &times;
-            </button>
-            <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Bid Log</h2>
-            {draft.blind ? (
-              <div className="text-center text-gray-400 italic py-8">
-                All bids and bidders are hidden for this draft.
+        <ModalShell
+          title="Bid Log"
+          subtitle={draft.blind ? 'Blind-auction privacy is still enforced here.' : 'Review the most recent offers, filtered by player or bidder.'}
+          onClose={() => setShowBidLogModal(false)}
+          maxWidth="max-w-5xl"
+        >
+          {draft.blind ? (
+            <div className="rounded-[24px] border border-white/10 bg-black/20 px-6 py-14 text-center text-sm text-white/55">
+              All bids and bidders are hidden for this draft until each player reaches Final.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_260px]">
+                <input
+                  type="text"
+                  value={bidLogSearch}
+                  onChange={(e) => setBidLogSearch(e.target.value)}
+                  placeholder="Filter by player name"
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                />
+                <select
+                  value={bidLogBidder}
+                  onChange={(e) => setBidLogBidder(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                >
+                  <option value="ALL">All bidders</option>
+                  {bidLogBidders.map(bidder => (
+                    <option key={bidder} value={bidder}>{bidder}</option>
+                  ))}
+                </select>
               </div>
-            ) : (
-              <div className="overflow-x-auto max-h-[40vh] border border-white/10 rounded bg-white/5">
+
+              <div className="overflow-x-auto rounded-[24px] border border-white/10 bg-black/20">
                 <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="bg-[#FF4B1F]/20 text-white/90">
-                      <th className="py-2 px-3 text-left">Player Name</th>
-                      <th className="py-2 px-3 text-left">Bidder</th>
-                      <th className="py-2 px-3 text-left">Salary/Years</th>
-                      <th className="py-2 px-3 text-left">Time</th>
+                    <tr className="border-b border-white/10 bg-white/5 text-left text-white/70">
+                      <th className="px-4 py-3 font-semibold">Player</th>
+                      <th className="px-4 py-3 font-semibold">Bidder</th>
+                      <th className="px-4 py-3 font-semibold">Contract</th>
+                      <th className="px-4 py-3 font-semibold">Time</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2128,228 +2167,200 @@ export default function FreeAgentAuctionPage() {
                       filteredBidLog.map((bid, idx) => {
                         const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
                         return (
-                          <tr key={idx} className="hover:bg-white/10">
-                            <td className="py-2 px-3">{player ? player.playerName : 'Unknown'}</td>
-                            <td className="py-2 px-3 flex items-center gap-2">
-                              {teamAvatars[bid.username] ? (
-                                <Image
-                                  src={`https://sleepercdn.com/avatars/${teamAvatars[bid.username]}`}
-                                  alt={bid.username}
-                                  width={24}
-                                  height={24}
-                                  className="rounded-full"
-                                  loading="lazy"
-                                  unoptimized={bid.username.startsWith('http')}
-                                />
-                              ) : (
-                                <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
-                              )}
-                              {bid.username}
+                          <tr key={idx} className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
+                            <td className="px-4 py-3 font-medium text-white">{player ? player.playerName : 'Unknown'}</td>
+                            <td className="px-4 py-3">
+                              <TeamIdentity username={bid.username} avatarId={teamAvatars[bid.username]} size={8} />
                             </td>
-                            <td className="py-2 px-3 font-mono">
-                              ${bid.salary} / {bid.years}y<br />
-                              <span className="text-blue-300">Score: {bid.contractPoints}</span>
+                            <td className="px-4 py-3 font-mono text-white/80">
+                              ${bid.salary} / {bid.years}y
+                              <div className="mt-1 text-xs text-sky-200">Score: {bid.contractPoints}</div>
                             </td>
-                            <td className="py-2 px-3 text-gray-400">{formatTimeAgo(bid.timestamp)}</td>
+                            <td className="px-4 py-3 text-white/45">{formatTimeAgo(bid.timestamp)}</td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan={4} className="py-4 text-center text-white/60">No bids yet.</td>
+                        <td colSpan={4} className="px-4 py-10 text-center text-white/50">No bids match the current filters.</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-      {showAdminToolsModal && isAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-6xl w-full shadow-2xl relative max-h-[85vh] overflow-hidden flex flex-col">
-            <button
-              className="absolute top-2 right-2 text-white text-xl hover:text-[#FF4B1F] transition"
-              onClick={() => setShowAdminToolsModal(false)}
-              aria-label="Close"
-            >
-              &times;
-            </button>
-            <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Admin Tools</h2>
-            <p className="text-sm text-white/70 mb-4">Update the draft schedule and manage the active auction player pool.</p>
-            {adminToolError && (
-              <div className="mb-4 px-3 py-2 bg-red-900/80 text-red-300 rounded border border-red-700">
-                {adminToolError}
-              </div>
-            )}
-            <div className="mb-6 rounded border border-white/10 bg-white/5 p-4">
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold">Draft Schedule</h3>
-                  <p className="text-sm text-white/60 mt-1">
-                    Times are edited in {getDraftTimeZone(draft)} and saved back to the active draft.
-                  </p>
-                </div>
-                <button
-                  className="px-4 py-2 bg-blue-700 rounded text-white hover:bg-blue-800 disabled:opacity-50"
-                  onClick={handleAdminUpdateSchedule}
-                  disabled={adminToolSaving}
-                >
-                  {adminToolSaving ? 'Saving…' : 'Save Schedule'}
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-white/70 mb-2">Start Time</label>
-                  <input
-                    type="datetime-local"
-                    value={adminToolStartDate}
-                    onChange={(e) => setAdminToolStartDate(e.target.value)}
-                    className="w-full rounded border border-white/10 bg-black/30 px-3 py-2 text-white"
-                  />
-                  <div className="mt-2 text-xs text-white/50">
-                    Current: {draft?.startDate ? formatDraftDateTime(draft.startDate, getDraftTimeZone(draft)) : '—'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm text-white/70 mb-2">End Time</label>
-                  <input
-                    type="datetime-local"
-                    value={adminToolEndDate}
-                    onChange={(e) => setAdminToolEndDate(e.target.value)}
-                    className="w-full rounded border border-white/10 bg-black/30 px-3 py-2 text-white"
-                  />
-                  <div className="mt-2 text-xs text-white/50">
-                    Current: {draft?.endDate ? formatDraftDateTime(draft.endDate, getDraftTimeZone(draft)) : '—'}
-                  </div>
-                </div>
-              </div>
             </div>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 overflow-hidden flex-1">
-              <div className="border border-white/10 rounded bg-white/5 p-4 overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold">Current Player Pool</h3>
-                  <span className="text-sm text-white/60">{draft?.players?.length ?? 0} players</span>
+          )}
+        </ModalShell>
+      )}
+
+      {showAdminToolsModal && isAdmin && (
+        <ModalShell
+          title="Admin Tools"
+          subtitle="Update the schedule and manage the live auction player pool without leaving the board."
+          onClose={() => setShowAdminToolsModal(false)}
+          maxWidth="max-w-7xl"
+        >
+          {adminToolError && (
+            <div className="mb-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              {adminToolError}
+            </div>
+          )}
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div className="space-y-6">
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Draft schedule</div>
+                    <h3 className="mt-2 text-lg font-semibold">Timing controls</h3>
+                    <p className="mt-1 text-sm text-white/55">All edits use {getDraftTimeZone(draft)} and update the active draft in-place.</p>
+                  </div>
+                  <SurfaceButton tone="blue" onClick={handleAdminUpdateSchedule} disabled={adminToolSaving}>
+                    {adminToolSaving ? 'Saving…' : 'Save schedule'}
+                  </SurfaceButton>
                 </div>
-                <div className="overflow-y-auto pr-2 space-y-2">
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Start time</label>
+                    <input
+                      type="datetime-local"
+                      value={adminToolStartDate}
+                      onChange={(e) => setAdminToolStartDate(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                    />
+                    <div className="mt-2 text-xs text-white/45">Current: {draft?.startDate ? formatDraftDateTime(draft.startDate, getDraftTimeZone(draft)) : '—'}</div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">End time</label>
+                    <input
+                      type="datetime-local"
+                      value={adminToolEndDate}
+                      onChange={(e) => setAdminToolEndDate(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                    />
+                    <div className="mt-2 text-xs text-white/45">Current: {draft?.endDate ? formatDraftDateTime(draft.endDate, getDraftTimeZone(draft)) : '—'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Current player pool</div>
+                    <h3 className="mt-2 text-lg font-semibold">{draft?.players?.length ?? 0} players</h3>
+                  </div>
+                </div>
+                <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
                   {(draft?.players || [])
                     .slice()
                     .sort((a, b) => a.playerName.localeCompare(b.playerName))
                     .map(player => (
-                      <div key={player.playerId} className="flex items-center justify-between gap-3 rounded border border-white/10 bg-black/20 p-3">
+                      <div key={player.playerId} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#020817]/60 p-3">
                         <div>
-                          <div className="font-medium">{player.playerName}</div>
-                          <div className="text-xs text-white/60">{player.position} • KTC {player.ktc || '-'} • Start Delay {Number(player.startDelay || 0)}h</div>
+                          <div className="font-medium text-white">{player.playerName}</div>
+                          <div className="text-xs text-white/50">{player.position} • KTC {player.ktc || '-'} • Start Delay {Number(player.startDelay || 0)}h</div>
                         </div>
-                        <button
-                          className="px-3 py-1 bg-red-700 rounded text-white hover:bg-red-800 disabled:opacity-50"
-                          onClick={() => handleAdminRemovePlayer(player)}
-                          disabled={adminToolSaving}
-                        >
+                        <SurfaceButton tone="danger" className="px-3 py-2 text-xs" onClick={() => handleAdminRemovePlayer(player)} disabled={adminToolSaving}>
                           Remove
-                        </button>
+                        </SurfaceButton>
                       </div>
                     ))}
-                </div>
-              </div>
-
-              <div className="border border-white/10 rounded bg-white/5 p-4 overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold">Add Players</h3>
-                  <span className="text-sm text-white/60">{filteredAdminToolPlayers.length} available</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                  <input
-                    type="text"
-                    value={adminToolSearch}
-                    onChange={(e) => setAdminToolSearch(e.target.value)}
-                    placeholder="Search player name"
-                    className="rounded border border-white/10 bg-black/30 px-3 py-2 text-white"
-                  />
-                  <select
-                    value={adminToolPosition}
-                    onChange={(e) => setAdminToolPosition(e.target.value)}
-                    className="rounded border border-white/10 bg-[#0A2233] px-3 py-2 text-white"
-                  >
-                    <option value="ALL">All Positions</option>
-                    {['QB', 'RB', 'WR', 'TE'].map(position => (
-                      <option key={position} value={position}>{position}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="overflow-y-auto pr-2 space-y-2">
-                  {adminToolLoading ? (
-                    <div className="text-white/70">Loading players...</div>
-                  ) : filteredAdminToolPlayers.length === 0 ? (
-                    <div className="text-white/50 italic">No players match the current filters.</div>
-                  ) : (
-                    filteredAdminToolPlayers.map(player => (
-                      <div key={player.playerId} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center rounded border border-white/10 bg-black/20 p-3">
-                        <div>
-                          <div className="font-medium flex items-center gap-2 flex-wrap">
-                            <span>{player.playerName}</span>
-                            {contractedPlayerIdSet.has(String(player.playerId)) && (
-                              <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-200 border border-amber-400/20">
-                                Contracted
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-white/60">{player.position} • KTC {player.ktc || '-'} • ID {player.playerId}</div>
-                        </div>
-                        <div>
-                          <label className="block text-[11px] text-white/60 mb-1">Start Delay</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={adminToolStartDelays[player.playerId] ?? 0}
-                            onChange={(e) => setAdminToolStartDelays(prev => ({ ...prev, [player.playerId]: e.target.value }))}
-                            className="w-24 rounded border border-white/10 bg-black/30 px-2 py-1 text-white"
-                          />
-                        </div>
-                        <button
-                          className="px-3 py-1 bg-green-700 rounded text-white hover:bg-green-800 disabled:opacity-50"
-                          onClick={() => handleAdminAddPlayer(player)}
-                          disabled={adminToolSaving}
-                        >
-                          Add
-                        </button>
-                      </div>
-                    ))
-                  )}
                 </div>
               </div>
             </div>
+
+            <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Add players</div>
+                  <h3 className="mt-2 text-lg font-semibold">{filteredAdminToolPlayers.length} available</h3>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  type="text"
+                  value={adminToolSearch}
+                  onChange={(e) => setAdminToolSearch(e.target.value)}
+                  placeholder="Search player name"
+                  className="w-full rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                />
+                <select
+                  value={adminToolPosition}
+                  onChange={(e) => setAdminToolPosition(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                >
+                  <option value="ALL">All Positions</option>
+                  {['QB', 'RB', 'WR', 'TE'].map(position => (
+                    <option key={position} value={position}>{position}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="mt-4 max-h-[620px] space-y-2 overflow-y-auto pr-1">
+                {adminToolLoading ? (
+                  <div className="rounded-2xl border border-white/10 bg-[#020817]/60 px-4 py-6 text-center text-white/60">Loading players...</div>
+                ) : filteredAdminToolPlayers.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-white/50">No players match the current filters.</div>
+                ) : (
+                  filteredAdminToolPlayers.map(player => (
+                    <div key={player.playerId} className="grid gap-3 rounded-2xl border border-white/10 bg-[#020817]/60 p-4 md:grid-cols-[minmax(0,1fr)_100px_auto] md:items-center">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 font-medium text-white">
+                          <span>{player.playerName}</span>
+                          {contractedPlayerIdSet.has(String(player.playerId)) && (
+                            <span className="rounded-full border border-amber-400/20 bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-200">Contracted</span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs text-white/50">{player.position} • KTC {player.ktc || '-'} • ID {player.playerId}</div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/45">Start delay</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={adminToolStartDelays[player.playerId] ?? 0}
+                          onChange={(e) => setAdminToolStartDelays(prev => ({ ...prev, [player.playerId]: e.target.value }))}
+                          className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                        />
+                      </div>
+                      <SurfaceButton tone="green" className="md:self-end" onClick={() => handleAdminAddPlayer(player)} disabled={adminToolSaving}>
+                        Add
+                      </SurfaceButton>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </ModalShell>
       )}
-      {/* Confirmation dialog for retracting bids */}
+
       {retractConfirmPlayerId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-black/90 rounded-lg border border-white/10 p-6 max-w-sm w-full shadow-2xl relative">
-            <h3 className="text-lg font-bold mb-4 text-[#FF4B1F]">Retract Bid?</h3>
-            <p className="mb-4 text-white/80">
-              Are you sure you want to retract your bid for this player? This cannot be undone. You can still place a new bid after retracting your current bid.
+        <ModalShell
+          title="Retract bid?"
+          subtitle="This removes your current bid for this player, but you can still submit a new one afterward."
+          onClose={() => setRetractConfirmPlayerId(null)}
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-5">
+            <p className="text-sm text-white/65">
+              Are you sure you want to retract your bid for this player? This action cannot be undone.
             </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                className="px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-700 transition-colors"
-                onClick={() => setRetractConfirmPlayerId(null)}
-              >
+            <div className="flex gap-3">
+              <SurfaceButton tone="ghost" className="flex-1" onClick={() => setRetractConfirmPlayerId(null)}>
                 Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-red-700 rounded text-white hover:bg-red-800 transition-colors"
+              </SurfaceButton>
+              <SurfaceButton
+                tone="danger"
+                className="flex-1"
                 onClick={async () => {
                   await handleRetractBids(retractConfirmPlayerId);
                   setRetractConfirmPlayerId(null);
                 }}
               >
-                Retract Bid
-              </button>
+                Retract bid
+              </SurfaceButton>
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
     </main>
   );
