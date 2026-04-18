@@ -13,6 +13,11 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
+function normalizeWindowValue(value, minValue, maxValue) {
+  if (!Number.isFinite(value) || maxValue <= minValue) return 0;
+  return clamp01((value - minValue) / Math.max(1, maxValue - minValue));
+}
+
 function normalizePos(pos) {
   const p = String(pos || '').toUpperCase().trim();
   if (p === 'QBS') return 'QB';
@@ -146,18 +151,88 @@ export function formatTeamNeedsForPrompt(teamNeeds, teamName) {
   const rb = t.positions.RB;
   const wr = t.positions.WR;
   const te = t.positions.TE;
+  const orderedNeeds = [
+    { pos: 'QB', ...qb },
+    { pos: 'RB', ...rb },
+    { pos: 'WR', ...wr },
+    { pos: 'TE', ...te },
+  ].sort((a, b) => {
+    if (b.needWeight !== a.needWeight) return b.needWeight - a.needWeight;
+    if (b.rank !== a.rank) return b.rank - a.rank;
+    return a.pos.localeCompare(b.pos);
+  });
+  const strongestRooms = [...orderedNeeds]
+    .sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return a.pos.localeCompare(b.pos);
+    })
+    .slice(0, 2)
+    .map(item => item.pos)
+    .join(', ');
+  const priorityNeeds = orderedNeeds
+    .slice(0, 2)
+    .map(item => `${item.pos} (${item.needWeight.toFixed(2)})`)
+    .join(', ');
+  const rosterPressure = orderedNeeds[0]?.needWeight >= 1.2
+    ? 'There is a meaningful roster hole to address if value is close.'
+    : orderedNeeds[0]?.needWeight >= 1.05
+      ? 'Needs matter here, but only as a tie-breaker inside the allowed draft window.'
+      : 'This roster is balanced enough to lean into best value over pure need.';
 
   return [
     'Roster context from BBB_Contracts (ACTIVE only, KTC-based room strength):',
     `- Positional ranks (1=strongest, ${teamNeeds.teamCount}=weakest): QB ${qb.rank}/${teamNeeds.teamCount}, RB ${rb.rank}/${teamNeeds.teamCount}, WR ${wr.rank}/${teamNeeds.teamCount}, TE ${te.rank}/${teamNeeds.teamCount}`,
     `- Active counts: QB ${qb.count}, RB ${rb.count}, WR ${wr.count}, TE ${te.count}`,
     `- Need weights (higher => bigger need): QB ${qb.needWeight.toFixed(2)}, RB ${rb.needWeight.toFixed(2)}, WR ${wr.needWeight.toFixed(2)}, TE ${te.needWeight.toFixed(2)}`,
+    `- Priority needs right now: ${priorityNeeds}`,
+    `- Strongest rooms right now: ${strongestRooms}`,
+    `- Decision guidance: ${rosterPressure}`,
     'Guideline: Use needs as a tie-breaker among similarly ranked rookies; do not make big reaches outside the allowed top-N window.',
+    'Value guardrail: if one rookie clearly leads the board in KTC value, that gap should usually beat positional need unless the values are still close.',
+    'Draft-stage guardrail: early picks should stay close to board value/rank; roster-need flexibility can expand as the draft moves deeper.',
   ].join('\n');
 }
 
-export function pickWindowScore({ candidate, needWeight }) {
-  // candidate.rank is assumed ascending (1 best). Convert to a base score where higher is better.
-  const base = 1 / Math.max(1, Number(candidate.rank) || 1);
-  return base * (Number(needWeight) || 1);
+export function pickWindowScore({ candidate, needWeight, windowMaxValue = 0, windowMinValue = 0, draftFlex = 0 }) {
+  const rank = Math.max(1, Number(candidate.rank) || 1);
+  const value = toNumber(candidate.value);
+  const valueScore = value > 0
+    ? normalizeWindowValue(value, windowMinValue, windowMaxValue)
+    : 1 / rank;
+  const rankScore = 1 / rank;
+  const stage = clamp01(draftFlex);
+  const normalizedNeed = clamp01(((Number(needWeight) || 1) - 0.85) / 0.4);
+
+  const valueWeight = 1.6 - stage * 0.85;
+  const rankWeight = 0.7 - stage * 0.45;
+  const needWeightFactor = 0.02 + stage * 1.05;
+
+  // Early picks hug the board; by pick 25, need can drive the tie-breaker or primary choice.
+  return valueScore * valueWeight + rankScore * rankWeight + normalizedNeed * needWeightFactor;
+}
+
+export function shouldApplyValueOverride({
+  candidate,
+  topValueCandidate,
+  needWeight,
+  draftFlex = 0,
+}) {
+  const topValue = toNumber(topValueCandidate?.value);
+  const candidateValue = toNumber(candidate?.value);
+  if (topValue <= 0 || candidateValue <= 0 || candidateValue >= topValue) return false;
+
+  const absoluteGap = topValue - candidateValue;
+  const relativeGap = absoluteGap / Math.max(1, topValue);
+  const needPressure = Math.max(0, (Number(needWeight) || 1) - 1);
+  const stage = clamp01(draftFlex);
+
+  const majorGapThreshold = Math.max(160 + stage * 540, topValue * (0.04 + stage * 0.10));
+  const moderateGapThreshold = Math.max(70 + stage * 330, topValue * (0.015 + stage * 0.065));
+  const relativeGapThreshold = 0.015 + stage * 0.065;
+  const maxNeedPressureToIgnore = 0.03 + stage * 0.27;
+
+  // Picks 1-3 should be very board-driven; by pick 25, need has much more room to win close calls.
+  if (absoluteGap >= majorGapThreshold) return true;
+  if (absoluteGap >= moderateGapThreshold && relativeGap >= relativeGapThreshold && needPressure < maxNeedPressureToIgnore) return true;
+  return false;
 }

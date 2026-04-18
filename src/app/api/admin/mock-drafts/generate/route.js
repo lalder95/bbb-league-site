@@ -8,17 +8,17 @@ import {
   createRng,
   buildArticleIntro,
   buildRoundIntro,
-  buildPickLeadIn,
-  buildPickCoda,
   buildStyleToken,
-  buildReasonTemplate,
+  pickNonRepeating,
 } from '@/utils/mockDraftVoice';
 import {
   parseBBBContractsCsv,
   buildTeamNeeds,
   formatTeamNeedsForPrompt,
   pickWindowScore,
+  shouldApplyValueOverride,
 } from '@/utils/teamNeedsUtils';
+import { expandDraftOrderPreview } from '@/utils/mockDraftOrderPreview';
 
 export const runtime = 'nodejs';
 
@@ -88,6 +88,13 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 
+function draftNeedFlexForPick(pickIndex) {
+  const pickNumber = Math.max(1, Number(pickIndex) + 1 || 1);
+  if (pickNumber <= 3) return 0;
+  if (pickNumber >= 25) return 1;
+  return (pickNumber - 3) / 22;
+}
+
 // Smooth spectrum from 0 (Blue Chip) to 1 (Dart Throw).
 // We saturate around pick ~40 for a gradual transition.
 function qualitySpectrumForPick(pickIndex, maxBlueChipPicks = 40) {
@@ -119,13 +126,192 @@ function qualitySpectrumForPick(pickIndex, maxBlueChipPicks = 40) {
   };
 }
 
-function buildSystemPrompt(teamProfile, styleToken, quality) {
+function formatPlayerWindowForPrompt(window) {
+  return window.map((player, index) => {
+    const rank = Number(player.rank) || (index + 1);
+    const value = Number(player.value) || 0;
+    let tier = 'Depth';
+    if (rank <= 4) tier = 'Blue Chip';
+    else if (rank <= 8) tier = 'Priority Target';
+    else if (rank <= 16) tier = 'Strong Value';
+    else if (rank <= 28) tier = 'Upside Bet';
+
+    const notes = [`rank ${rank}`, `tier ${tier}`];
+    if (value > 0) notes.push(`value ${value}`);
+    if (player.news?.headline) {
+      const compactHeadline = String(player.news.headline).replace(/\s+/g, ' ').trim();
+      notes.push(`news ${compactHeadline}`);
+    }
+
+    return `${player.name} (${player.position}) [${notes.join(', ')}]`;
+  }).join('\n');
+}
+
+function extractOpeningFingerprint(text) {
+  const firstSentence = String(text || '')
+    .split(/[.!?]/)[0]
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!firstSentence) return '';
+
+  return firstSentence
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 6)
+    .join(' ');
+}
+
+function buildRecentVariationGuard({ recentOpeners = [], recentLensLabels = [] }) {
+  const openerList = Array.from(new Set(recentOpeners.filter(Boolean))).slice(-3);
+  const lensList = Array.from(new Set(recentLensLabels.filter(Boolean))).slice(-3);
+  if (openerList.length === 0 && lensList.length === 0) return '';
+
+  const lines = ['Recent anti-repetition guard:'];
+  if (lensList.length > 0) {
+    lines.push(`- Recent decision angles already used: ${lensList.join(', ')}`);
+  }
+  if (openerList.length > 0) {
+    lines.push(`- Avoid opening the reason like these recent patterns: ${openerList.map(item => `"${item}"`).join(', ')}`);
+  }
+  lines.push('- Prefer a fresh argument and a fresh first sentence unless the board genuinely calls for the same logic.');
+  return lines.join('\n');
+}
+
+function buildDecisionLens({ rng, quality, teamRow, window, recent = [] }) {
+  const topNeed = teamRow
+    ? Object.entries(teamRow.positions || {})
+      .map(([pos, data]) => ({ pos, ...data }))
+      .sort((a, b) => {
+        if (b.needWeight !== a.needWeight) return b.needWeight - a.needWeight;
+        if (b.rank !== a.rank) return b.rank - a.rank;
+        return a.pos.localeCompare(b.pos);
+      })[0]
+    : null;
+  const strongestRoom = teamRow
+    ? Object.entries(teamRow.positions || {})
+      .map(([pos, data]) => ({ pos, ...data }))
+      .sort((a, b) => {
+        if (a.rank !== b.rank) return a.rank - b.rank;
+        return a.pos.localeCompare(b.pos);
+      })[0]
+    : null;
+  const candidatePositions = new Set((window || []).map(player => String(player.position || '').toUpperCase()));
+  const lateRound = quality?.band === 'depth/upside' || quality?.band === 'dart throw';
+
+  const options = [];
+  if (topNeed && candidatePositions.has(topNeed.pos)) {
+    options.push({
+      key: 'starter-path upgrade',
+      instruction: `Center the explanation on solving a weaker ${topNeed.pos} room. Explain why this pick improves the path to usable weekly starts or credible lineup pressure at ${topNeed.pos}.`,
+    });
+    options.push({
+      key: 'roster insulation',
+      instruction: `Center the explanation on protecting the roster against thin depth at ${topNeed.pos}. Explain how this pick reduces weekly lineup stress and adds functional cover rather than pure hype.`,
+    });
+  }
+
+  if (lateRound) {
+    options.push({
+      key: 'stash upside',
+      instruction: 'Center the explanation on a stash-upside bet. Emphasize patience, bench value, and what has to break right for the pick to become usable.',
+    });
+    options.push({
+      key: 'contingency bet',
+      instruction: 'Center the explanation on contingency value. Focus on how this player matters if depth gets stressed or a role opens later, without overselling immediate impact.',
+    });
+  } else {
+    options.push({
+      key: 'weekly floor',
+      instruction: 'Center the explanation on bankable weekly usability. Focus on how this pick raises the lineup floor and makes weekly start decisions cleaner.',
+    });
+    options.push({
+      key: 'ceiling swing',
+      instruction: 'Center the explanation on upside. Explain what payoff makes this worth the pick, but keep the outcome realistic for the draft stage.',
+    });
+  }
+
+  options.push({
+    key: 'market value',
+    instruction: 'Center the explanation on value versus draft slot. Make the case that this is the right price for the talent and roster context, not just a generic best-player note.',
+  });
+
+  if (strongestRoom) {
+    options.push({
+      key: 'roster balance',
+      instruction: `Center the explanation on balancing the roster. Explain why adding strength outside the current ${strongestRoom.pos} room keeps the build healthier or more flexible.`,
+    });
+  }
+
+  const chosen = pickNonRepeating({
+    rng,
+    items: options,
+    recent,
+    window: 3,
+  }) || options[0] || {
+    key: 'market value',
+    instruction: 'Center the explanation on clean value and realistic fantasy usefulness.',
+  };
+
+  return {
+    key: chosen.key,
+    label: chosen.key,
+    instruction: chosen.instruction,
+  };
+}
+
+function buildOpeningStyle({ rng, recent = [] }) {
+  const options = [
+    {
+      key: 'board-first',
+      label: 'board-first opener',
+      instruction: 'Open with the board, draft slot, or decision pressure first. Mention the player in the second sentence if that sounds cleaner.',
+    },
+    {
+      key: 'need-first',
+      label: 'need-first opener',
+      instruction: 'Open with the roster problem or team need first, then bring in the player as the answer.',
+    },
+    {
+      key: 'player-fragment',
+      label: 'player-fragment opener',
+      instruction: 'Open with the player name in a short fragment or blunt statement, but do not follow it with "makes sense here because" or "is the pick because".',
+    },
+    {
+      key: 'value-first',
+      label: 'value-first opener',
+      instruction: 'Open with the value proposition or price point first, then explain why the player fits the spot.',
+    },
+    {
+      key: 'timeline-first',
+      label: 'timeline-first opener',
+      instruction: 'Open with the likely timeline or path to fantasy relevance first, then tie it back to the player and roster.',
+    },
+  ];
+
+  const chosen = pickNonRepeating({
+    rng,
+    items: options,
+    recent,
+    window: 3,
+  }) || options[0];
+
+  return {
+    key: chosen.key,
+    label: chosen.label,
+    instruction: chosen.instruction,
+  };
+}
+
+function buildSystemPrompt(teamProfile, styleToken, quality, topN, decisionLens, openingStyle) {
   // Persona adds stylistic variation
   const persona = teamProfile.persona || 'Balanced Strategist';
-  return `You are the AI GM for ${teamProfile.teamName} in a closed-universe fantasy football league (no NFL teams/contracts). Adopt the persona: "${persona}" for tone and decision style.
+  return `You're in the draft room for ${teamProfile.teamName}. This is fantasy football in a custom league, not real-life NFL coaching. Adopt the vibe of a "${persona}" and sound like a sharp league mate talking through the pick, not a columnist writing a report.
 Follow constraints strictly:
 - Only draft from the provided Available Players list.
-- Only select from the TOP 10 ranked players remaining in the pool.
+- Only select from the TOP ${Math.max(1, Number(topN) || 8)} ranked players remaining in the pool.
 - This is FANTASY FOOTBALL analysis in a custom league context. Do NOT write as if you are coaching a real team.
 - Do not mention NFL teams/franchises, jerseys, coordinators, playbooks, or real-life contracts.
 - Do not use real-football coaching/strategy language. Avoid phrases like: "balanced offense", "stretch the field", "receiver corps", "gameplan", "play-calling", "two-high", "Cover 2", "route tree", "in the slot/out wide" (as a scheme note), "red zone packages", "snap counts", "special teams", "scheme", "coordinator", "playbook", "system".
@@ -133,35 +319,25 @@ Follow constraints strictly:
 - Draft-stage realism: Quality spectrum = ${quality.slider}. Band: "${quality.band}". ${quality.guidance}
 - Do NOT call late-round picks "studs" or "lock starters" by default. Only call someone a starter if you explicitly qualify it (e.g., "has a path to starting" or "can earn a weekly role").
 - Prioritize upgrading likely starters first; consider depth second.
+- Use the roster context to decide whether this pick is solving a starter need, improving weekly flexibility, or adding a stash with upside.
+- Each pick should feel meaningfully different from the previous ones. Change the argument, not just the adjectives.
+- Use the provided Primary Decision Lens as the center of the thought instead of defaulting to a generic "good value and good fit" paragraph.
 Avoid overemphasizing scarcity; focus on roster fit, role clarity, and value.
-Style guidance: ${styleToken}. Aim for variety—change sentence openings, avoid stock phrases, avoid repeating identical adjectives.
+Style guidance: ${styleToken}. Aim for variety—change sentence openings, avoid stock phrases, and let some picks be blunt while others breathe a little more.
 Anti-repetition rules:
 - Do NOT reuse the same first-sentence pattern across consecutive picks.
 - Speak as if you are a member of the team (e.g. "Our", not "Your"), but avoid overusing "we/our" to start sentences.
 - Avoid boilerplate like "brings speed and playmaking ability", "clear role", "synergy", "perfectly complements", "fits seamlessly", "impossible to pass up", "solidifies".
 - Avoid "Compared to other available [position]" style sentences.
-Your response MUST be valid JSON only with two keys and no extra text: { "pick": "Exact Player Name", "reason": "3-5 sentences that mention the chosen player's name within the first 2 sentences and explain fantasy roster fit, weekly scoring upside/floor, and value vs generic alternatives. Reflect draft-stage realism (later rounds = more uncertainty). End with one minor risk/concern framed as volatility/usage uncertainty/injury risk (NOT coaching/playbook)." }`;
+- Do NOT start the reason with "[Player] makes sense here because", "[Player] is the pick because", or any close variation.
+- Primary Decision Lens for this pick: ${decisionLens?.label || 'market value'}.
+- Opening Style for this pick: ${openingStyle?.label || 'board-first opener'}.
+Your response MUST be valid JSON only with two keys and no extra text: { "pick": "Exact Player Name", "reason": "A short natural fantasy-football take. Mention the chosen player's name within the first two sentences. Keep it conversational, specific, and grounded in roster fit, weekly usability, value, and realistic uncertainty for this draft stage. Do not force separate setup, upside, and downside sentences or write like a formal report." }`;
 }
 
-function buildUserPrompt({ pickNumber, round, available, leagueHints, teamProfile, reasonTemplate, quality }) {
-  const top10 = available.slice(0, 10);
-  const availableList = top10.map(p => `${p.name} (${p.position}) [rank ${p.rank}${p.value > 0 ? `, value ${p.value}` : ''}]`).join('\n');
-  return `Pick: ${pickNumber}
-Round: ${round}
-Team: ${teamProfile.teamName}
-
-Draft context: ${leagueHints}
-Draft-stage realism: Spectrum ${quality.slider} | Band: ${quality.band} — ${quality.guidance}
-Use this writing pattern: ${reasonTemplate}
-
-Available Players (TOP 10 ONLY):\n${availableList}
-
-Choose the best pick for this team from ONLY the top 10 above and return JSON as specified.`;
-}
-
-function buildUserPromptTopN({ pickNumber, round, available, leagueHints, teamProfile, reasonTemplate, quality, topN = 8, teamNeedsText = '' }) {
+function buildUserPromptTopN({ pickNumber, round, available, leagueHints, teamProfile, quality, topN = 8, teamNeedsText = '', decisionLens = null, openingStyle = null, recentVariationGuard = '' }) {
   const window = available.slice(0, Math.max(1, Number(topN) || 8));
-  const availableList = window.map(p => `${p.name} (${p.position}) [rank ${p.rank}${p.value > 0 ? `, value ${p.value}` : ''}]`).join('\n');
+  const availableList = formatPlayerWindowForPrompt(window);
   const newsSection = window
     .map(p => p.news ? `${p.name}: ${p.news.headline}` : '')
     .filter(Boolean)
@@ -173,17 +349,41 @@ Team: ${teamProfile.teamName}
 Draft context: ${leagueHints}
 Draft-stage realism: Spectrum ${quality.slider} | Band: ${quality.band} — ${quality.guidance}
 ${teamNeedsText ? `\n${teamNeedsText}\n` : ''}
+${decisionLens ? `Primary Decision Lens:\n- ${decisionLens.label}: ${decisionLens.instruction}\n` : ''}
+${openingStyle ? `Opening Style:\n- ${openingStyle.label}: ${openingStyle.instruction}\n` : ''}
+${recentVariationGuard ? `\n${recentVariationGuard}\n` : ''}
 
-Use this writing pattern: ${reasonTemplate}
+Write the reason like a natural league-chat thought: concise, conversational, and fantasy-focused. Let the argument flow naturally instead of forcing a template or a separate upside/downside structure.
 
 Available Players (TOP ${Math.max(1, Number(topN) || 8)} ONLY):\n${availableList}
 ${newsSection ? `\nRecent News:\n${newsSection}` : ''}
 
-Choose the best pick for this team from ONLY the top ${Math.max(1, Number(topN) || 8)} above and return JSON as specified.`;
+Choose the best pick for this team from ONLY the top ${Math.max(1, Number(topN) || 8)} above. When two players are close, break ties using roster pressure, value tier, and the cleanest path to fantasy usefulness. Make the explanation feel distinct from recent picks by honoring the decision lens and the recent opening-pattern guard, but write it like a natural thought, not a report. Return JSON as specified.`;
 }
 
 function safeJson(str) {
-  try { return JSON.parse(str); } catch { return null; }
+  const raw = String(str || '').trim();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {}
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1].trim());
+    } catch {}
+  }
+
+  const objectMatch = raw.match(/\{[\s\S]*\}/);
+  if (objectMatch?.[0]) {
+    try {
+      return JSON.parse(objectMatch[0]);
+    } catch {}
+  }
+
+  return null;
 }
 
 function sanitizeReason(reason, pickedName, opts = {}) {
@@ -261,17 +461,6 @@ function sanitizeReason(reason, pickedName, opts = {}) {
   }
 
   return withMeta ? { text: out, escalated } : out;
-}
-
-function hash32(str) {
-  // Tiny non-crypto hash for debug grouping.
-  let h = 2166136261;
-  const s = String(str ?? '');
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(16);
 }
 
 function clip(str, n) {
@@ -377,53 +566,30 @@ export async function POST(request) {
 
     // 4) traded picks for all rounds
     const traded = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`, { cache: 'no-store' }).then(r => r.json());
-    const rosterIdToUserId = Object.fromEntries((rosters || []).map(r => [r.roster_id, r.owner_id]));
-    const userIdToDisplay = Object.fromEntries((users || []).map(u => [u.user_id, u.display_name || u.username || 'Unknown Team']));
 
 
-    let order = [];
-    if (Array.isArray(draftOrder) && draftOrder.length > 0) {
-      // Use provided full multi-round draft order from admin page
-      order = draftOrder.map((o, idx) => {
-        // Preserve round, slot, rosterId, etc. from input
-        let userId = o.userId;
-        let teamName = o.teamName;
-        // If userId or teamName missing, resolve from rosterId
-        if (!userId && o.rosterId) {
-          const roster = rosters.find(r => Number(r.roster_id) === Number(o.rosterId));
-          userId = roster?.owner_id || null;
-        }
-        if (!teamName && userId) {
-          teamName = userIdToDisplay[userId] || 'Unknown Team';
-        }
-        return {
-          ...o,
-          round: Number(o.round) || 1,
-          slot: Number(o.slot) || (idx % 12) + 1,
-          rosterId: o.rosterId ?? o.roster_id,
-          originalRosterId: o.originalRosterId ?? o.original_roster_id,
-          userId,
-          teamName: teamName || 'Unknown Team',
-        };
-      });
-    } else {
-      // Fallback to existing logic
-      const totalRounds = Math.max(1, Math.min(7, Number(rounds) || 1));
-      for (let r = 1; r <= totalRounds; r++) {
-        const tradesForRound = (Array.isArray(traded) ? traded : []).filter(tp => String(tp.season) === String(targetSeason) && Number(tp.round) === r);
-        const roundOrder = base
-          .sort((a, b) => Number(a.slot) - Number(b.slot))
-          .map(entry => {
-            const trade = tradesForRound.find(tp => Number(tp.roster_id) === Number(entry.roster_id));
-            const rosterId = trade ? trade.owner_id : entry.roster_id;
-            const ownerUserId = rosterIdToUserId[rosterId] ?? null;
-            const teamName = ownerUserId ? (userIdToDisplay[ownerUserId] || 'Unknown Team') : 'Unknown Team';
-            return { round: r, userId: ownerUserId, slot: Number(entry.slot), teamName };
-          });
-        order.push(...roundOrder);
-      }
-      order = order.slice(0, Math.max(12, Math.min(84, Number(maxPicks) || 12)));
-    }
+    const totalRounds = Math.max(1, Math.min(7, Number(rounds) || 1));
+    const maxTotalPicks = Math.max(12, Math.min(84, Number(maxPicks) || 12));
+
+    const fallbackRoundOneOrder = base
+      .slice()
+      .sort((a, b) => Number(a.slot) - Number(b.slot))
+      .map((entry) => ({
+        round: 1,
+        slot: Number(entry.slot),
+        rosterId: Number(entry.roster_id),
+        originalRosterId: Number(entry.roster_id),
+      }));
+
+    const order = expandDraftOrderPreview({
+      draftOrder: Array.isArray(draftOrder) && draftOrder.length > 0 ? draftOrder : fallbackRoundOneOrder,
+      rosters,
+      users,
+      tradedPicks: Array.isArray(traded) ? traded : [],
+      targetSeason,
+      rounds: totalRounds,
+      maxPicks: maxTotalPicks,
+    });
 
     // Player pool with news
     let pool = await buildPlayerPoolWithNews();
@@ -453,8 +619,6 @@ export async function POST(request) {
 
     // Deterministic voice RNG: if seed is provided, personality/variety becomes stable.
     const voiceRng = createRng({ seed: (seed ?? Date.now()), salt: `mock-voice|${title}` });
-    const recentLeadIns = [];
-    const recentReasonTemplates = [];
 
     // Stored in Mongo (meta.generationDebug) for diagnosing repetition.
     // Keep the payload bounded and admin-only route already restricts access.
@@ -468,6 +632,10 @@ export async function POST(request) {
 
     const traceLog = [];
     const picks = [];
+    const recentDecisionLensKeys = [];
+    const recentDecisionLensLabels = [];
+    const recentOpeningStyleKeys = [];
+    const recentReasonOpeners = [];
 
     // Iterate until all picks used or player pool becomes empty
     // Define 12 personas mapped by slot 1..12 for stylistic variety
@@ -505,35 +673,77 @@ export async function POST(request) {
         } catch {}
       }
 
-      const positionHint = pool?.[0]?.position || pool?.[0]?.pos || 'FLEX';
-      const reasonTemplate = buildReasonTemplate({
-        rng: voiceRng,
-        position: positionHint,
-        quality,
-        recent: recentReasonTemplates,
-        window: 8,
-      });
-    const styleToken = buildStyleToken({ rng: voiceRng });
-  const system = buildSystemPrompt(teamProfile, styleToken, quality);
+      const styleToken = buildStyleToken({ rng: voiceRng });
+      const windowN = Math.max(1, Math.min(8, Number(topN) || 8));
+      const draftFlex = draftNeedFlexForPick(i);
 
       // Compute needs-weighted "best" pick in the allowed window (topN)
-      const windowN = Math.max(1, Math.min(8, Number(topN) || 8));
       const window = pool.slice(0, windowN);
+      const teamRow = teamNeeds?.teams?.find(t => t.teamName === teamProfile.teamName) || null;
       const needsText = teamNeeds ? formatTeamNeedsForPrompt(teamNeeds, teamProfile.teamName) : '';
+      const decisionLens = buildDecisionLens({
+        rng: voiceRng,
+        quality,
+        teamRow,
+        window,
+        recent: recentDecisionLensKeys,
+      });
+      const openingStyle = buildOpeningStyle({
+        rng: voiceRng,
+        recent: recentOpeningStyleKeys,
+      });
+      const recentVariationGuard = buildRecentVariationGuard({
+        recentOpeners: recentReasonOpeners,
+        recentLensLabels: recentDecisionLensLabels,
+      });
+      const system = buildSystemPrompt(teamProfile, styleToken, quality, windowN, decisionLens, openingStyle);
+
+      const windowValues = window
+        .map(candidate => Number(candidate.value) || 0)
+        .filter(value => Number.isFinite(value) && value > 0);
+      const windowMaxValue = windowValues.length ? Math.max(...windowValues) : 0;
+      const windowMinValue = windowValues.length ? Math.min(...windowValues) : 0;
+      const topValueCandidate = window.reduce((best, candidate) => {
+        if (!best) return candidate;
+        return (Number(candidate.value) || 0) > (Number(best.value) || 0) ? candidate : best;
+      }, null);
+      const topValueTier = [...window]
+        .sort((a, b) => {
+          const valueDiff = (Number(b.value) || 0) - (Number(a.value) || 0);
+          if (valueDiff !== 0) return valueDiff;
+          return (Number(a.rank) || 999) - (Number(b.rank) || 999);
+        })
+        .slice(0, Number(pickNumber) <= 1.03 ? 2 : (draftFlex <= 0.06 ? 1 : 2));
 
       let weightedBpaName = window[0]?.name;
-      if (teamNeeds && window.length) {
-        const teamRow = teamNeeds.teams.find(t => t.teamName === teamProfile.teamName);
-        if (teamRow) {
+      let weightedBpaCandidate = window[0] || null;
+      if (teamRow && window.length) {
           let best = null;
           for (const cand of window) {
             const pos = String(cand.position || '').toUpperCase();
             const weight = teamRow.positions?.[pos]?.needWeight ?? 1.0;
-            const score = pickWindowScore({ candidate: cand, needWeight: weight });
-            if (!best || score > best.score) best = { name: cand.name, score };
+            const score = pickWindowScore({
+              candidate: cand,
+              needWeight: weight,
+              windowMaxValue,
+              windowMinValue,
+              draftFlex,
+            });
+            if (!best || score > best.score) best = { candidate: cand, name: cand.name, score };
           }
-          if (best?.name) weightedBpaName = best.name;
-        }
+          if (best?.name) {
+            weightedBpaName = best.name;
+            weightedBpaCandidate = best.candidate;
+          }
+      } else if (window.length) {
+        weightedBpaCandidate = topValueCandidate || window[0];
+        weightedBpaName = weightedBpaCandidate?.name || weightedBpaName;
+      }
+
+      const earlyBoardGuardActive = draftFlex <= 0.12 && topValueTier.length > 0;
+      if (earlyBoardGuardActive && !topValueTier.some(candidate => candidate.name === weightedBpaName)) {
+        weightedBpaCandidate = topValueTier[0];
+        weightedBpaName = weightedBpaCandidate?.name || weightedBpaName;
       }
 
       const userMsg = buildUserPromptTopN({
@@ -542,16 +752,17 @@ export async function POST(request) {
         available: pool,
         leagueHints,
         teamProfile,
-        reasonTemplate,
         quality,
         topN: windowN,
         teamNeedsText: needsText,
+        decisionLens,
+        openingStyle,
+        recentVariationGuard,
       });
 
-      // Track templates to reduce back-to-back structural repetition.
-      recentReasonTemplates.push(reasonTemplate);
-
-      const templateId = hash32(reasonTemplate);
+      recentDecisionLensKeys.push(decisionLens.key);
+      recentDecisionLensLabels.push(decisionLens.label);
+      recentOpeningStyleKeys.push(openingStyle.key);
 
       // Seed debug entry for this pick (we'll fill raw/sanitized later)
       const debugEntry = {
@@ -561,9 +772,8 @@ export async function POST(request) {
         round: Number(o.round ?? 1),
         persona: teamProfile.persona,
         qualityBand: quality?.band,
-  leadInCategory: null,
-        templateId,
-        templatePreview: clip(reasonTemplate, 160),
+        decisionLens: decisionLens.label,
+        openingStyle: openingStyle.label,
         usedFallback: false,
         parseError: null,
         sanitizeMode: 'light',
@@ -583,6 +793,22 @@ export async function POST(request) {
       const completion = await openai.chat.completions.create({
         model,
         messages,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'mock_draft_pick',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                pick: { type: 'string' },
+                reason: { type: 'string' },
+              },
+              required: ['pick', 'reason'],
+            },
+          },
+        },
         temperature: 0.75,
         top_p: 0.9,
         frequency_penalty: 0.6,
@@ -596,44 +822,20 @@ export async function POST(request) {
       if (!parsed || typeof parsed.pick !== 'string') {
         // Fallback to BPA from pool if model failed to follow
         const fallback = pool[0];
-        // Voice-driven fallback reason to avoid obvious repetition when the model output is malformed.
-        const leadInRaw = buildPickLeadIn({
-          pickNumber,
-          teamName: teamProfile.teamName,
-          position: fallback.position,
-          rng: voiceRng,
-          recent: recentLeadIns,
-        });
-        recentLeadIns.push(leadInRaw);
-        debugEntry.leadInCategory = String(leadInRaw || '').includes('|') ? String(leadInRaw).split('|')[0] : null;
-        const leadIn = String(leadInRaw || '').includes('|') ? String(leadInRaw).split('|').slice(1).join('|') : String(leadInRaw || '');
-
-        const fallbackTemplate = buildReasonTemplate({
-          rng: voiceRng,
-          position: fallback.position,
-          quality,
-          recent: recentReasonTemplates,
-          window: 8,
-        });
-        recentReasonTemplates.push(fallbackTemplate);
-
-        const coda = buildPickCoda({ rng: voiceRng });
-
-        // Keep this intentionally simple: one lead-in line + a compact 3-sentence reason + optional coda.
-  const rawFallbackReason = `${leadIn} ${fallback.name} is a clean roster-value pick here: it gives ${teamProfile.teamName} another usable ${fallback.position} option with a realistic path to fantasy points. The upside is lineup flexibility and the chance at a few startable weeks if the role opens up. The risk is volatility — this could stay bench-only and take time (or never fully click).`;
-  const sfb = sanitizeReason(rawFallbackReason, fallback.name, { mode: 'light', withMeta: true });
-  let reason = sfb.text;
-        if (coda) reason = `${reason} ${coda}`;
+        const rawFallbackReason = `The board leaves ${teamProfile.teamName} with a reasonable swing on ${fallback.name} here. The value still works, and there is a believable path to fantasy relevance if the ${fallback.position} room needs help later even if this is more patience than instant payoff.`;
+        const sfb = sanitizeReason(rawFallbackReason, fallback.name, { mode: 'light', withMeta: true });
+        const reason = sfb.text;
 
         debugEntry.usedFallback = true;
         debugEntry.parseError = 'Malformed LLM JSON';
         debugEntry.rawReasonPreview = clip(content, 220);
         debugEntry.sanitizedReasonPreview = clip(reason, 220);
-  debugEntry.sanitizeEscalated = !!sfb.escalated;
-  debugEntry.sanitizedChanged = rawFallbackReason !== sfb.text;
-  debugEntry.sanitizeDeltaChars = (sfb.text || '').length - (rawFallbackReason || '').length;
-  debugEntry.sanitizeSkipped = false;
+        debugEntry.sanitizeEscalated = !!sfb.escalated;
+        debugEntry.sanitizedChanged = rawFallbackReason !== sfb.text;
+        debugEntry.sanitizeDeltaChars = (sfb.text || '').length - (rawFallbackReason || '').length;
+        debugEntry.sanitizeSkipped = false;
         generationDebug.picks.push(debugEntry);
+        recentReasonOpeners.push(extractOpeningFingerprint(rawFallbackReason));
 
         picks.push({ pickNumber, teamName: teamProfile.teamName, player: fallback, reason });
         pool = popPlayerByName(pool, fallback.name).nextPool;
@@ -642,12 +844,54 @@ export async function POST(request) {
       }
 
       const desired = parsed.pick;
-      // Enforce TOP-N constraint strictly (default top 8)
+      // Enforce TOP-N constraint strictly.
       const topNames = pool.slice(0, windowN).map(p => p.name);
       let chosenName = desired;
       if (!topNames.includes(chosenName)) {
         chosenName = weightedBpaName || topNames[0];
         trace && traceLog.push({ pickNumber, team: teamProfile.teamName, warning: `Choice outside top-${windowN}; auto-corrected`, originalChoice: desired, correctedTo: chosenName });
+      }
+      const chosenCandidateInWindow = window.find(candidate => candidate.name === chosenName) || null;
+      const chosenNeedWeight = chosenCandidateInWindow
+        ? (teamRow?.positions?.[String(chosenCandidateInWindow.position || '').toUpperCase()]?.needWeight ?? 1.0)
+        : 1.0;
+      if (earlyBoardGuardActive && !topValueTier.some(candidate => candidate.name === chosenName)) {
+        const correctedName = weightedBpaCandidate?.name || topValueTier[0]?.name;
+        if (correctedName && correctedName !== chosenName) {
+          trace && traceLog.push({
+            pickNumber,
+            team: teamProfile.teamName,
+            warning: 'Choice failed early-pick board guardrail; auto-corrected',
+            originalChoice: chosenName,
+            correctedTo: correctedName,
+            allowedTier: topValueTier.map(candidate => candidate.name),
+          });
+          chosenName = correctedName;
+        }
+      }
+      if (
+        chosenCandidateInWindow
+        && topValueCandidate
+        && weightedBpaCandidate
+        && shouldApplyValueOverride({
+          candidate: chosenCandidateInWindow,
+          topValueCandidate,
+          needWeight: chosenNeedWeight,
+          draftFlex,
+        })
+      ) {
+        const correctedName = weightedBpaCandidate.name || topValueCandidate.name;
+        if (correctedName && correctedName !== chosenName) {
+          trace && traceLog.push({
+            pickNumber,
+            team: teamProfile.teamName,
+            warning: 'Choice failed KTC value guardrail; auto-corrected',
+            originalChoice: chosenName,
+            correctedTo: correctedName,
+            topValuePlayer: topValueCandidate.name,
+          });
+          chosenName = correctedName;
+        }
       }
       const { picked, nextPool } = popPlayerByName(pool, chosenName);
       if (!picked) {
@@ -667,6 +911,7 @@ export async function POST(request) {
         debugEntry.sanitizeDeltaChars = (sfb2.text || '').length - (rawFallbackReason || '').length;
         debugEntry.sanitizeSkipped = false;
         generationDebug.picks.push(debugEntry);
+        recentReasonOpeners.push(extractOpeningFingerprint(rawFallbackReason));
 
         picks.push({ pickNumber, teamName: teamProfile.teamName, player: fallback, reason });
         pool = popPlayerByName(pool, fallback.name).nextPool;
@@ -674,33 +919,18 @@ export async function POST(request) {
         continue;
       }
 
-  // For successful LLM picks, use the raw reason as-is (no sanitizer).
-  const rawReason = parsed.reason || '';
-  let reason = String(rawReason || '').trim();
+      const rawReason = parsed.reason || '';
+      const reason = String(rawReason || '').trim();
 
-      // Add a short human lead-in and (occasionally) a coda for flavor.
-      // Keep it to 1 line to avoid bloating the article.
-      const leadRaw = buildPickLeadIn({
-        pickNumber,
-        teamName: teamProfile.teamName,
-        position: picked.position,
-        rng: voiceRng,
-        recent: recentLeadIns,
-      });
-      recentLeadIns.push(leadRaw);
-      debugEntry.leadInCategory = String(leadRaw || '').includes('|') ? String(leadRaw).split('|')[0] : null;
-      const lead = String(leadRaw).includes('|') ? String(leadRaw).split('|').slice(1).join('|') : String(leadRaw);
-      const coda = buildPickCoda({ rng: voiceRng });
-      reason = `${lead}\n\n${reason}${coda ? `\n\n*${coda}*` : ''}`;
-
-  debugEntry.rawReasonPreview = clip(rawReason, 220);
-  debugEntry.sanitizedReasonPreview = clip(reason, 220);
-  debugEntry.sanitizeMode = 'skipped';
-  debugEntry.sanitizeEscalated = false;
-  debugEntry.sanitizedChanged = false;
-  debugEntry.sanitizeDeltaChars = 0;
-  debugEntry.sanitizeSkipped = true;
-  generationDebug.picks.push(debugEntry);
+      debugEntry.rawReasonPreview = clip(rawReason, 220);
+      debugEntry.sanitizedReasonPreview = clip(reason, 220);
+      debugEntry.sanitizeMode = 'skipped';
+      debugEntry.sanitizeEscalated = false;
+      debugEntry.sanitizedChanged = false;
+      debugEntry.sanitizeDeltaChars = 0;
+      debugEntry.sanitizeSkipped = true;
+      generationDebug.picks.push(debugEntry);
+      recentReasonOpeners.push(extractOpeningFingerprint(rawReason));
 
       picks.push({ pickNumber, teamName: teamProfile.teamName, player: picked, reason });
       pool = nextPool;

@@ -63,44 +63,44 @@
     "value": 0
   },
   {
-    "id": "1925",
-    "name": "Ty Simpson",
-    "position": "QB",
+    "id": "1935",
+    "name": "Jadarian Price",
+    "position": "RB",
     "rank": 10,
     "value": 0
   },
   {
-    "id": "1935",
-    "name": "Jadarian Price",
-    "position": "RB",
+    "id": "1925",
+    "name": "Ty Simpson",
+    "position": "QB",
     "rank": 11,
-    "value": 0
-  },
-  {
-    "id": "1939",
-    "name": "Jonah Coleman",
-    "position": "RB",
-    "rank": 12,
     "value": 0
   },
   {
     "id": "2006",
     "name": "Eli Stowers",
     "position": "TE",
-    "rank": 13,
+    "rank": 12,
     "value": 0
   },
   {
-    "id": "1938",
-    "name": "Nicholas Singleton",
+    "id": "1939",
+    "name": "Jonah Coleman",
     "position": "RB",
-    "rank": 14,
+    "rank": 13,
     "value": 0
   },
   {
     "id": "1967",
     "name": "Elijah Sarratt",
     "position": "WR",
+    "rank": 14,
+    "value": 0
+  },
+  {
+    "id": "1938",
+    "name": "Nicholas Singleton",
+    "position": "RB",
     "rank": 15,
     "value": 0
   },
@@ -126,57 +126,57 @@
     "value": 0
   },
   {
-    "id": "1969",
-    "name": "Zachariah Branch",
-    "position": "WR",
+    "id": "1927",
+    "name": "Garrett Nussmeier",
+    "position": "QB",
     "rank": 19,
     "value": 0
   },
   {
-    "id": "1927",
-    "name": "Garrett Nussmeier",
-    "position": "QB",
+    "id": "1969",
+    "name": "Zachariah Branch",
+    "position": "WR",
     "rank": 20,
-    "value": 0
-  },
-  {
-    "id": "1926",
-    "name": "Trinidad Chambliss",
-    "position": "QB",
-    "rank": 21,
     "value": 0
   },
   {
     "id": "1968",
     "name": "Chris Bell",
     "position": "WR",
-    "rank": 22,
+    "rank": 21,
     "value": 0
   },
   {
-    "id": "1973",
-    "name": "Malachi Fields",
-    "position": "WR",
-    "rank": 23,
+    "id": "1926",
+    "name": "Trinidad Chambliss",
+    "position": "QB",
+    "rank": 22,
     "value": 0
   },
   {
     "id": "1940",
     "name": "Kaytron Allen",
     "position": "RB",
-    "rank": 24,
+    "rank": 23,
     "value": 0
   },
   {
-    "id": "1979",
-    "name": "Ja'Kobi Lane",
+    "id": "1973",
+    "name": "Malachi Fields",
     "position": "WR",
-    "rank": 25,
+    "rank": 24,
     "value": 0
   },
   {
     "id": "1965",
     "name": "Germie Bernard",
+    "position": "WR",
+    "rank": 25,
+    "value": 0
+  },
+  {
+    "id": "1979",
+    "name": "Ja'Kobi Lane",
     "position": "WR",
     "rank": 26,
     "value": 0
@@ -203,16 +203,16 @@
     "value": 0
   },
   {
-    "id": "2008",
-    "name": "Michael Trigg",
-    "position": "TE",
+    "id": "1990",
+    "name": "Kevin Coleman",
+    "position": "WR",
     "rank": 30,
     "value": 0
   },
   {
-    "id": "1990",
-    "name": "Kevin Coleman",
-    "position": "WR",
+    "id": "2008",
+    "name": "Michael Trigg",
+    "position": "TE",
     "rank": 31,
     "value": 0
   },
@@ -231,44 +231,44 @@
     "value": 0
   },
   {
-    "id": "1941",
-    "name": "Le'Veon Moss",
-    "position": "RB",
+    "id": "1929",
+    "name": "Cade Klubnik",
+    "position": "QB",
     "rank": 34,
     "value": 0
   },
   {
-    "id": "1929",
-    "name": "Cade Klubnik",
-    "position": "QB",
-    "rank": 35,
-    "value": 0
-  },
-  {
-    "id": "1948",
-    "name": "Jam Miller",
+    "id": "1941",
+    "name": "Le'Veon Moss",
     "position": "RB",
-    "rank": 36,
+    "rank": 35,
     "value": 0
   },
   {
     "id": "1949",
     "name": "J'Mari Taylor",
     "position": "RB",
-    "rank": 37,
+    "rank": 36,
     "value": 0
   },
   {
-    "id": "1937",
-    "name": "Seth McGowan",
+    "id": "1948",
+    "name": "Jam Miller",
     "position": "RB",
-    "rank": 38,
+    "rank": 37,
     "value": 0
   },
   {
     "id": "1972",
     "name": "Deion Burks",
     "position": "WR",
+    "rank": 38,
+    "value": 0
+  },
+  {
+    "id": "1937",
+    "name": "Seth McGowan",
+    "position": "RB",
     "rank": 39,
     "value": 0
   },
@@ -284,13 +284,6 @@
     "name": "Jack Endries",
     "position": "TE",
     "rank": 41,
-    "value": 0
-  },
-  {
-    "id": "2003",
-    "name": "Barion Brown",
-    "position": "WR",
-    "rank": 42,
     "value": 0
   }
 ]

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ContractAuditModal from './components/ContractAuditModal';
+import { expandDraftOrderPreview } from '@/utils/mockDraftOrderPreview';
 
 // Use the same name matching logic as PlayerProfileCard (Player Contracts page)
 function getImageFilename(playerName) {
@@ -12,6 +13,22 @@ function getImageFilename(playerName) {
     .replace(/[.'’]/g, "") // Remove periods and apostrophes
     .replace(/\s+/g, "_")
     .toLowerCase();
+}
+
+function groupOrderPreviewByRound(orderPreview) {
+  const groups = new Map();
+  for (const entry of Array.isArray(orderPreview) ? orderPreview : []) {
+    const round = Number(entry.round) || 1;
+    if (!groups.has(round)) groups.set(round, []);
+    groups.get(round).push(entry);
+  }
+
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, picks]) => ({
+      round,
+      picks: picks.slice().sort((a, b) => Number(a.slot) - Number(b.slot)),
+    }));
 }
 
 export default function AdminPage() {
@@ -34,6 +51,7 @@ export default function AdminPage() {
   const [progressText, setProgressText] = useState("");
   const [poolPreview, setPoolPreview] = useState(null);
   const [orderPreview, setOrderPreview] = useState(null);
+  const [orderPreviewContext, setOrderPreviewContext] = useState(null);
   const [approvedPool, setApprovedPool] = useState(false);
   const [approvedOrder, setApprovedOrder] = useState(false);
   const [draftTitle, setDraftTitle] = useState('BBB AI Mock Draft');
@@ -46,6 +64,23 @@ export default function AdminPage() {
   const [contractAuditError, setContractAuditError] = useState('');
   const [contractAuditData, setContractAuditData] = useState(null);
   // No external URL needed anymore; we scrape internally
+
+  useEffect(() => {
+    if (!orderPreviewContext) return;
+
+    const nextOrderPreview = expandDraftOrderPreview({
+      draftOrder: orderPreviewContext.draftOrder,
+      rosters: orderPreviewContext.rosters,
+      users: orderPreviewContext.users,
+      tradedPicks: orderPreviewContext.tradedPicks,
+      targetSeason: orderPreviewContext.targetSeason,
+      rounds,
+      maxPicks: rounds * 12,
+    });
+
+    setOrderPreview(nextOrderPreview);
+    setApprovedOrder(false);
+  }, [orderPreviewContext, rounds]);
 
   useEffect(() => {
     async function fetchMissing() {
@@ -176,17 +211,6 @@ export default function AdminPage() {
         } catch {}
       }, 750);
       setProgressPollId(pollId);
-      // Build full multi-round draft order
-      let fullDraftOrder = [];
-      for (let r = 1; r <= rounds; r++) {
-        orderPreview.forEach((pick, idx) => {
-          fullDraftOrder.push({
-            ...pick,
-            round: r,
-            // Optionally, update pick number if needed
-          });
-        });
-      }
       const res = await fetch('/api/admin/mock-drafts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -195,11 +219,11 @@ export default function AdminPage() {
           maxPicks: rounds * 12,
           trace: true,
           dryRun: false,
-          model: 'gpt-4o-mini',
+          model: 'gpt-4o',
           title: draftTitle,
           description: draftDescription,
           progressKey: key,
-          draftOrder: fullDraftOrder
+          draftOrder: orderPreview
         })
       });
       const json = await res.json();
@@ -255,6 +279,7 @@ export default function AdminPage() {
       setApprovedOrder(false);
       setPoolPreview(null);
       setOrderPreview(null);
+      setOrderPreviewContext(null);
       // Step 1: Scrape and generate player pool locally
       const poolRes = await fetch('/api/admin/player-pool/scrape', { method: 'POST' });
       const poolJson = await poolRes.json();
@@ -327,8 +352,14 @@ export default function AdminPage() {
             isTraded,
           };
         });
-        setOrderPreview(draftOrderArray);
-        setGenResult({ ...(genResult || {}), draftOrderDebug: { source: 'sleeper_traded_picks', draftOrder: draftOrderArray } });
+        setOrderPreviewContext({
+          draftOrder: draftOrderArray,
+          rosters: rostersData,
+          users: usersData,
+          tradedPicks,
+          targetSeason,
+        });
+        setGenResult({ ...(genResult || {}), draftOrderDebug: { source: 'sleeper_traded_picks', targetSeason, draftOrder: draftOrderArray } });
       } else {
         // Fallback: use canonical debug API (with traded picks enabled)
         const ordRes = await fetch(`/api/debug/draft-order?leagueId=${leagueId}&applyRoundOneTrades=true`, { cache: 'no-store' });
@@ -336,7 +367,23 @@ export default function AdminPage() {
         if (!ordRes.ok || !ordJson.draft_order) {
           throw new Error(ordJson?.error || 'Failed to compute draft order');
         }
-        setOrderPreview(Array.isArray(ordJson.draft_order) ? ordJson.draft_order : []);
+        const [usersRes, rostersRes, tradedRes] = await Promise.all([
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`, { cache: 'no-store' }),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, { cache: 'no-store' }),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`, { cache: 'no-store' }),
+        ]);
+        const [usersData, rostersData, tradedPicks] = await Promise.all([
+          usersRes.json(),
+          rostersRes.json(),
+          tradedRes.json(),
+        ]);
+        setOrderPreviewContext({
+          draftOrder: Array.isArray(ordJson.draft_order) ? ordJson.draft_order : [],
+          rosters: rostersData,
+          users: usersData,
+          tradedPicks,
+          targetSeason: ordJson.targetSeason,
+        });
         setGenResult({ ...(genResult || {}), draftOrderDebug: ordJson });
       }
       setProgressText('Review the player pool and draft order below, then approve to continue.');
@@ -352,6 +399,8 @@ export default function AdminPage() {
   if (status === 'loading') {
     return <div className="p-8 text-center">Loading...</div>;
   }
+
+  const groupedOrderPreview = groupOrderPreviewByRound(orderPreview);
 
   return (
     <main className="min-h-screen bg-[#001A2B] text-white p-6">
@@ -465,7 +514,7 @@ export default function AdminPage() {
                   <div className="bg-black/20 rounded border border-white/10 p-3">
                     <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-2">
                       <div>
-                        <h3 className="font-bold text-white">Draft Order Preview (Round 1)</h3>
+                        <h3 className="font-bold text-white">Draft Order Preview ({groupedOrderPreview.length} rounds)</h3>
                         {genResult?.draftOrderDebug?.targetSeason && (
                           <div className="text-white/70 text-xs mt-1">Draft Year: {genResult.draftOrderDebug.targetSeason}</div>
                         )}
@@ -475,10 +524,12 @@ export default function AdminPage() {
                         <span>Approve Draft Order</span>
                       </label>
                     </div>
-                    <div className="mt-2 grid grid-cols-1 gap-2 text-sm">
-                      {orderPreview
-                        .sort((a,b)=>Number(a.slot)-Number(b.slot))
-                        .map((o,i)=> {
+                    <div className="mt-2 max-h-[32rem] overflow-auto space-y-3 text-sm">
+                      {groupedOrderPreview.map(({ round, picks }) => (
+                        <div key={round}>
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">Round {round}</div>
+                          <div className="grid grid-cols-1 gap-2">
+                            {picks.map((o, i) => {
                           // Support both picks and fallback data
                           const rosterId = o.rosterId ?? o.roster_id;
                           const originalRosterId = o.originalRosterId ?? o.original_roster_id;
@@ -492,17 +543,20 @@ export default function AdminPage() {
                             );
                             originalOwnerName = orig?.teamName || null;
                           }
-                          return (
-                            <div key={i} className="bg-black/10 p-2 rounded border border-white/10">
-                              <span className="text-[#FF4B1F] font-bold">{String(o.slot).padStart(2,'0')}</span>
-                              <span className="ml-2 text-white/90">{o.teamName}</span>
-                              <span className="ml-2 text-white/60 text-xs">(roster_id: {rosterId}, orig: {originalRosterId}{isTraded && originalOwnerName ? `, original: ${originalOwnerName}` : ''})</span>
-                              {isTraded && (
-                                <span className="ml-2 text-yellow-400 text-xs">[TRADED]</span>
-                              )}
-                            </div>
-                          );
-                        })}
+                              return (
+                                <div key={`${round}-${i}`} className="bg-black/10 p-2 rounded border border-white/10">
+                                  <span className="text-[#FF4B1F] font-bold">{round}.{String(o.slot).padStart(2,'0')}</span>
+                                  <span className="ml-2 text-white/90">{o.teamName}</span>
+                                  <span className="ml-2 text-white/60 text-xs">(roster_id: {rosterId}, orig: {originalRosterId}{isTraded && originalOwnerName ? `, original: ${originalOwnerName}` : ''})</span>
+                                  {isTraded && (
+                                    <span className="ml-2 text-yellow-400 text-xs">[TRADED]</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     {genResult?.draftOrderDebug && (
                       <details className="mt-3 bg-black/10 p-2 rounded border border-white/10">

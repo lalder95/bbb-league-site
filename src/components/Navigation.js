@@ -259,15 +259,33 @@ export default function Navigation() {
     await ensurePlayersLoaded();
   };
 
-  const handleResultClick = (item) => {
+  const handleResultClick = (item, options = {}) => {
+    const { closeMobileMenu = false } = options;
+
     if (item.type === 'page') {
       setShowResults(false);
       setSearchQuery('');
+      setActiveIndex(-1);
+      if (closeMobileMenu) {
+        setIsMenuOpen(false);
+      }
       router.push(item.href);
     } else if (item.type === 'player') {
-      setSelectedPlayerId(item.playerId);
       setShowResults(false);
       setSearchQuery('');
+      setActiveIndex(-1);
+
+      if (closeMobileMenu) {
+        setIsMenuOpen(false);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setSelectedPlayerId(item.playerId);
+          });
+        });
+        return;
+      }
+
+      setSelectedPlayerId(item.playerId);
     }
   };
 
@@ -469,126 +487,130 @@ export default function Navigation() {
 
         {/* Mobile Navigation Overlay */}
         {isMenuOpen && (
-          <div className="fixed inset-0 z-40 md:hidden">
-            {/* Backdrop */}
-            <div
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setIsMenuOpen(false)}
-              aria-hidden
-            />
-            {/* Scrollable Menu Panel */}
-            <div className="absolute top-16 inset-x-0 bottom-0 overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-md border-t border-white/10">
-              {/* Mobile search */}
-              <div className="p-3 sticky top-0 bg-black/80 backdrop-blur-md border-b border-white/10 z-10">
-                <div className="flex items-center bg-white/5 rounded-lg px-3 py-2 border border-white/10">
-                  <Search className="h-4 w-4 text-white/60" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => { setSearchQuery(e.target.value); setActiveIndex(-1); setShowResults(true); }}
-                    onFocus={handleSearchFocus}
-                    placeholder="Search pages and players..."
-                    className="ml-2 bg-transparent outline-none text-sm text-white placeholder-white/50 w-full"
-                    aria-label="Search pages and players"
-                  />
-                </div>
-                {showResults && (searchQuery.length > 0 || loadingPlayers) && (
-                  <div className="mt-2 bg-black/90 border border-white/10 rounded-xl max-h-80 overflow-auto">
-                    <div className="p-2">
-                      {pageResults.length > 0 && (
-                        <div className="mb-2">
-                          <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Pages</div>
-                          {pageResults.map((item) => (
-                            <button
-                              key={item.href}
-                              onClick={() => { handleResultClick({ type: 'page', href: item.href, label: item.label }); setIsMenuOpen(false); }}
-                              className="w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10"
-                            >
-                              <span className="text-sm">{item.label}</span>
-                              <span className="ml-2 text-xs text-white/40">{item.href}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Players</div>
-                      {loadingPlayers && (
-                        <div className="px-3 py-2 text-white/60 text-sm">Loading players…</div>
-                      )}
-                      {!loadingPlayers && playerResults.length === 0 && (
-                        <div className="px-3 py-2 text-white/60 text-sm">No matching players</div>
-                      )}
-                      {!loadingPlayers && playerResults.map((p) => (
-                        <button
-                          key={p.playerId}
-                          onClick={() => { handleResultClick({ type: 'player', playerId: p.playerId, label: p.playerName }); setIsMenuOpen(false); }}
-                          className="w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm">{p.playerName}</span>
-                            <span className="text-xs text-white/50">{p.position}{p.team ? ` • ${p.team}` : ''}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+          <div className="absolute inset-x-0 top-full z-40 md:hidden">
+            <div className="relative h-[calc(100dvh-4rem)]">
+              {/* Backdrop */}
+              <div
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                onClick={() => setIsMenuOpen(false)}
+                aria-hidden
+              />
+              {/* Scrollable Menu Panel */}
+              <div className="absolute inset-0 overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-md border-t border-white/10">
+                {/* Mobile search */}
+                <div className="p-3 sticky top-0 bg-black/80 backdrop-blur-md border-b border-white/10 z-10">
+                  <div className="flex items-center bg-white/5 rounded-lg px-3 py-2 border border-white/10">
+                    <Search className="h-4 w-4 text-white/60" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => { setSearchQuery(e.target.value); setActiveIndex(-1); setShowResults(true); }}
+                      onFocus={handleSearchFocus}
+                      placeholder="Search pages and players..."
+                      className="ml-2 bg-transparent outline-none text-sm text-white placeholder-white/50 w-full"
+                      aria-label="Search pages and players"
+                    />
                   </div>
-                )}
-              </div>
-              <div className="px-3 py-3 space-y-1">
-                {navGroups.map((group, index) => (
-                  <div key={index}>
-                    {group.type === 'single' ? (
-                      group.links.map(({ href, label }) => (
-                        <Link
-                          key={href}
-                          href={href}
-                          className={`
-                            ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
-                            block px-3 py-2 rounded-md text-base transition-all duration-300 ease-in-out
-                          `}
-                          onClick={() => setIsMenuOpen(false)}
-                        >
-                          {label}
-                        </Link>
-                      ))
-                    ) : (
-                      <div className="border-b border-white/10 pb-2 mb-2">
-                        <div className="px-3 py-2 text-white/70 font-semibold">{group.title}</div>
-                        {group.links.map(({ href, label }) => (
+                  {showResults && (searchQuery.length > 0 || loadingPlayers) && (
+                    <div className="mt-2 bg-black/90 border border-white/10 rounded-xl max-h-80 overflow-auto">
+                      <div className="p-2">
+                        {pageResults.length > 0 && (
+                          <div className="mb-2">
+                            <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Pages</div>
+                            {pageResults.map((item) => (
+                              <button
+                                type="button"
+                                key={item.href}
+                                onClick={() => handleResultClick({ type: 'page', href: item.href, label: item.label }, { closeMobileMenu: true })}
+                                className="w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10"
+                              >
+                                <span className="text-sm">{item.label}</span>
+                                <span className="ml-2 text-xs text-white/40">{item.href}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="px-2 py-1 text-xs uppercase tracking-wider text-white/40">Players</div>
+                        {loadingPlayers && (
+                          <div className="px-3 py-2 text-white/60 text-sm">Loading players…</div>
+                        )}
+                        {!loadingPlayers && playerResults.length === 0 && (
+                          <div className="px-3 py-2 text-white/60 text-sm">No matching players</div>
+                        )}
+                        {!loadingPlayers && playerResults.map((p) => (
+                          <button
+                            type="button"
+                            key={p.playerId}
+                            onClick={() => handleResultClick({ type: 'player', playerId: p.playerId, label: p.playerName }, { closeMobileMenu: true })}
+                            className="w-full text-left px-3 py-2 rounded-md text-white/80 hover:bg-white/10"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">{p.playerName}</span>
+                              <span className="text-xs text-white/50">{p.position}{p.team ? ` • ${p.team}` : ''}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="px-3 py-3 space-y-1">
+                  {navGroups.map((group, index) => (
+                    <div key={index}>
+                      {group.type === 'single' ? (
+                        group.links.map(({ href, label }) => (
                           <Link
                             key={href}
                             href={href}
                             className={`
                               ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
-                              block px-4 py-2 rounded-md text-base ml-2 transition-all duration-300 ease-in-out
+                              block px-3 py-2 rounded-md text-base transition-all duration-300 ease-in-out
                             `}
                             onClick={() => setIsMenuOpen(false)}
                           >
                             {label}
                           </Link>
-                        ))}
-                      </div>
+                        ))
+                      ) : (
+                        <div className="border-b border-white/10 pb-2 mb-2">
+                          <div className="px-3 py-2 text-white/70 font-semibold">{group.title}</div>
+                          {group.links.map(({ href, label }) => (
+                            <Link
+                              key={href}
+                              href={href}
+                              className={`
+                                ${pathname === href ? 'bg-[#FF4B1F] bg-opacity-20 text-[#FF4B1F]' : 'text-white/70 hover:text-[#FF4B1F]'}
+                                block px-4 py-2 rounded-md text-base ml-2 transition-all duration-300 ease-in-out
+                              `}
+                              onClick={() => setIsMenuOpen(false)}
+                            >
+                              {label}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Auth Links for Mobile */}
+                  <div className="border-t border-white/10 pt-2 mt-2">
+                    {session ? (
+                      <button
+                        onClick={() => signOut({ callbackUrl: '/' })}
+                        className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                      >
+                        Logout
+                      </button>
+                    ) : (
+                      <Link
+                        href="/login"
+                        className="block px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        Login
+                      </Link>
                     )}
                   </div>
-                ))}
-
-                {/* Auth Links for Mobile */}
-                <div className="border-t border-white/10 pt-2 mt-2">
-                  {session ? (
-                    <button
-                      onClick={() => signOut({ callbackUrl: '/' })}
-                      className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
-                    >
-                      Logout
-                    </button>
-                  ) : (
-                    <Link
-                      href="/login"
-                      className="block px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Login
-                    </Link>
-                  )}
                 </div>
               </div>
             </div>
