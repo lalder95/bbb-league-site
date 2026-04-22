@@ -2,9 +2,16 @@
 
 import React, { useState, useEffect, useMemo, startTransition } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import PlayerProfileCard from './my-team/components/PlayerProfileCard';
 import EscapeKeyListener from './player-contracts/EscapeKeyListener';
 import SwipeDownListener from './player-contracts/SwipeDownListener';
+import {
+  HOMEPAGE_PHASE_OPTIONS,
+  HOMEPAGE_PHASES,
+  getHomepagePhaseMeta,
+  phaseShowsBankerFeed,
+} from '@/utils/homepagePhases';
 
 const MemoPlayerProfileCard = React.memo(
   function MemoPlayerProfileCard(props) {
@@ -17,6 +24,7 @@ const MemoPlayerProfileCard = React.memo(
 );
 
 export default function Home() {
+  const { data: session } = useSession();
   // Testing mode to help troubleshooting
   const [testMode, setTestMode] = useState(false);
   const [leagueData, setLeagueData] = useState(null);
@@ -53,6 +61,12 @@ export default function Home() {
   const [bracketMatchupsLoading, setBracketMatchupsLoading] = useState(false);
   const [leagueUsers, setLeagueUsers] = useState([]);
   const [leagueRosters, setLeagueRosters] = useState([]);
+  const [homepagePhaseData, setHomepagePhaseData] = useState(null);
+  const [homepagePhaseError, setHomepagePhaseError] = useState('');
+  const [homepagePhaseLoading, setHomepagePhaseLoading] = useState(false);
+  const [forcedPhase, setForcedPhase] = useState('');
+
+  const isAdmin = session?.user?.role === 'admin';
 
   function flattenTeamsFromPairs(pairs) {
     return Array.isArray(pairs) ? pairs.flat() : [];
@@ -443,6 +457,45 @@ export default function Home() {
     
     fetchData();
   }, [leagueId, selectedWeek]); // <-- Add selectedWeek as dependency
+
+  useEffect(() => {
+    if (!leagueId) {
+      setHomepagePhaseData(null);
+      setHomepagePhaseError('');
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setHomepagePhaseLoading(true);
+        setHomepagePhaseError('');
+        const response = await fetch(`/api/homepage?leagueId=${leagueId}`, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('Failed to load homepage phase data');
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          setHomepagePhaseData(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setHomepagePhaseError(err?.message || 'Failed to load homepage phase data');
+          setHomepagePhaseData(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setHomepagePhaseLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leagueId]);
+
   // Auto-enable Playoff Mode when league settings indicate playoffs have started.
   // Best method per Sleeper: league.settings.playoff_week_start (integer nfl week).
   useEffect(() => {
@@ -813,10 +866,30 @@ export default function Home() {
       </div>
     );
   };
+
+  const actualPhase = homepagePhaseData?.phase || HOMEPAGE_PHASES.IN_SEASON;
+  const activePhase = isAdmin && forcedPhase ? forcedPhase : actualPhase;
+  const phaseMeta = getHomepagePhaseMeta(activePhase);
+  const phasePayload = homepagePhaseData?.payload || {};
+  const shouldShowBankerFeed = phaseShowsBankerFeed(activePhase);
+  const shouldShowStandings = activePhase === HOMEPAGE_PHASES.IN_SEASON;
+  const mainPanelTitle = activePhase === HOMEPAGE_PHASES.IN_SEASON
+    ? (currentWeek ? `Week ${currentWeek} Matchups` : 'Current Matchups')
+    : phaseMeta.title;
   
   // Helper to render content based on league status
   function renderMainContent() {
-    if (!leagueData?.status) return <OffseasonContent />;
+    if (activePhase !== HOMEPAGE_PHASES.IN_SEASON) {
+      return (
+        <HomepagePhaseContent
+          isMobile={isMobile}
+          phase={activePhase}
+          payload={phasePayload}
+          phaseLoading={homepagePhaseLoading}
+          phaseError={homepagePhaseError}
+        />
+      );
+    }
 
     // Playoffs can overlap with statuses other than "in_season" depending on league configuration
     // (and some leagues may flip status earlier than expected). If we have triggered playoffMode,
@@ -898,181 +971,156 @@ export default function Home() {
       );
     }
 
-    switch (leagueData.status) {
-      case "in_season":
-        return (
-          <div className="space-y-3 md:space-y-4">
-            {/* Week navigation header */}
-            <div className="flex items-center justify-center mb-4">
-              <button
-                className="px-2 py-1 rounded hover:bg-[#FF4B1F]/30 transition-colors text-[#FF4B1F] font-bold text-lg"
-                onClick={() => setSelectedWeek(w => Math.max(1, (w || 1) - 1))}
-                disabled={selectedWeek <= 1}
-                aria-label="Previous Week"
-                title="Previous Week"
-              >
-                ←
-              </button>
-              <span className="mx-4 text-xl font-bold text-[#FF4B1F]">
-                {selectedWeek ? `Week ${selectedWeek} Matchups` : 'Current Matchups'}
-              </span>
-              <button
-                className="px-2 py-1 rounded hover:bg-[#FF4B1F]/30 transition-colors text-[#FF4B1F] font-bold text-lg"
-                onClick={() => setSelectedWeek(w => Math.min(18, (w || 1) + 1))}
-                aria-label="Next Week"
-                title="Next Week"
-              >
-                →
-              </button>
-            </div>
-            {matchups.length > 0 ? (
-              matchups.map((matchup, index) => {
-                let winnerIdx = null;
-                if (
-                  matchup.length === 2 &&
-                  typeof matchup[0].points === "number" &&
-                  typeof matchup[1].points === "number" &&
-                  matchup[0].points !== matchup[1].points
-                ) {
-                  winnerIdx = matchup[0].points > matchup[1].points ? 0 : 1;
-                }
-                const id = matchup[0]?.matchup_id || index;
-                const expanded = expandedMatchups[id];
+    return (
+      <div className="space-y-3 md:space-y-4">
+        <div className="flex items-center justify-center mb-4">
+          <button
+            className="px-2 py-1 rounded hover:bg-[#FF4B1F]/30 transition-colors text-[#FF4B1F] font-bold text-lg"
+            onClick={() => setSelectedWeek(w => Math.max(1, (w || 1) - 1))}
+            disabled={selectedWeek <= 1}
+            aria-label="Previous Week"
+            title="Previous Week"
+          >
+            ←
+          </button>
+          <span className="mx-4 text-xl font-bold text-[#FF4B1F]">
+            {selectedWeek ? `Week ${selectedWeek} Matchups` : 'Current Matchups'}
+          </span>
+          <button
+            className="px-2 py-1 rounded hover:bg-[#FF4B1F]/30 transition-colors text-[#FF4B1F] font-bold text-lg"
+            onClick={() => setSelectedWeek(w => Math.min(18, (w || 1) + 1))}
+            aria-label="Next Week"
+            title="Next Week"
+          >
+            →
+          </button>
+        </div>
+        {matchups.length > 0 ? (
+          matchups.map((matchup, index) => {
+            let winnerIdx = null;
+            if (
+              matchup.length === 2 &&
+              typeof matchup[0].points === 'number' &&
+              typeof matchup[1].points === 'number' &&
+              matchup[0].points !== matchup[1].points
+            ) {
+              winnerIdx = matchup[0].points > matchup[1].points ? 0 : 1;
+            }
+            const id = matchup[0]?.matchup_id || index;
+            const expanded = expandedMatchups[id];
 
-                return (
-                  <div
-                    key={id}
-                    className="bg-black/30 rounded-lg border border-white/10 p-4 flex flex-col"
-                  >
-                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-                      {/* Left Team */}
-                      <div className="flex flex-col items-center min-w-0">
-                        <span
-                          className="font-bold truncate whitespace-nowrap text-center"
-                          style={{
-                            fontSize: `clamp(1rem, ${Math.max(
-                              2.2 - (matchup[0].teamName?.length || 0) * 0.09,
-                              1
-                            )}rem, 1.25rem)`
-                          }}
-                          title={matchup[0].teamName}
-                        >
-                          {matchup[0].teamName}
+            return (
+              <div
+                key={id}
+                className="bg-black/30 rounded-lg border border-white/10 p-4 flex flex-col"
+              >
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                  <div className="flex flex-col items-center min-w-0">
+                    <span
+                      className="font-bold truncate whitespace-nowrap text-center"
+                      style={{
+                        fontSize: `clamp(1rem, ${Math.max(
+                          2.2 - (matchup[0].teamName?.length || 0) * 0.09,
+                          1
+                        )}rem, 1.25rem)`
+                      }}
+                      title={matchup[0].teamName}
+                    >
+                      {matchup[0].teamName}
+                    </span>
+                    <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F] mt-2">
+                      {matchup[0].avatar ? (
+                        <img
+                          src={`https://sleepercdn.com/avatars/${matchup[0].avatar}`}
+                          alt={matchup[0].teamName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xl font-bold text-[#FF4B1F]">
+                          {matchup[0].teamName?.charAt(0) || 'T'}
                         </span>
-                        <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F] mt-2">
-                          {matchup[0].avatar ? (
-                            <img
-                              src={`https://sleepercdn.com/avatars/${matchup[0].avatar}`}
-                              alt={matchup[0].teamName}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <span className="text-xl font-bold text-[#FF4B1F]">
-                              {matchup[0].teamName?.charAt(0) || 'T'}
-                            </span>
-                          )}
-                        </div>
-                        <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 0 ? "text-[#FF4B1F]" : ""}`}>
-                          {typeof matchup[0].points === "number" ? matchup[0].points.toFixed(2) : "--"}
-                        </div>
-                      </div>
-                      {/* VS Center */}
-                      <div className="flex flex-col items-center justify-center min-w-[60px]">
-                        <div className="rounded-full bg-[#FF4B1F] text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md mb-2">
-                          VS
-                        </div>
-                        <button
-                          onClick={() =>
-                            setExpandedMatchups(prev => ({ ...prev, [id]: !prev[id] }))
-                          }
-                          className="text-xs px-2 py-1 rounded bg-[#FF4B1F]/20 text-[#FF4B1F] border border-[#FF4B1F]/40 hover:bg-[#FF4B1F]/30 transition"
-                          aria-label={expanded ? 'Hide Matchup' : 'Show Matchup'}
-                          title={expanded ? 'Hide Matchup' : 'Show Matchup'}
-                        >
-                          {expanded ? 'Hide Matchup' : 'Show Matchup'}
-                        </button>
-                      </div>
-                      {/* Right Team */}
-                      <div className="flex flex-col items-center min-w-0">
-                        <span
-                          className="font-bold truncate whitespace-nowrap text-center"
-                          style={{
-                            fontSize: `clamp(1rem, ${Math.max(
-                              2.2 - (matchup[1].teamName?.length || 0) * 0.09,
-                              1
-                            )}rem, 1.25rem)`
-                          }}
-                          title={matchup[1].teamName}
-                        >
-                          {matchup[1].teamName}
-                        </span>
-                        <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F] mt-2">
-                          {matchup[1].avatar ? (
-                            <img
-                              src={`https://sleepercdn.com/avatars/${matchup[1].avatar}`}
-                              alt={matchup[1].teamName}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <span className="text-xl font-bold text-[#FF4B1F]">
-                              {matchup[1].teamName?.charAt(0) || 'T'}
-                            </span>
-                          )}
-                        </div>
-                        <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 1 ? "text-[#FF4B1F]" : ""}`}>
-                          {typeof matchup[1].points === "number" ? matchup[1].points.toFixed(2) : "--"}
-                        </div>
-                      </div>
+                      )}
                     </div>
-                    {/* Starters Section */}
-                    {expanded && (
-                      <div className="mt-4 border-t border-white/10 pt-4">
-                        {playersLoading && (
-                          <div className="text-sm text-white/60">Loading starters...</div>
-                        )}
-                        {!playersLoading && (
-                          <AlignedStarters
-                            leftTeam={matchup[0]}
-                            rightTeam={matchup[1]}
-                            playerInfoMap={playerInfoMap}
-                            selectedWeek={selectedWeek}
-                            expandedPlayerId={expandedPlayerId}
-                            setExpandedPlayerId={setExpandedPlayerId}
-                            playerGameStates={playerGameStates}
-                            setPlayerGameStates={setPlayerGameStates}
-                            isMobile={isMobile} // pass mobile flag down
-                          />
-                        )}
-                      </div>
+                    <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 0 ? 'text-[#FF4B1F]' : ''}`}>
+                      {typeof matchup[0].points === 'number' ? matchup[0].points.toFixed(2) : '--'}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-center justify-center min-w-[60px]">
+                    <div className="rounded-full bg-[#FF4B1F] text-black font-bold w-10 h-10 flex items-center justify-center text-lg shadow-md mb-2">
+                      VS
+                    </div>
+                    <button
+                      onClick={() =>
+                        setExpandedMatchups(prev => ({ ...prev, [id]: !prev[id] }))
+                      }
+                      className="text-xs px-2 py-1 rounded bg-[#FF4B1F]/20 text-[#FF4B1F] border border-[#FF4B1F]/40 hover:bg-[#FF4B1F]/30 transition"
+                      aria-label={expanded ? 'Hide Matchup' : 'Show Matchup'}
+                      title={expanded ? 'Hide Matchup' : 'Show Matchup'}
+                    >
+                      {expanded ? 'Hide Matchup' : 'Show Matchup'}
+                    </button>
+                  </div>
+                  <div className="flex flex-col items-center min-w-0">
+                    <span
+                      className="font-bold truncate whitespace-nowrap text-center"
+                      style={{
+                        fontSize: `clamp(1rem, ${Math.max(
+                          2.2 - (matchup[1].teamName?.length || 0) * 0.09,
+                          1
+                        )}rem, 1.25rem)`
+                      }}
+                      title={matchup[1].teamName}
+                    >
+                      {matchup[1].teamName}
+                    </span>
+                    <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border border-[#FF4B1F] mt-2">
+                      {matchup[1].avatar ? (
+                        <img
+                          src={`https://sleepercdn.com/avatars/${matchup[1].avatar}`}
+                          alt={matchup[1].teamName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xl font-bold text-[#FF4B1F]">
+                          {matchup[1].teamName?.charAt(0) || 'T'}
+                        </span>
+                      )}
+                    </div>
+                    <div className={`mt-2 font-extrabold text-2xl text-white text-center w-full ${winnerIdx === 1 ? 'text-[#FF4B1F]' : ''}`}>
+                      {typeof matchup[1].points === 'number' ? matchup[1].points.toFixed(2) : '--'}
+                    </div>
+                  </div>
+                </div>
+                {expanded && (
+                  <div className="mt-4 border-t border-white/10 pt-4">
+                    {playersLoading && (
+                      <div className="text-sm text-white/60">Loading starters...</div>
+                    )}
+                    {!playersLoading && (
+                      <AlignedStarters
+                        leftTeam={matchup[0]}
+                        rightTeam={matchup[1]}
+                        playerInfoMap={playerInfoMap}
+                        selectedWeek={selectedWeek}
+                        expandedPlayerId={expandedPlayerId}
+                        setExpandedPlayerId={setExpandedPlayerId}
+                        playerGameStates={playerGameStates}
+                        setPlayerGameStates={setPlayerGameStates}
+                        isMobile={isMobile}
+                      />
                     )}
                   </div>
-                );
-              })
-            ) : (
-              <div className="text-center text-white/70 py-8">
-                No matchups available for this week.
+                )}
               </div>
-            )}
+            );
+          })
+        ) : (
+          <div className="text-center text-white/70 py-8">
+            No matchups available for this week.
           </div>
-        );
-      case "pre_draft":
-        return (
-          <div className="text-center py-8">
-            <h3 className="text-xl font-bold mb-2">Draft Coming Soon!</h3>
-            <p>Get ready for the league draft. Prepare your rankings and strategies.</p>
-          </div>
-        );
-      case "complete":
-        return (
-          <div className="text-center py-8">
-            <h3 className="text-xl font-bold mb-2">Season Complete</h3>
-            <p>Congratulations to the champion! See the Hall of Fame for past winners.</p>
-          </div>
-        );
-      case "offseason":
-      default:
-        return <OffseasonContent />;
-    }
+        )}
+      </div>
+    );
   }
 
   function closeBracketModal() {
@@ -1378,6 +1426,15 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
               <p className="text-white/70">
                 {currentWeek ? `Week ${currentWeek}` : 'Fantasy Football'} | {leagueData?.season || 'Current'} Season
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-[#FF4B1F]/40 bg-[#FF4B1F]/10 px-3 py-1 font-semibold text-[#FF8A6B]">
+                  {phaseMeta.title}
+                </span>
+                <span className="text-white/60">{phaseMeta.subtitle}</span>
+                {homepagePhaseError ? (
+                  <span className="text-red-300">{homepagePhaseError}</span>
+                ) : null}
+              </div>
             </div>
             <div className={`${isMobile ? 'mt-2' : 'mt-4 md:mt-0'}`}>
               <a 
@@ -1393,6 +1450,51 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
               </a>
             </div>
           </div>
+          {isAdmin && (
+            <details className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+              <summary className="cursor-pointer list-none">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Admin Phase Override</div>
+                    <div className="text-xs text-white/60">
+                      Live phase: {getHomepagePhaseMeta(actualPhase).title}
+                      {forcedPhase ? ` • Forced: ${getHomepagePhaseMeta(forcedPhase).title}` : ' • Override disabled'}
+                    </div>
+                  </div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#FF8A6B]">
+                    Expand Controls
+                  </div>
+                </div>
+              </summary>
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setForcedPhase('')}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    forcedPhase
+                      ? 'border-white/20 bg-black/20 text-white/75 hover:border-white/40 hover:text-white'
+                      : 'border-[#FF4B1F]/40 bg-[#FF4B1F]/15 text-[#FF8A6B]'
+                  }`}
+                >
+                  Use Live Phase
+                </button>
+                {HOMEPAGE_PHASE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setForcedPhase(option.value)}
+                    className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      forcedPhase === option.value
+                        ? 'border-[#FF4B1F]/40 bg-[#FF4B1F]/15 text-[#FF8A6B]'
+                        : 'border-white/20 bg-black/20 text-white/75 hover:border-white/40 hover:text-white'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       </div>
 
@@ -1401,7 +1503,7 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
           <div className={`${isMobile ? '' : 'lg:col-span-2'} space-y-6 md:space-y-8`}>
             <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
               <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
-                {currentWeek ? `Week ${currentWeek} Matchups` : 'Current Matchups'}
+                {mainPanelTitle}
               </h2>
               {renderMainContent()}
       {/* Bracket Matchup Modal */}
@@ -1422,80 +1524,84 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
         />
       )}
             </div>
-            
-            <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
-              <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>League Standings</h2>
-              <StandingsSection standingsData={standings} />
-            </div>
+
+            {shouldShowStandings && (
+              <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
+                <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>League Standings</h2>
+                <StandingsSection standingsData={standings} />
+              </div>
+            )}
           </div>
           
             <div className="space-y-6 md:space-y-8">
-            <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
-              <div className={`flex items-center justify-between ${isMobile ? 'mb-4' : 'mb-6'}`}>
-                <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-[#FF4B1F]`}>
-                  League bAnker Feed
-                </h2>
-                <div className="flex items-center gap-2 relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdamOnly(v => !v)}
-                    title={showAdamOnly ? 'Showing Adam Glazerport only' : 'Show only Adam Glazerport'}
-                    className={`text-xs px-2 py-1 rounded border transition-colors
-                      ${showAdamOnly
-                        ? 'bg-[#FF4B1F] text-black border-[#FF4B1F]'
-                        : 'bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F]'}`}
-                  >
-                    AG Only
-                  </button>
-                  <div className="relative">
+            {shouldShowBankerFeed && (
+              <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
+                <div className={`flex items-center justify-between ${isMobile ? 'mb-4' : 'mb-6'}`}>
+                  <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-[#FF4B1F]`}>
+                    League bAnker Feed
+                  </h2>
+                  <div className="flex items-center gap-2 relative">
                     <button
                       type="button"
-                      onClick={() => setPeopleFilterOpen(o => !o)}
-                      className="text-xs px-2 py-1 rounded border bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F] transition-colors"
-                      title="Filter by person"
+                      onClick={() => setShowAdamOnly(v => !v)}
+                      title={showAdamOnly ? 'Showing Adam Glazerport only' : 'Show only Adam Glazerport'}
+                      className={`text-xs px-2 py-1 rounded border transition-colors
+                        ${showAdamOnly
+                          ? 'bg-[#FF4B1F] text-black border-[#FF4B1F]'
+                          : 'bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F]'}`}
                     >
-                      People
+                      AG Only
                     </button>
-                    {peopleFilterOpen && (
-                      <div className="absolute right-0 mt-2 w-56 max-h-64 overflow-auto bg-[#0b1420] border border-white/10 rounded-md shadow-lg z-10 p-2 space-y-1">
-                        {peopleOptions.length === 0 ? (
-                          <div className="text-xs text-white/60 px-1 py-1">No people found</div>
-                        ) : (
-                          peopleOptions.map(displayName => {
-                            const key = displayName.toLowerCase();
-                            const checked = peopleEnabled[key] !== false;
-                            return (
-                              <label key={key} className="flex items-center gap-2 text-xs text-white/80 px-1 py-1 hover:bg-white/5 rounded">
-                                <input
-                                  type="checkbox"
-                                  className="accent-[#FF4B1F]"
-                                  checked={checked}
-                                  onChange={(e) =>
-                                    setPeopleEnabled(prev => ({ ...prev, [key]: e.target.checked }))
-                                  }
-                                />
-                                <span>@{displayName}</span>
-                              </label>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setPeopleFilterOpen(o => !o)}
+                        className="text-xs px-2 py-1 rounded border bg-black/20 text-white/70 border-white/20 hover:text-white hover:border-[#FF4B1F] transition-colors"
+                        title="Filter by person"
+                      >
+                        People
+                      </button>
+                      {peopleFilterOpen && (
+                        <div className="absolute right-0 mt-2 w-56 max-h-64 overflow-auto bg-[#0b1420] border border-white/10 rounded-md shadow-lg z-10 p-2 space-y-1">
+                          {peopleOptions.length === 0 ? (
+                            <div className="text-xs text-white/60 px-1 py-1">No people found</div>
+                          ) : (
+                            peopleOptions.map(displayName => {
+                              const key = displayName.toLowerCase();
+                              const checked = peopleEnabled[key] !== false;
+                              return (
+                                <label key={key} className="flex items-center gap-2 text-xs text-white/80 px-1 py-1 hover:bg-white/5 rounded">
+                                  <input
+                                    type="checkbox"
+                                    className="accent-[#FF4B1F]"
+                                    checked={checked}
+                                    onChange={(e) =>
+                                      setPeopleEnabled(prev => ({ ...prev, [key]: e.target.checked }))
+                                    }
+                                  />
+                                  <span>@{displayName}</span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <select
+                      value={selectedTeam}
+                      onChange={(e) => setSelectedTeam(e.target.value)}
+                      className="text-xs px-2 py-1 rounded border bg-black/20 text-white/80 border-white/20 hover:border-[#FF4B1F] focus:outline-none"
+                      title="Filter by team"
+                    >
+                      {teamOptions.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
-                  <select
-                    value={selectedTeam}
-                    onChange={(e) => setSelectedTeam(e.target.value)}
-                    className="text-xs px-2 py-1 rounded border bg-black/20 text-white/80 border-white/20 hover:border-[#FF4B1F] focus:outline-none"
-                    title="Filter by team"
-                  >
-                    {teamOptions.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
                 </div>
+                <BankerFeed tweets={visibleTweets} />
               </div>
-              <BankerFeed tweets={visibleTweets} />
-            </div>
+            )}
             
             <div className="bg-black/30 rounded-lg border border-white/10 p-4 md:p-6">
               <h2 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold mb-4 md:mb-6 text-[#FF4B1F]`}>
@@ -2161,6 +2267,459 @@ function BracketMatchupCard({
   );
 }
 
+function resolveAvatarSrc(value) {
+  if (!value) return null;
+  if (String(value).startsWith('http')) return value;
+  return `https://sleepercdn.com/avatars/${value}`;
+}
+
+function PhaseMetricCard({ label, value, detail, avatar }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">{label}</div>
+      <div className="mt-2 flex items-center gap-3">
+        {avatar ? (
+          <div className="h-10 w-10 overflow-hidden rounded-full border border-white/10 bg-white/5 flex items-center justify-center">
+            {resolveAvatarSrc(avatar) ? (
+              <img src={resolveAvatarSrc(avatar)} alt={String(value || label)} className="h-full w-full object-cover" />
+            ) : null}
+          </div>
+        ) : null}
+        <div className="text-2xl font-bold text-white">{value}</div>
+      </div>
+      {detail ? <div className="mt-1 text-sm text-white/60">{detail}</div> : null}
+    </div>
+  );
+}
+
+function PhaseTeamPill({ name, avatar, detail, accent = 'text-white' }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+      <div className="h-10 w-10 overflow-hidden rounded-full border border-white/10 bg-white/5 flex items-center justify-center">
+        {resolveAvatarSrc(avatar) ? (
+          <img src={resolveAvatarSrc(avatar)} alt={name} className="h-full w-full object-cover" />
+        ) : (
+          <span className="font-bold text-[#FF4B1F]">{String(name || 'T').charAt(0)}</span>
+        )}
+      </div>
+      <div className="min-w-0">
+        <div className={`truncate font-semibold ${accent}`}>{name}</div>
+        {detail ? <div className="truncate text-sm text-white/60">{detail}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function PhaseCtaCard({ title, body, href, hrefLabel = 'Open Page' }) {
+  return (
+    <div className="rounded-xl border border-[#FF4B1F]/20 bg-gradient-to-r from-[#FF4B1F]/10 to-black/20 p-4">
+      <div className="text-lg font-bold text-white">{title}</div>
+      <div className="mt-2 text-sm text-white/70">{body}</div>
+      <Link
+        href={href}
+        className="mt-4 inline-flex items-center rounded-md bg-[#FF4B1F] px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-[#ff6a45]"
+      >
+        {hrefLabel}
+      </Link>
+    </div>
+  );
+}
+
+function HomepagePhaseContent({ phase, payload, phaseLoading, phaseError, isMobile }) {
+  const [expandedRookieTeam, setExpandedRookieTeam] = useState(null);
+
+  if (phaseLoading && !payload?.champion && !payload?.rfaPreview?.length) {
+    return <div className="py-8 text-center text-white/60">Loading homepage phase data...</div>;
+  }
+
+  if (phaseError && !payload?.champion && !payload?.rfaPreview?.length && !payload?.rookieObligations?.length) {
+    return <div className="py-8 text-center text-red-300">{phaseError}</div>;
+  }
+
+  const renderFinalizedDraftOrderSection = () => (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-lg font-bold text-white">Finalized Draft Order</div>
+          <div className="text-sm text-white/60">Calculated using the same order logic as the draft page.</div>
+        </div>
+        <Link href="/draft" className="text-sm font-semibold text-[#FF4B1F] hover:underline">Open Draft Page</Link>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {(payload?.draftOrder || []).map((entry) => (
+          <PhaseTeamPill
+            key={`${entry.slot}-${entry.teamName}`}
+            name={`${entry.slot}. ${entry.teamName}`}
+            avatar={entry.avatarUrl}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderRookiePickDrilldown = (entry) => {
+    const teamPicks = Array.isArray(entry?.picks) ? entry.picks : [];
+
+    return (
+      <tr key={`${entry.teamName}-details`}>
+        <td colSpan={4} className="bg-black/10 px-4 py-4">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold uppercase tracking-[0.16em] text-white/55">{entry.teamName} Pick Details</div>
+                <div className="mt-1 text-sm text-white/60">
+                  {teamPicks.length} pick{teamPicks.length === 1 ? '' : 's'} in the current rookie obligation view.
+                </div>
+              </div>
+              {payload?.latestMockDraft?.title ? (
+                <div className="text-right text-xs text-white/50">
+                  Latest mock: {payload.latestMockDraft.title}
+                </div>
+              ) : null}
+            </div>
+
+            {teamPicks.length > 0 ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {teamPicks.map((pick) => (
+                  <div key={`${entry.teamName}-${pick.pickNumber}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-base font-semibold text-white">{pick.pickNumber}</div>
+                        <div className="mt-1 text-sm text-emerald-300">${pick.salary}</div>
+                      </div>
+                      <div className="text-right text-xs text-white/45">Round {pick.round}</div>
+                    </div>
+
+                    {pick?.mockedPlayer ? (
+                      <div className="mt-3 rounded-lg border border-[#FF4B1F]/15 bg-[#FF4B1F]/5 px-3 py-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#FF8A6B]/85">Latest Mocked Player</div>
+                        <div className="mt-1 font-semibold text-white">{pick.mockedPlayer.playerName}</div>
+                        <div className="mt-1 text-sm text-white/60">
+                          {[pick.mockedPlayer.position, pick.mockedPlayer.nflTeam].filter(Boolean).join(' • ') || 'Player details unavailable'}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 text-sm text-white/55">No player matched to this pick in the latest mock draft.</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-white/60">No picks found for this team.</div>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  switch (phase) {
+    case HOMEPAGE_PHASES.OFFSEASON_BREAK:
+      {
+        const promotedTeams = (payload?.promotionDelegation || []).filter((entry) => entry.movement === 'promoted');
+        const relegatedTeams = (payload?.promotionDelegation || []).filter((entry) => entry.movement === 'delegated');
+
+      return (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-emerald-400/20 bg-gradient-to-r from-emerald-500/10 to-black/20 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/70">League Champion</div>
+            {payload?.champion ? (
+              <div className="mt-4 grid gap-4 md:grid-cols-[1.4fr_1fr] md:items-center">
+                <PhaseTeamPill
+                  name={payload.champion.teamName}
+                  avatar={payload.champion.avatar}
+                  detail={`${payload.champion.wins}-${payload.champion.losses} • ${payload.champion.pointsFor} PF`}
+                  accent="text-emerald-200"
+                />
+                <div className="text-sm text-white/70">
+                  Congratulations to the reigning champion. The league is on break while awards, movement, and the draft order lock in.
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 text-white/70">Champion data is not available yet.</div>
+            )}
+          </div>
+
+          <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'md:grid-cols-3'}`}>
+            <PhaseMetricCard
+              label="Most Wins"
+              value={payload?.awards?.mostWins?.teamName || 'TBD'}
+              detail={payload?.awards?.mostWins?.value || 'No record'}
+              avatar={payload?.awards?.mostWins?.avatar}
+            />
+            <PhaseMetricCard
+              label="Most Points"
+              value={payload?.awards?.mostPoints?.teamName || 'TBD'}
+              detail={payload?.awards?.mostPoints ? `${payload.awards.mostPoints.value} PF` : 'No record'}
+              avatar={payload?.awards?.mostPoints?.avatar}
+            />
+            <PhaseMetricCard
+              label="Most Trades"
+              value={payload?.awards?.mostTrades?.teamName || 'TBD'}
+              detail={payload?.awards?.mostTrades ? `${payload.awards.mostTrades.count} trades` : 'No record'}
+              avatar={payload?.awards?.mostTrades?.avatar}
+            />
+          </div>
+
+          <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'md:grid-cols-3'}`}>
+            <PhaseMetricCard
+              label="Total Points"
+              value={payload?.seasonStats?.totalPoints ?? '--'}
+              detail="League-wide points scored"
+            />
+            <PhaseMetricCard
+              label="Total Trades"
+              value={payload?.seasonStats?.totalTrades ?? '--'}
+              detail="Completed trade transactions"
+            />
+            <PhaseMetricCard
+              label="High Score"
+              value={payload?.seasonStats?.highScore?.points ?? '--'}
+              detail={payload?.seasonStats?.highScore ? `${payload.seasonStats.highScore.teamName} • Week ${payload.seasonStats.highScore.week}` : 'No record'}
+            />
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="mb-4 text-lg font-bold text-white">Promotion And Delegation</div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-emerald-400/15 bg-emerald-500/5 p-4">
+                <div className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-emerald-300/75">Promoted</div>
+                <div className="space-y-3">
+                  {promotedTeams.map((entry, index) => (
+                    <PhaseTeamPill
+                      key={`${entry.teamName}-promoted-${index}`}
+                      name={entry.teamName}
+                      avatar={entry.avatar}
+                      detail={`${entry.from} → ${entry.to}`}
+                      accent="text-emerald-200"
+                    />
+                  ))}
+                  {promotedTeams.length === 0 ? <div className="text-sm text-white/60">No promoted teams recorded.</div> : null}
+                </div>
+              </div>
+              <div className="rounded-lg border border-amber-400/15 bg-amber-500/5 p-4">
+                <div className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-amber-300/75">Relegated</div>
+                <div className="space-y-3">
+                  {relegatedTeams.map((entry, index) => (
+                    <PhaseTeamPill
+                      key={`${entry.teamName}-delegated-${index}`}
+                      name={entry.teamName}
+                      avatar={entry.avatar}
+                      detail={`${entry.from} → ${entry.to}`}
+                      accent="text-amber-200"
+                    />
+                  ))}
+                  {relegatedTeams.length === 0 ? <div className="text-sm text-white/60">No relegated teams recorded.</div> : null}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 text-sm text-white/60">
+              Wall Street winners remain in the top division, and the Poor House last-place team remains in the bottom division.
+            </div>
+          </div>
+
+          {renderFinalizedDraftOrderSection()}
+        </div>
+      );
+      }
+
+    case HOMEPAGE_PHASES.OFFSEASON_TAGS:
+      return (
+        <div className="space-y-6">
+          <PhaseCtaCard
+            title="Franchise And RFA Tags Deadline"
+            body="Teams need to assign franchise tags and RFA tags before April 1st. Review your expiring contracts now so nothing slips through the window."
+            href="/my-team/contract-management"
+            hrefLabel="Open Contract Management"
+          />
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-lg font-bold text-white">Players About To Enter RFA</div>
+                <div className="text-sm text-white/60">League-wide preview of expiring waiver and free-agent contracts.</div>
+              </div>
+              <div className="text-sm text-white/60">{payload?.rfaPreview?.length || 0} players</div>
+            </div>
+            {(payload?.rfaPreview || []).length > 0 ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {payload.rfaPreview.map((player) => (
+                  <div key={`${player.playerId}-${player.team}`} className="rounded-lg border border-white/10 bg-black/20 px-3 py-3">
+                    <div className="font-semibold text-white">{player.playerName}</div>
+                    <div className="mt-1 text-sm text-white/60">{player.team} • {player.position} • {player.contractType}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-white/70">No pending RFA entries were detected for the current contract year.</div>
+            )}
+          </div>
+        </div>
+      );
+
+    case HOMEPAGE_PHASES.OFFSEASON_PRE_DRAFT:
+      return (
+        <div className="space-y-6">
+          {payload?.activeAuction?.exists ? (
+            <PhaseCtaCard
+              title={payload.activeAuction.started ? 'Free Agent Auction Is Live' : 'Free Agent Auction Is Scheduled'}
+              body={payload.activeAuction.started
+                ? `There are ${payload.activeAuction.resultCount} completed auction results across ${payload.activeAuction.playerCount} players.`
+                : 'An active auction is configured. Review the board and bidding timeline.'}
+              href="/free-agent-auction"
+              hrefLabel="Open Free Agent Auction"
+            />
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <div className="mb-2 text-lg font-bold text-white">Latest Mock Draft</div>
+              {payload?.latestMockDraft ? (
+                <>
+                  <div className="font-semibold text-[#FF8A6B]">{payload.latestMockDraft.title}</div>
+                  <div className="mt-1 text-sm text-white/60">{payload.latestMockDraft.description || 'Most recent published mock draft.'}</div>
+                  <div className="mt-2 text-xs text-white/50">{payload.latestMockDraft.author} • {payload.latestMockDraft.date ? new Date(payload.latestMockDraft.date).toLocaleDateString() : 'Unknown date'}</div>
+                  <Link href="/draft/mock-draft" className="mt-4 inline-flex text-sm font-semibold text-[#FF4B1F] hover:underline">View Mock Drafts</Link>
+                </>
+              ) : (
+                <div className="text-white/70">No mock draft is available yet.</div>
+              )}
+            </div>
+            <PhaseCtaCard
+              title="Holdout Decisions Due Before May 1"
+              body={payload?.holdoutSummary?.unresolvedCount
+                ? `${payload.holdoutSummary.unresolvedCount} holdout decision${payload.holdoutSummary.unresolvedCount === 1 ? '' : 's'} still need action.`
+                : 'Review holdout assignments and close out any pending decisions before the deadline.'}
+              href="/my-team/contract-management"
+              hrefLabel="Review Holdouts"
+            />
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-lg font-bold text-white">Rookie Contract Obligations</div>
+                <div className="text-sm text-white/60">Projected cap obligation by team based on current rookie pick ownership.</div>
+              </div>
+              <Link href="/draft/rookie-salaries" className="text-sm font-semibold text-[#FF4B1F] hover:underline">Full Rookie Salaries</Link>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-white/60">
+                    <th className="py-2 text-left">Team</th>
+                    <th className="py-2 text-right">Obligation</th>
+                    <th className="py-2 text-right">Picks</th>
+                    <th className="py-2 text-right">Top Pick</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(payload?.rookieObligations || []).flatMap((entry) => {
+                    const isExpanded = expandedRookieTeam === entry.teamName;
+                    return [
+                      <tr
+                        key={entry.teamName}
+                        role="button"
+                        tabIndex={0}
+                        className={`border-b border-white/5 text-white/85 transition-colors ${isExpanded ? 'bg-white/[0.04]' : 'hover:bg-white/[0.03]'} cursor-pointer`}
+                        onClick={() => setExpandedRookieTeam((current) => current === entry.teamName ? null : entry.teamName)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setExpandedRookieTeam((current) => current === entry.teamName ? null : entry.teamName);
+                          }
+                        }}
+                        aria-expanded={isExpanded}
+                      >
+                        <td className="py-2 pr-3 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[#FF8A6B]">{isExpanded ? '▾' : '▸'}</span>
+                            <span>{entry.teamName}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 text-right font-semibold text-emerald-300">${entry.totalSalary}</td>
+                        <td className="py-2 text-right">{entry.pickCount}</td>
+                        <td className="py-2 text-right">{entry.topPick || '--'}</td>
+                      </tr>,
+                      isExpanded ? renderRookiePickDrilldown(entry) : null,
+                    ].filter(Boolean);
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {renderFinalizedDraftOrderSection()}
+        </div>
+      );
+
+    case HOMEPAGE_PHASES.OFFSEASON_FREE_AGENCY:
+      return (
+        <div className="space-y-6">
+          {payload?.activeAuction?.exists ? (
+            <PhaseCtaCard
+              title={payload.activeAuction.started ? 'Free Agent Auction Is Live' : 'Free Agent Auction Is Scheduled'}
+              body={payload.activeAuction.started
+                ? `Track live spend and contract-point totals while the auction board is active.`
+                : 'An active auction is configured. Review the board and bidding timeline.'}
+              href="/free-agent-auction"
+              hrefLabel="Open Free Agent Auction"
+            />
+          ) : null}
+
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-lg font-bold text-white">Free Agency Spend And Cap</div>
+                <div className="text-sm text-white/60">Current-year cap snapshot using the same calculation as the auction page.</div>
+              </div>
+              <Link href="/free-agent-auction" className="text-sm font-semibold text-[#FF4B1F] hover:underline">Full Auction Board</Link>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-white/60">
+                    <th className="py-2 text-left">Team</th>
+                    <th className="py-2 text-right">Spend</th>
+                    <th className="py-2 text-right">Remaining</th>
+                    <th className="py-2 text-right">Active</th>
+                    <th className="py-2 text-right">Dead</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(payload?.freeAgencyCaps || []).map((entry) => (
+                    <tr key={entry.team} className="border-b border-white/5 text-white/85">
+                      <td className="py-2 pr-3 font-medium">{entry.team}</td>
+                      <td className="py-2 text-right text-amber-300">${entry.spend.toFixed(1)}</td>
+                      <td className="py-2 text-right font-semibold text-emerald-300">${entry.remainingCap.toFixed(1)}</td>
+                      <td className="py-2 text-right">${entry.activeCap.toFixed(1)}</td>
+                      <td className="py-2 text-right">${entry.deadCap.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+
+    case HOMEPAGE_PHASES.OFFSEASON_EXTENSIONS:
+      return (
+        <div className="space-y-6">
+          <PhaseCtaCard
+            title="Contract Extensions Close Before September 1"
+            body="Teams need to finalize extension decisions before the regular season opens. Review expiring base contracts and lock in the deals you want to keep."
+            href="/my-team/contract-management"
+            hrefLabel="Manage Extensions"
+          />
+        </div>
+      );
+
+    case HOMEPAGE_PHASES.IN_SEASON:
+    default:
+      return <div className="text-white/70">No homepage phase content available.</div>;
+  }
+}
+
 // Link card component
 function LinkCard({ title, description, href }) {
   return (
@@ -2210,12 +2769,12 @@ function BankerFeed({ tweets }) {
               {tweet.role === "journalist" ? (
                 <span
                   title="Verified"
-                  className="inline-block w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-2xl border-2 border-blue-300"
+                  className="inline-flex w-12 h-12 rounded-full bg-blue-600 items-center justify-center text-white font-bold text-2xl border-2 border-blue-300"
                 >
                   ✓
                 </span>
               ) : (
-                <span className="inline-block w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold text-2xl border-2 border-gray-500">
+                <span className="inline-flex w-12 h-12 rounded-full bg-gray-700 items-center justify-center text-white font-bold text-2xl border-2 border-gray-500">
                   {tweet.name?.charAt(1) || "@"}
                 </span>
               )}
