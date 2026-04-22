@@ -1710,7 +1710,6 @@ export default function FreeAgentAuctionPage() {
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">Marketplace</div>
                   <h2 className="mt-1 text-2xl font-semibold">Player board</h2>
-                  <div className="mt-1 text-xs text-white/48">{filteredPlayerCount} players in view</div>
                 </div>
                 <button
                   type="button"
