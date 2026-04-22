@@ -128,6 +128,7 @@ const TradeSummary = ({
   const [showAssistantGM, setShowAssistantGM] = useState(false);
   const [playerContracts, setPlayerContracts] = useState([]);
   const [contractsLoading, setContractsLoading] = useState(false);
+  const [assistantContext, setAssistantContext] = useState('');
   const [autoMessage, setAutoMessage] = useState('');
   const [autoSendTick, setAutoSendTick] = useState(0);
 
@@ -387,7 +388,7 @@ const TradeSummary = ({
   }, [participants, salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition]);
 
   // Compose a concise auto message summarizing the trade
-  const composeTradeSummaryMessage = () => {
+  const composeTradeSummaryContext = () => {
     const teams = participants.map(p => p.team).filter(Boolean);
     if (!teams.length) return '';
     const parts = [];
@@ -411,15 +412,23 @@ const TradeSummary = ({
       const rosterStr = rosterPlayers.map(p => `${p.playerName} (${p.position}, $${Number(p.curYear||0).toFixed(1)})`).join(', ') || 'None';
       parts.push(`- ${team}:\n  Sends: ${outNames}\n  Receives: ${inNames}\n  ${capStr}\n  Full Roster: ${rosterStr}`);
     });
-    // Add strict formatting instructions so the first reply is consistently structured
-    const formatGuide = `\n\nReply using ONLY this structure (no preamble):\n1. Summary — 1–2 sentences\n2. Value delta by team — bullet per team with KTC vs contract takeaways\n3. Cap impact risks — bullets for any years/teams near or below $0 remaining\n4. Roster fit notes — short bullets by position if relevant\n5. Recommendation — Accept / Decline / Counter (bold one) + 1–2 bullets why\n6. Next actions — up to 3 terse bullets`;
-    return `Please evaluate this proposed multi-team trade. For each involved team, consider KTC values, contract cost and cap impact, and how it impacts the team's roster composition. Here are the details by team (including the full roster for each):\n\n${parts.join('\n\n')}${formatGuide}`;
+    return `Trade summary context for the current deal. Use this as background context for the conversation. When answering follow-up questions, prioritize the user's latest message and do not repeat a full trade evaluation unless they ask for it explicitly.\n\nFor each involved team, consider KTC values, contract cost, cap impact, and roster composition. Here are the details by team:\n\n${parts.join('\n\n')}`;
+  };
+
+  const composeInitialTradeSummaryQuestion = () => {
+    const teams = participants.map((p) => p.team).filter(Boolean);
+    if (!teams.length) return '';
+    return `Evaluate this proposed multi-team trade using the provided trade context. Reply using ONLY this structure (no preamble):\n1. Summary — 1–2 sentences\n2. Value delta by team — bullet per team with KTC vs contract takeaways\n3. Cap impact risks — bullets for any years or teams near or below $0 remaining\n4. Roster fit notes — short bullets by position if relevant\n5. Recommendation — Accept / Decline / Counter (bold one) + 1–2 bullets why\n6. Next actions — up to 3 terse bullets`;
   };
 
   // When opening Assistant GM, auto-compose and send the initial message
   useEffect(() => {
     if (!showAssistantGM) return;
-    const msg = composeTradeSummaryMessage();
+    const context = composeTradeSummaryContext();
+    const msg = composeInitialTradeSummaryQuestion();
+    if (context) {
+      setAssistantContext(context);
+    }
     if (msg) {
       setAutoMessage(msg);
       setAutoSendTick(t => t + 1);
@@ -740,6 +749,7 @@ const TradeSummary = ({
                   leagueWeek={null}
                   leagueYear={currentSeason || null}
                   activeTab="Assistant GM"
+                  supplementalSystemPrompt={assistantContext}
                   autoMessage={autoMessage}
                   autoSendTrigger={autoSendTick}
                   autoStartNewConversation={true}

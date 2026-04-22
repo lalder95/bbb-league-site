@@ -31,6 +31,7 @@ export default function AssistantGMChat({
   myDraftPicksList: propMyDraftPicksList,
   leagueWeek,  leagueYear,
   activeTab,
+  supplementalSystemPrompt,
   autoMessage,
   autoSendTrigger,
   autoStartNewConversation = false,
@@ -369,9 +370,15 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
   function buildApiMessages(messageList) {
     const normalizedMessages = Array.isArray(messageList) ? messageList : [];
     const systemMessage = normalizedMessages.find((message) => message?.role === 'system') || { role: 'system', content: systemPrompt };
+    const supplementalMessage = supplementalSystemPrompt?.trim()
+      ? { role: 'system', content: supplementalSystemPrompt.trim() }
+      : null;
     const conversationMessages = normalizedMessages.filter((message) => message?.role === 'user' || message?.role === 'assistant');
     const trimmedConversation = conversationMessages.slice(-12);
-    return [systemMessage, ...trimmedConversation].map(({ role, content }) => ({ role, content }));
+    const apiMessages = supplementalMessage
+      ? [systemMessage, supplementalMessage, ...trimmedConversation]
+      : [systemMessage, ...trimmedConversation];
+    return apiMessages.map(({ role, content }) => ({ role, content }));
   }
 
   async function sendRawMessage(content, baseMessages, options = {}) {
