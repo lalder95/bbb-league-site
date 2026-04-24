@@ -1137,34 +1137,21 @@ export default function Home() {
   const [selectedTeam, setSelectedTeam] = useState('All');
 
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchTweets() {
       try {
-        const res = await fetch('/api/admin/contract_changes');
-        const data = await res.json();
-        const allChanges = Array.isArray(data) ? data : [];
-        const allTweets = [];
-        allChanges.forEach(change => {
-          if (Array.isArray(change.ai_notes)) {
-            const shuffledNotes = shuffleArray(change.ai_notes);
-            shuffledNotes.forEach(note => {
-              allTweets.push({
-                ...note,
-                _timestamp: change.timestamp,
-                _team: change.team || '',
-                _parentNotes: change.notes || ''
-              });
-            });
-          }
-        });
+        if (typeof document !== 'undefined' && document.hidden) {
+          return;
+        }
 
-        const sorted = allTweets.sort((a, b) => {
-          const at = new Date(a?._timestamp).getTime();
-            const bt = new Date(b?._timestamp).getTime();
-          if (isNaN(bt) && isNaN(at)) return 0;
-          if (isNaN(bt)) return -1;
-          if (isNaN(at)) return 1;
-          return bt - at;
-        });
+        const res = await fetch('/api/media-feed?sync=1', { cache: 'no-store' });
+        const data = await res.json();
+        const sorted = Array.isArray(data?.tweets) ? data.tweets : [];
+
+        if (cancelled) {
+          return;
+        }
 
         const personMap = {};
         const teamSet = new Set();
@@ -1178,17 +1165,29 @@ export default function Home() {
         setTweets(sorted);
         setPeopleOptions(Object.values(personMap).sort((a, b) => a.localeCompare(b)));
         setPeopleEnabled(prev => {
-          if (Object.keys(prev).length) return prev;
-          const init = {};
-          Object.keys(personMap).forEach(k => (init[k] = true));
-          return init;
+          const next = { ...prev };
+          Object.keys(personMap).forEach(k => {
+            if (!Object.prototype.hasOwnProperty.call(next, k)) {
+              next[k] = true;
+            }
+          });
+          return next;
         });
         setTeamOptions(['All', ...Array.from(teamSet).sort()]);
       } catch (err) {
-        setTweets([]);
+        if (!cancelled) {
+          setTweets([]);
+        }
       }
     }
+
     fetchTweets();
+
+    const intervalId = window.setInterval(fetchTweets, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   function isAdamTweet(t) {
@@ -2742,6 +2741,18 @@ function shuffleArray(array) {
   return arr;
 }
 
+function getFeedNoteLabel(tweet) {
+  if (tweet?._source !== 'free-agent-auction') return null;
+
+  const labels = {
+    bid: 'Auction Bid',
+    winner: 'Auction Winner',
+    reveal: 'Blind Reveal',
+  };
+
+  return labels[String(tweet?._eventType || '').toLowerCase()] || 'Auction';
+}
+
 function BankerFeed({ tweets }) {
   if (!tweets || tweets.length === 0) {
     return (
@@ -2797,7 +2808,12 @@ function BankerFeed({ tweets }) {
             <span className="text-blue-400 font-medium">bAnker for Mobile</span>
           </div>
           {tweet._parentNotes ? (
-            <div className="text-[11px] text-white/50 italic pl-1">
+            <div className="text-[11px] text-white/50 italic pl-1 flex flex-wrap items-center gap-2">
+              {getFeedNoteLabel(tweet) ? (
+                <span className="rounded-full border border-[#FF4B1F]/35 bg-[#FF4B1F]/12 px-2 py-0.5 not-italic font-semibold uppercase tracking-[0.14em] text-[#ff9a7f]">
+                  {getFeedNoteLabel(tweet)}
+                </span>
+              ) : null}
               {tweet._parentNotes}
             </div>
           ) : null}

@@ -2,9 +2,16 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 import Papa from 'papaparse';
 import Image from 'next/image';
+import {
+  getDraftTimeZone,
+  getPlayerEndTime,
+  getPlayerStartTime,
+  parseDraftDateTime,
+  resolveBlindAuctionOutcome,
+} from '@/utils/freeAgentAuctionUtils';
 
 const USER_ID = '456973480269705216';
 
@@ -127,23 +134,6 @@ function ModalShell({ title, subtitle, onClose, children, maxWidth = 'max-w-2xl'
   );
 }
 
-function getDraftTimeZone(draft) {
-  return draft?.timeZone || 'America/Chicago';
-}
-
-function parseDraftDateTime(value, timeZone = 'America/Chicago') {
-  if (!value) return new Date(NaN);
-  if (value instanceof Date) return value;
-
-  const rawValue = String(value).trim();
-  if (!rawValue) return new Date(NaN);
-  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(rawValue)) {
-    return new Date(rawValue);
-  }
-
-  return fromZonedTime(rawValue, timeZone);
-}
-
 function getCurrentTime() {
   return new Date();
 }
@@ -169,89 +159,6 @@ function getCapSpaceColor(value) {
   if (value >= 75) return 'text-yellow-400';
   if (value >= 50) return 'text-[#FF4B1F]';
   return 'text-red-500';
-}
-
-function getPlayerStartTime(draftStartDate, startDelay, draftTimeZone = 'America/Chicago') {
-  const start = parseDraftDateTime(draftStartDate, draftTimeZone);
-  if (Number.isNaN(start.getTime())) return start;
-  return new Date(start.getTime() + Number(startDelay || 0) * 60 * 60 * 1000);
-}
-
-// End date is at least 24 hours after the most recent bid for this player
-function getPlayerEndTime(draftStartDate, startDelay, nomDuration, contractPoints = 0, bidLog = [], playerId, draftBlind = false, draftTimeZone = 'America/Chicago', draftEndDate = null) {
-  const start = getPlayerStartTime(draftStartDate, startDelay, draftTimeZone);
-
-  // Blind auctions should run until the configured draft end date.
-  // Do NOT reduce the timer and do NOT enforce a 24-hour minimum after each bid.
-  if (draftBlind) {
-    const explicitEnd = parseDraftDateTime(draftEndDate, draftTimeZone);
-    if (!Number.isNaN(explicitEnd.getTime())) {
-      return explicitEnd;
-    }
-
-    const effectiveDuration = Number(nomDuration || 0);
-    const calculatedEnd = new Date(start.getTime() + effectiveDuration * 60 * 1000);
-    return calculatedEnd;
-  } else {
-    let effectiveDuration;
-    const reductionPercent = Math.min(Number(contractPoints) * 0.0138, 0.95);
-    effectiveDuration = Number(nomDuration || 0) * (1 - reductionPercent);
-    const calculatedEnd = new Date(start.getTime() + effectiveDuration * 60 * 1000);
-
-    // Find the most recent bid for this player
-    const playerBids = (bidLog || []).filter(b => String(b.playerId) === String(playerId));
-    let latestBidTime = null;
-    if (playerBids.length > 0) {
-      latestBidTime = new Date(
-        playerBids.reduce((latest, b) =>
-          !latest || new Date(b.timestamp) > new Date(latest) ? b.timestamp : latest
-        , null)
-      );
-    }
-
-    // 24 hours after the most recent bid
-    let minEnd = null;
-    if (latestBidTime) {
-      minEnd = new Date(latestBidTime.getTime() + 24 * 60 * 60 * 1000);
-    }
-
-    // The end time is the later of calculatedEnd and minEnd
-    if (minEnd && minEnd > calculatedEnd) {
-      return minEnd;
-    }
-    return calculatedEnd;
-  }
-}
-
-function resolveBlindAuctionOutcome(playerId, bidLog = []) {
-  const playerBids = (bidLog || []).filter(bid => String(bid.playerId) === String(playerId));
-  if (playerBids.length === 0) {
-    return { topScore: null, leaders: [], isTie: false };
-  }
-
-  const bestBidByTeam = new Map();
-  playerBids.forEach(bid => {
-    const username = String(bid.username || 'Unknown');
-    const existing = bestBidByTeam.get(username);
-    const bidScore = Number(bid.contractPoints) || 0;
-    const existingScore = existing ? Number(existing.contractPoints) || 0 : -Infinity;
-
-    if (!existing || bidScore > existingScore) {
-      bestBidByTeam.set(username, bid);
-    }
-  });
-
-  const bestBids = Array.from(bestBidByTeam.values());
-  const topScore = Math.max(...bestBids.map(bid => Number(bid.contractPoints) || 0));
-  const leaders = bestBids
-    .filter(bid => (Number(bid.contractPoints) || 0) === topScore)
-    .sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
-
-  return {
-    topScore,
-    leaders,
-    isTie: leaders.length > 1,
-  };
 }
 
 // Helper to check if current user is in draft users

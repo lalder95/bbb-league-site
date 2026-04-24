@@ -3,6 +3,18 @@
 import { useEffect, useState } from "react";
 import Image from "next/image"; // Add this import
 
+function getFeedNoteLabel(tweet) {
+  if (tweet?._source !== "free-agent-auction") return null;
+
+  const labels = {
+    bid: "Auction Bid",
+    winner: "Auction Winner",
+    reveal: "Blind Reveal",
+  };
+
+  return labels[String(tweet?._eventType || "").toLowerCase()] || "Auction";
+}
+
 // --- BankerFeed component (copied from Home page) ---
 function BankerFeed({ tweets }) {
   if (!tweets || tweets.length === 0) {
@@ -33,12 +45,12 @@ function BankerFeed({ tweets }) {
               {tweet.role === "journalist" ? (
                 <span
                   title="Verified"
-                  className="inline-block w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-2xl border-2 border-blue-300"
+                  className="flex w-12 h-12 rounded-full bg-blue-600 items-center justify-center text-white font-bold text-2xl border-2 border-blue-300"
                 >
                   ✓
                 </span>
               ) : (
-                <span className="inline-block w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold text-2xl border-2 border-gray-500">
+                <span className="flex w-12 h-12 rounded-full bg-gray-700 items-center justify-center text-white font-bold text-2xl border-2 border-gray-500">
                   {tweet.name?.charAt(1) || "@"}
                 </span>
               )}
@@ -65,7 +77,12 @@ function BankerFeed({ tweets }) {
           </div>
           {/* NEW: Small print from contract change notes */}
           {tweet._parentNotes ? (
-            <div className="text-[11px] text-white/50 italic pl-1">
+            <div className="text-[11px] text-white/50 italic pl-1 flex flex-wrap items-center gap-2">
+              {getFeedNoteLabel(tweet) ? (
+                <span className="rounded-full border border-[#FF4B1F]/35 bg-[#FF4B1F]/12 px-2 py-0.5 not-italic font-semibold uppercase tracking-[0.14em] text-[#ff9a7f]">
+                  {getFeedNoteLabel(tweet)}
+                </span>
+              ) : null}
               {tweet._parentNotes}
             </div>
           ) : null}
@@ -102,34 +119,21 @@ export default function MediaPage() {
   const [selectedTeam, setSelectedTeam] = useState("All");
 
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchTweets() {
       try {
-        const res = await fetch("/api/admin/contract_changes");
+        if (typeof document !== "undefined" && document.hidden) {
+          return;
+        }
+
+        const res = await fetch("/api/media-feed?sync=1", { cache: "no-store" });
         const data = await res.json();
-        const allChanges = Array.isArray(data) ? data : [];
-        const allTweets = [];
-        allChanges.forEach((change) => {
-          if (Array.isArray(change.ai_notes)) {
-            const shuffledNotes = shuffleArray(change.ai_notes);
-            shuffledNotes.forEach((note) => {
-              allTweets.push({
-                ...note,
-                _timestamp: change.timestamp,
-                _team: change.team || "",
-                _parentNotes: change.notes || "",
-              });
-            });
-          }
-        });
-        // Sort newest -> oldest by timestamp
-        const sorted = allTweets.sort((a, b) => {
-          const at = new Date(a?._timestamp).getTime();
-          const bt = new Date(b?._timestamp).getTime();
-          if (isNaN(bt) && isNaN(at)) return 0;
-          if (isNaN(bt)) return -1;
-          if (isNaN(at)) return 1;
-          return bt - at;
-        });
+        const sorted = Array.isArray(data?.tweets) ? data.tweets : [];
+
+        if (cancelled) {
+          return;
+        }
 
         // Build people and team options
         const personMap = {};
@@ -146,27 +150,30 @@ export default function MediaPage() {
           Object.values(personMap).sort((a, b) => a.localeCompare(b))
         );
         setPeopleEnabled((prev) => {
-          if (Object.keys(prev).length) return prev;
-          const init = {};
-          Object.keys(personMap).forEach((k) => (init[k] = true));
-          return init;
+          const next = { ...prev };
+          Object.keys(personMap).forEach((k) => {
+            if (!Object.prototype.hasOwnProperty.call(next, k)) {
+              next[k] = true;
+            }
+          });
+          return next;
         });
         setTeamOptions(["All", ...Array.from(teamSet).sort()]);
       } catch (err) {
-        setTweets([]);
+        if (!cancelled) {
+          setTweets([]);
+        }
       }
     }
-    fetchTweets();
-  }, []);
 
-  function shuffleArray(array) {
-    const arr = [...array];
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  }
+    fetchTweets();
+
+    const intervalId = window.setInterval(fetchTweets, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   function isAdamTweet(t) {
     const name = (t?.name || "").replace(/^@/, "").trim().toLowerCase();

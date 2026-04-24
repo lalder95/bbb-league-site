@@ -161,6 +161,97 @@ export async function getContractChanges() {
   }
 }
 
+async function getMediaFeedCollection() {
+  const db = await getDatabase();
+  const collection = db.collection('mediaFeedItems');
+  await collection.createIndex({ sourceKey: 1 }, { unique: true });
+  await collection.createIndex({ source: 1, timestamp: -1 });
+  return collection;
+}
+
+export async function getMediaFeedItems({ source, limit } = {}) {
+  try {
+    const collection = await getMediaFeedCollection();
+    const query = {};
+    if (source) {
+      query.source = source;
+    }
+
+    let cursor = collection.find(query).sort({ timestamp: -1 });
+    if (Number.isFinite(Number(limit)) && Number(limit) > 0) {
+      cursor = cursor.limit(Number(limit));
+    }
+
+    return await cursor.toArray();
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function upsertMediaFeedItem(item) {
+  try {
+    if (!item?.sourceKey) {
+      return { success: false, error: 'sourceKey is required' };
+    }
+
+    const collection = await getMediaFeedCollection();
+    const result = await collection.updateOne(
+      { sourceKey: item.sourceKey },
+      {
+        $setOnInsert: {
+          ...item,
+          createdAt: item.createdAt || new Date(),
+        },
+      },
+      { upsert: true }
+    );
+
+    return {
+      success: true,
+      inserted: result.upsertedCount > 0,
+      sourceKey: item.sourceKey,
+    };
+  } catch (error) {
+    if (error?.code === 11000) {
+      return { success: true, inserted: false, sourceKey: item?.sourceKey };
+    }
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getMediaFeedSyncState(syncKey) {
+  try {
+    const col = await getAppSettingsCollection();
+    const doc = await col.findOne({ key: `mediaFeedSync:${syncKey}` });
+    return { success: true, state: doc || null };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateMediaFeedSyncState(syncKey, state) {
+  try {
+    const col = await getAppSettingsCollection();
+    const updateDoc = {
+      ...state,
+      updatedAt: new Date(),
+    };
+
+    await col.updateOne(
+      { key: `mediaFeedSync:${syncKey}` },
+      {
+        $set: updateDoc,
+        $setOnInsert: { key: `mediaFeedSync:${syncKey}`, createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    return { success: true, state: updateDoc };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 async function getAppSettingsCollection() {
   const db = await getDatabase();
   return db.collection('appSettings');
