@@ -541,7 +541,7 @@ export default function AssetPickerModal({
               </div>
             ) : viewMode === 'carousel' ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="hidden items-center justify-between gap-3 sm:flex">
                   <div>
                     <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/45">{assetMode === 'players' ? 'Player Cards' : 'Pick Cards'}</div>
                     <div className="text-sm text-white/65">Scroll horizontally or use the arrows to browse assets.</div>
