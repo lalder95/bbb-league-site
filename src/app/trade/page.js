@@ -3,6 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import TradeSummary from './TradeSummary';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { AnimatePresence, motion } from 'framer-motion';
+import AssetPickerModal from './components/AssetPickerModal';
 import SleeperImportModal from './components/SleeperImportModal';
 import { useSession } from 'next-auth/react';
 import { estimateDraftPositions, getTeamName } from '@/utils/draftUtils';
@@ -203,7 +204,7 @@ function PlayerMetric({ label, value, accent = 'text-white', valueClassName = 't
   );
 }
 
-function PlayerMetrics({ player, ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, compact = false, showContract = true }) {
+function PlayerMetrics({ player, ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, compact = false, showContract = true, showSecondaryMetrics = true }) {
   const isPick = isDraftPickAsset(player);
   const budgetValue = getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition });
   const ktcValue = parseFloat(player.ktcValue) || 0;
@@ -232,7 +233,7 @@ function PlayerMetrics({ player, ktcPerDollar, usePositionRatios, positionRatios
           tooltip={BV_TOOLTIP}
         />
       </div>
-      {!compact && (isPick ? (
+      {!compact && showSecondaryMetrics && (isPick ? (
         <>
           <PlayerMetric label="Bucket" value={player.pickBucketLabel || '-'} accent="text-sky-200" />
           <PlayerMetric label="Owner" value={player.originalTeam || '-'} accent="text-white" />
@@ -345,6 +346,7 @@ function TeamSection({
   teamAvatars,
   canRemove,
   onRemove,
+  canBrowseAssets = false,
   hideDestination = false,
   // ratios and toggle from parent
   ktcPerDollar,
@@ -352,22 +354,8 @@ function TeamSection({
   positionRatios,
   avgKtcByPosition
 }) {
-  const [justAddedId, setJustAddedId] = useState(null);
+  const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [popupPlayer, setPopupPlayer] = useState(null);
-  const availablePlayerAssets = filteredPlayers.filter((player) => !isDraftPickAsset(player));
-  const availablePickAssets = filteredPlayers.filter((player) => isDraftPickAsset(player));
-  const contractYearLabels = {
-    curYear: getLeagueYearLabel(participant.currentSeason, 'curYear'),
-    year2: getLeagueYearLabel(participant.currentSeason, 'year2'),
-    year3: getLeagueYearLabel(participant.currentSeason, 'year3'),
-    year4: getLeagueYearLabel(participant.currentSeason, 'year4'),
-  };
-
-  const handleAddPlayer = (player) => {
-    addPlayer(player);
-    setJustAddedId(getAssetKey(player));
-    setTimeout(() => setJustAddedId(null), 600);
-  };
 
   return (
     <div className="flex-1 p-4">
@@ -384,234 +372,55 @@ function TeamSection({
             </button>
           )}
         </div>
-        <select
-          value={participant.team}
-          onChange={(e) => {
-            setTeam(e.target.value);
-          }}
-          className="w-full p-2 mb-4 rounded bg-[#0a1929] border border-white/10 text-white"
-          style={{ color: 'white', backgroundColor: '#0a1929' }}
-        >
-          <option value="" style={{ color: '#FF4B1F', backgroundColor: '#0a1929' }}>Select Team</option>
-          {uniqueTeams.map(team => (
-            <option
-              key={team}
-              value={team}
+        <div className="mb-4 rounded-2xl border border-white/10 bg-gradient-to-br from-[#082033] via-[#061a2a] to-[#03101b] p-3 shadow-[0_14px_32px_rgba(0,0,0,0.2)]">
+          <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-white/45">
+            Team Selection
+          </label>
+          <div className="relative">
+            <select
+              value={participant.team}
+              onChange={(e) => {
+                setTeam(e.target.value);
+              }}
+              className="w-full appearance-none rounded-xl border border-white/10 bg-[#0a1929] px-4 py-3 pr-12 text-base font-semibold text-white outline-none transition-colors hover:border-white/20 focus:border-[#FF4B1F]/40"
               style={{ color: 'white', backgroundColor: '#0a1929' }}
             >
-              {team}
-            </option>
-          ))}
-        </select>
+              <option value="" style={{ color: '#FF4B1F', backgroundColor: '#0a1929' }}>Select Team</option>
+              {uniqueTeams.map(team => (
+                <option
+                  key={team}
+                  value={team}
+                  style={{ color: 'white', backgroundColor: '#0a1929' }}
+                >
+                  {team}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-white/45">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.512a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
+              </svg>
+            </div>
+          </div>
+        </div>
 
         {participant.team && (
           <>
-            <div>
-              <h3 className="text-sm font-bold mb-2 text-white/70">Available Assets:</h3>
-              <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)]">
-                <input
-                  type="text"
-                  placeholder="Search players by name..."
-                  value={participant.searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full rounded bg-white/5 p-2 text-white border border-white/10"
-                />
-
-                <select
-                  value={participant.positionFilter || DEFAULT_POSITION_FILTER}
-                  onChange={(e) => setPositionFilter(e.target.value)}
-                  className="w-full rounded bg-[#0a1929] p-2 text-white border border-white/10"
-                >
-                  <option value={DEFAULT_POSITION_FILTER}>All Positions</option>
-                  {availablePositions.map((position) => (
-                    <option key={position} value={position}>{position}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={participant.sortOption || DEFAULT_SORT_OPTION}
-                  onChange={(e) => setSortOption(e.target.value)}
-                  className="w-full rounded bg-[#0a1929] p-2 text-white border border-white/10"
-                >
-                  <option value="name-asc">Sort: Name (A-Z)</option>
-                  <option value="cost-desc">Sort: Cost (High-Low)</option>
-                  <option value="ktc-desc">Sort: KTC (High-Low)</option>
-                  <option value="bv-desc">Sort: BV (High-Low)</option>
-                </select>
-              </div>
-              <div className="max-h-[34rem] overflow-y-auto rounded-xl border-2 border-white/20 bg-black/30 p-3">
-                {filteredPlayers.length === 0 && (
-                  <div className="text-xs text-white/40 italic">No available assets.</div>
-                )}
-                {availablePlayerAssets.length > 0 && (
-                  <>
-                    <div className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-white/55">Players</div>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {availablePlayerAssets.map(player => (
-                    <div
-                      key={player.uniqueKey}
-                      className={`group relative cursor-pointer rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:border-[#FF4B1F]/50 hover:bg-white/5 ${justAddedId === getAssetKey(player) ? 'border-[#FF4B1F] bg-[#FF4B1F]/10 shadow-[0_0_0_1px_rgba(255,75,31,0.25)]' : 'border-white/10 bg-black/35'}`}
-                      onClick={() => handleAddPlayer(player)}
-                    >
-                      <div className="relative mb-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-center">
-                        <div
-                          className="overflow-hidden whitespace-nowrap pl-4 pr-20 font-bold leading-tight text-white"
-                          style={{
-                            ...getPlayerNameStyle(player.playerName),
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {player.playerName}
-                        </div>
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            setPopupPlayer(player);
-                          }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 shrink-0 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white hover:bg-black/80"
-                          aria-label={`Show details for ${player.playerName}`}
-                        >
-                          Info
-                        </button>
-                      </div>
-
-                      <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                        {justAddedId === getAssetKey(player) && (
-                          <div className="mb-3 flex items-center justify-start">
-                            <span className="rounded-full bg-[#FF4B1F]/20 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#FFB199]">
-                              Added
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="mb-5 flex items-center justify-center">
-                          <div className="flex h-[6.6rem] w-[6.6rem] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                            <PlayerProfileCard
-                              playerId={player.id}
-                              imageExtension="png"
-                              expanded={false}
-                              className="w-[3.85rem] h-[3.85rem]"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2.5 text-center">
-                            <div className="text-xs font-bold uppercase tracking-[0.08em] text-white/85">Position</div>
-                            <div className="mt-1 text-[2.375rem] font-bold leading-none text-blue-100">{player.position || '—'}</div>
-                          </div>
-                          <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2.5 text-center">
-                            <div className="text-xs font-bold uppercase tracking-[0.08em] text-white/85">Age</div>
-                            <div className="mt-1 text-[2.375rem] font-bold leading-none text-white/90">{player.age || '-'}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
-                        <div className="mb-2 text-center text-sm font-bold uppercase tracking-[0.08em] text-white/90">Value Snapshot</div>
-                        <PlayerMetrics
-                          player={player}
-                          ktcPerDollar={ktcPerDollar}
-                          usePositionRatios={usePositionRatios}
-                          positionRatios={positionRatios}
-                          avgKtcByPosition={avgKtcByPosition}
-                          compact={true}
-                          showContract={false}
-                        />
-                      </div>
-
-                        <>
-                          <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
-                            <div className="mb-2 text-center text-sm font-bold uppercase tracking-[0.08em] text-white/90">Contract</div>
-                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-center">
-                              <div className="py-1.5">
-                                <div className="text-sm font-bold uppercase tracking-[0.08em] text-white/85">Value</div>
-                                <div className="mt-2 space-y-1 text-sm font-semibold text-[#FFB199]">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">{contractYearLabels.curYear}</span>
-                                    <span>{formatContractYearValue(player.curYear)}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">{contractYearLabels.year2}</span>
-                                    <span>{formatContractYearValue(player.year2)}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">{contractYearLabels.year3}</span>
-                                    <span>{formatContractYearValue(player.year3)}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="text-white/70">{contractYearLabels.year4}</span>
-                                    <span>{formatContractYearValue(player.year4)}</span>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="border-t border-white/10 py-1.5">
-                                <div className="text-sm font-bold uppercase tracking-[0.08em] text-white/85">Type</div>
-                                <div className="mt-1 break-words text-sm font-semibold text-white/90">{player.contractType || '-'}</div>
-                              </div>
-                              <div className="border-t border-white/10 py-1.5">
-                                <div className="text-sm font-bold uppercase tracking-[0.08em] text-white/85">Final Year</div>
-                                <div className="mt-1 break-words text-sm font-semibold text-white/90">{player.contractFinalYear || '-'}</div>
-                                <div className="mt-1 text-xs text-white/60">{getRestrictedStatusText(player.rfaEligible)}</div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 text-xs text-white/70">
-                            <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                              <div className="text-center text-sm font-bold uppercase tracking-[0.08em] text-white/90">Eligibility</div>
-                              <div className="mt-2 flex flex-wrap justify-center gap-2">
-                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">Franchise Tag: {String(player.franchiseTagEligible).toLowerCase() === 'true' ? 'Eligible' : 'Ineligible'}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </>
-                    </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {availablePickAssets.length > 0 && (
-                  <div className={availablePlayerAssets.length > 0 ? 'mt-5' : ''}>
-                    <div className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-white/55">Draft Picks</div>
-                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/25">
-                      <table className="w-full border-collapse text-sm">
-                        <thead className="bg-white/5 text-left text-[11px] uppercase tracking-[0.12em] text-white/60">
-                          <tr>
-                            <th className="px-3 py-2 font-semibold">Pick</th>
-                            <th className="px-3 py-2 font-semibold">KTC</th>
-                            <th className="px-3 py-2 font-semibold">BV</th>
-                            <th className="px-3 py-2 font-semibold">Cap</th>
-                            <th className="px-3 py-2 font-semibold">Original Team</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {availablePickAssets.map((pick) => {
-                            const pickBudgetValue = getBudgetValue(pick, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition });
-                            const isJustAdded = justAddedId === getAssetKey(pick);
-
-                            return (
-                              <tr
-                                key={pick.uniqueKey}
-                                onClick={() => handleAddPlayer(pick)}
-                                className={`cursor-pointer border-t border-white/10 transition-colors hover:bg-white/5 ${isJustAdded ? 'bg-[#FF4B1F]/10' : ''}`}
-                                title={`Add ${pick.playerName}`}
-                              >
-                                <td className="px-3 py-2 font-semibold text-white">{pick.playerName}</td>
-                                <td className="px-3 py-2 text-white/80">{Math.round(Number(pick.ktcValue) || 0).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-white/80">{pickBudgetValue ?? '-'}</td>
-                                <td className="px-3 py-2 text-white/80">{formatSalary(pick.pickSalary)}</td>
-                                <td className="px-3 py-2 text-white/80">{pick.originalTeam || '-'}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="mb-4 rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-transparent p-4 shadow-[0_16px_40px_rgba(0,0,0,0.2)]">
+              <div className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Available Assets</div>
+              <button
+                type="button"
+                disabled={!canBrowseAssets}
+                onClick={() => setShowAssetPicker(true)}
+                className={`mt-3 w-full rounded-xl px-5 py-3 text-sm font-bold transition-colors ${canBrowseAssets ? 'bg-[#FF4B1F] text-white hover:bg-[#ff6a45]' : 'cursor-not-allowed bg-white/10 text-white/35'}`}
+              >
+                Browse Assets
+              </button>
+              {!canBrowseAssets && (
+                <div className="mt-2 text-xs text-white/45">
+                  Add at least two teams to the trade to browse assets.
+                </div>
+              )}
             </div>
 
             <div className="mb-4 mt-4">
@@ -698,13 +507,14 @@ function TeamSection({
                                   usePositionRatios={usePositionRatios}
                                   positionRatios={positionRatios}
                                   avgKtcByPosition={avgKtcByPosition}
+                                  showSecondaryMetrics={false}
                                 />
                               </div>
                             </div>
                           </div>
 
                           <div className="flex flex-col gap-2 xl:w-[240px] xl:items-end">
-                            {!hideDestination ? (
+                            {!hideDestination && (
                               <div className="w-full rounded-xl border border-white/10 bg-black/40 p-3 xl:max-w-[240px]">
                                 <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-white/45">Destination</div>
                                 <div className="text-xs text-white/60 mb-2">Choose the receiving team for this asset.</div>
@@ -720,10 +530,6 @@ function TeamSection({
                                       <option key={t} value={t}>{t}</option>
                                     ))}
                                 </select>
-                              </div>
-                            ) : (
-                              <div className="w-full rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 xl:max-w-[240px]">
-                                Two-team trade: destination auto-resolves to the other team.
                               </div>
                             )}
 
@@ -760,6 +566,23 @@ function TeamSection({
           </>
         )}
       </div>
+
+      <AssetPickerModal
+        isOpen={showAssetPicker}
+        onClose={() => setShowAssetPicker(false)}
+        participant={participant}
+        filteredAssets={filteredPlayers}
+        availablePositions={availablePositions}
+        setSearchTerm={setSearchTerm}
+        setPositionFilter={setPositionFilter}
+        setSortOption={setSortOption}
+        addAsset={addPlayer}
+        removeAsset={removePlayer}
+        ktcPerDollar={ktcPerDollar}
+        usePositionRatios={usePositionRatios}
+        positionRatios={positionRatios}
+        avgKtcByPosition={avgKtcByPosition}
+      />
 
       {popupPlayer && !isDraftPickAsset(popupPlayer) && (
         <div
@@ -1424,24 +1247,33 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
     } : p));
   };
 
-  // Global set of selected asset ids to prevent duplicates
-  const selectedIds = new Set(participants.flatMap(p => p.selectedPlayers.map(sp => getAssetKey(sp))));
+  // Track which participant currently owns a selected asset so the active team can still see and remove its own picks.
+  const selectedAssetOwnerById = participants.reduce((acc, participant) => {
+    participant.selectedPlayers.forEach((selectedAsset) => {
+      acc.set(getAssetKey(selectedAsset), participant.id);
+    });
+    return acc;
+  }, new Map());
 
   // Build filtered list per participant
   const getFilteredPlayers = (participant) => {
     const searchTerm = (participant.searchTerm || '').toLowerCase();
     const positionFilter = participant.positionFilter || DEFAULT_POSITION_FILTER;
+    const currentParticipantId = participant.id;
     const teamAssets = [
       ...players.filter((player) => player.team === participant.team),
       ...(draftPickAssetsByTeam[participant.team] || []),
     ];
 
     return teamAssets
-      .filter(player =>
-        player.playerName.toLowerCase().includes(searchTerm) &&
-        (positionFilter === DEFAULT_POSITION_FILTER || (player.position || '').toUpperCase() === positionFilter) &&
-        !selectedIds.has(getAssetKey(player))
-      )
+      .filter((player) => {
+        const assetKey = getAssetKey(player);
+        const selectedOwnerId = selectedAssetOwnerById.get(assetKey);
+
+        return player.playerName.toLowerCase().includes(searchTerm)
+          && (isDraftPickAsset(player) || positionFilter === DEFAULT_POSITION_FILTER || (player.position || '').toUpperCase() === positionFilter)
+          && (!selectedOwnerId || selectedOwnerId === currentParticipantId);
+      })
       .sort((a, b) => {
         switch (participant.sortOption) {
           case 'cost-desc':
@@ -2082,13 +1914,17 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
                 addPlayer={(player) => addPlayerToParticipant(p.id, player)}
                 removePlayer={(playerId) => removePlayerFromParticipant(p.id, playerId)}
                 updateDestination={(playerId, toTeam) => updatePlayerDestination(p.id, playerId, toTeam)}
-                uniqueTeams={uniqueTeams.filter(t => !participants.some(pp => pp.id !== p.id && pp.team === t))}
+                uniqueTeams={uniqueTeams
+                  .filter(t => !participants.some(pp => pp.id !== p.id && pp.team === t))
+                  .slice()
+                  .sort((a, b) => a.localeCompare(b))}
                 availablePositions={availablePositions}
                 teamOptions={teamOptions}
                 impact={impact}
                 teamAvatars={teamAvatars}
                 canRemove={participants.length > 2}
                 onRemove={() => removeParticipant(p.id)}
+                canBrowseAssets={haveAtLeastTwoTeams}
                 hideDestination={isTwoTeamTrade}
                 ktcPerDollar={ktcPerDollar}
                 usePositionRatios={usePositionRatios}
