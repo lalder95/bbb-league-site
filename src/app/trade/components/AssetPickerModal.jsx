@@ -125,6 +125,16 @@ function TableIcon() {
   );
 }
 
+function FilterIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4.5 w-4.5" aria-hidden="true">
+      <path d="M3 5.25h14" />
+      <path d="M5.5 10h9" />
+      <path d="M8 14.75h4" />
+    </svg>
+  );
+}
+
 function CarouselNavButton({ direction, onClick }) {
   return (
     <button
@@ -331,6 +341,7 @@ export default function AssetPickerModal({
 }) {
   const [assetMode, setAssetMode] = useState('players');
   const [viewMode, setViewMode] = useState('carousel');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [popupPlayer, setPopupPlayer] = useState(null);
   const carouselRef = useRef(null);
 
@@ -362,6 +373,7 @@ export default function AssetPickerModal({
 
     setAssetMode('players');
     setViewMode('carousel');
+    setShowMobileFilters(false);
     setPopupPlayer(null);
   }, [isOpen, participant?.id]);
 
@@ -455,6 +467,18 @@ export default function AssetPickerModal({
                 <PickerToolbarButton active={viewMode === 'table'} onClick={() => setViewMode('table')} label="Table view">
                   <TableIcon />
                 </PickerToolbarButton>
+
+                <div className="mx-1 h-6 w-px bg-white/12 sm:hidden" aria-hidden="true" />
+
+                <div className="sm:hidden">
+                  <PickerToolbarButton
+                    active={showMobileFilters}
+                    onClick={() => setShowMobileFilters((prev) => !prev)}
+                    label={showMobileFilters ? 'Hide filters' : 'Show filters'}
+                  >
+                    <FilterIcon />
+                  </PickerToolbarButton>
+                </div>
               </div>
 
               <button
@@ -471,7 +495,7 @@ export default function AssetPickerModal({
               </button>
             </div>
 
-            <div className="mt-3 grid grid-cols-1 gap-3 lg:mt-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.9fr)_minmax(220px,1fr)]">
+            <div className={`${showMobileFilters ? 'mt-3 grid grid-cols-1 gap-3' : 'hidden'} sm:mt-4 sm:grid sm:grid-cols-1 sm:gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.9fr)_minmax(220px,1fr)]`}>
               <input
                 type="text"
                 value={searchValue}
