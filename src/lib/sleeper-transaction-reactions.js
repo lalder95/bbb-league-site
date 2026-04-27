@@ -55,11 +55,20 @@ async function loadCharacters(seed, reactionCount) {
 
 function buildFallbackTradeReaction({ trade, index }) {
   const teams = trade.teams.map((team) => team.owner_name).join(' and ');
-  const anchor = trade.players[0]?.name || trade.picks[0]?.label || 'the deal';
+  const firstSummary = trade.teamSummaries?.[0];
+  const secondSummary = trade.teamSummaries?.[1];
+  const firstReceive = firstSummary?.receives?.[0] || trade.players[0]?.name || trade.picks[0]?.label || 'the deal';
+  const secondReceive = secondSummary?.receives?.[0] || 'future value';
+  const biggestCapSwing = [...(trade.capSummaries || [])]
+    .filter((team) => Number.isFinite(team?.delta?.curYearRemaining))
+    .sort((left, right) => Math.abs(right.delta.curYearRemaining) - Math.abs(left.delta.curYearRemaining))[0];
+  const capLine = biggestCapSwing && Number.isFinite(biggestCapSwing.delta.curYearRemaining)
+    ? ` ${biggestCapSwing.owner_name} ${biggestCapSwing.delta.curYearRemaining >= 0 ? 'opens up' : 'loses'} $${Math.abs(biggestCapSwing.delta.curYearRemaining)} of current-year room in the process, so the cap angle matters too.`
+    : '';
   const lines = [
-    `${teams} just pushed through a trade built around ${anchor}, and this is the kind of dynasty swing that is going to get graded for months.`,
-    `${teams} finally made a move, and the balance between immediate roster fit and long-range value is messy enough that nobody is leaving the group chat neutral.`,
-    `${teams} got a trade over the line, and whether this is sharp roster construction or pure gamble comes down to how much you trust the incoming value.`,
+    `${firstSummary?.owner_name || teams} lands ${firstReceive} while ${secondSummary?.owner_name || 'the other side'} gets ${secondReceive}, and this is the kind of dynasty swing that is going to get graded for months.${capLine}`,
+    `${teams} finally made a move, and the balance between ${firstSummary?.owner_name || 'one side'} getting ${firstReceive} and ${secondSummary?.owner_name || 'the other side'} getting ${secondReceive} is messy enough that nobody is leaving the group chat neutral.${capLine}`,
+    `${teams} got a trade over the line, and whether ${firstSummary?.owner_name || 'one side'} winning ${firstReceive} or ${secondSummary?.owner_name || 'the other side'} winning ${secondReceive} matters more comes down to how much you trust the incoming value.${capLine}`,
   ];
   return lines[index % lines.length];
 }
@@ -76,10 +85,28 @@ function buildTradePrompt(trade, reactionCount) {
   const picksText = trade.picks.length > 0
     ? trade.picks.map((pick) => `${pick.label} (${pick.from_owner_name} -> ${pick.to_owner_name})`).join('; ')
     : 'No draft picks moved';
+  const teamFlowText = Array.isArray(trade.teamSummaries) && trade.teamSummaries.length > 0
+    ? trade.teamSummaries.map((team) => {
+      const receives = team.receives.length > 0 ? team.receives.join(', ') : 'nothing explicit';
+      const sends = team.sends.length > 0 ? team.sends.join(', ') : 'nothing explicit';
+      return `${team.owner_name} receives: ${receives} | sends: ${sends}`;
+    }).join('\n')
+    : 'No per-team summary available';
+  const capContextText = Array.isArray(trade.capSummaries) && trade.capSummaries.length > 0
+    ? trade.capSummaries.map((team) => {
+      const beforeCurrent = Number.isFinite(team.before?.curYearRemaining) ? `$${team.before.curYearRemaining}` : 'unknown';
+      const afterCurrent = Number.isFinite(team.after?.curYearRemaining) ? `$${team.after.curYearRemaining}` : 'unknown';
+      const beforeNext = Number.isFinite(team.before?.year2Remaining) ? `$${team.before.year2Remaining}` : 'unknown';
+      const afterNext = Number.isFinite(team.after?.year2Remaining) ? `$${team.after.year2Remaining}` : 'unknown';
+      const currentDelta = Number.isFinite(team.delta?.curYearRemaining) ? `${team.delta.curYearRemaining >= 0 ? '+' : ''}$${team.delta.curYearRemaining}` : 'unknown';
+      const nextDelta = Number.isFinite(team.delta?.year2Remaining) ? `${team.delta.year2Remaining >= 0 ? '+' : ''}$${team.delta.year2Remaining}` : 'unknown';
+      return `${team.owner_name}: current cap remaining before ${beforeCurrent}, after ${afterCurrent} (${currentDelta}); next-year cap before ${beforeNext}, after ${afterNext} (${nextDelta}); current active before ${Number.isFinite(team.before?.active) ? `$${team.before.active}` : 'unknown'}, after ${Number.isFinite(team.after?.active) ? `$${team.after.active}` : 'unknown'}; dead ${Number.isFinite(team.dead) ? `$${team.dead}` : 'unknown'}; fines ${Number.isFinite(team.fines) ? `$${team.fines}` : 'unknown'}; pressure before ${team.pressureBefore || team.pressure}, after ${team.pressureAfter || team.pressure}.`;
+    }).join('\n')
+    : 'No cap context available';
 
   return {
-    systemPrompt: `You are a fantasy football media simulator for the BBB league bAnker feed. Return valid JSON only in the shape {"notes":[...]}. The notes array must contain exactly ${reactionCount} objects. Each object must include name, role, persona, and reaction. Each reaction must be 1-2 sentences, explicitly mention at least one of these teams: ${teamNames}, and react to the trade as a dynasty fantasy football move. Focus on roster fit, market value, and trade fairness. Do not mention real NFL cities or divisions.`,
-    userPrompt: `Trade context:\nTeams involved: ${teamNames}\nPlayers moved: ${playersText}\nPicks moved: ${picksText}\nTransaction note: ${trade.note}`,
+    systemPrompt: `You are a fantasy football media simulator for the BBB league bAnker feed. Return valid JSON only in the shape {"notes":[...]}. The notes array must contain exactly ${reactionCount} objects. Each object must include name, role, persona, and reaction. Each reaction must be 1-2 sentences, explicitly mention at least one of these teams: ${teamNames}, and react to the trade as a dynasty fantasy football move. Focus on roster fit, market value, trade fairness, and salary-cap pressure or flexibility when it is meaningful. Do not mention real NFL cities or divisions. If you mention specific assets, you must preserve the exact send/receive direction from the prompt. Do not reverse which team received a player or pick. Do not invent extra assets or summarize the packages ambiguously. Use the cap context as authoritative for who gains room, loses room, or stays squeezed after the move. Across the full set of notes, at least one reaction should mention the cap situation when the provided cap context shows a meaningful before/after change or tight/moderate pressure for either side.`,
+    userPrompt: `Trade context:\nTeams involved: ${teamNames}\n\nPer-team asset flow (authoritative):\n${teamFlowText}\n\nCap context (same basis as the Salary Cap Space page):\n${capContextText}\n\nDetailed players moved: ${playersText}\nDetailed picks moved: ${picksText}\nTransaction note: ${trade.note}`,
   };
 }
 

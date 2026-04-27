@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildBankerFeedTweets } from '@/lib/banker-feed';
-import { getContractChanges, getMediaFeedItems } from '@/lib/db-helpers';
+import { getBankerFeedThreadCounts, getContractChanges, getMediaFeedItems } from '@/lib/db-helpers';
 import { syncActiveFreeAgentAuctionFeed } from '@/lib/free-agent-auction-feed';
 import { syncActiveRookieDraftFeed } from '@/lib/rookie-draft-feed';
 import { syncSleeperTransactionsFeed } from '@/lib/sleeper-transactions-feed';
@@ -35,7 +35,14 @@ export async function GET(request) {
     }
 
     const tweets = buildBankerFeedTweets({ contractChanges, mediaFeedItems });
-    return NextResponse.json({ tweets, sync });
+    const threadCountsResult = await getBankerFeedThreadCounts(tweets.map((tweet) => tweet._tweetKey));
+    const replyCounts = threadCountsResult?.success === false ? {} : (threadCountsResult?.counts || {});
+
+    const enrichedTweets = tweets.map((tweet) => ({
+      ...tweet,
+      _replyCount: Number(replyCounts[tweet._tweetKey] || 0),
+    }));
+    return NextResponse.json({ tweets: enrichedTweets, sync });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

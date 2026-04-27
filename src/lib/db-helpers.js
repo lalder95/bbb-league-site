@@ -169,6 +169,16 @@ async function getMediaFeedCollection() {
   return collection;
 }
 
+async function getBankerFeedThreadsCollection() {
+  const db = await getDatabase();
+  const collection = db.collection('bankerFeedThreads');
+  await collection.createIndex({ tweetKey: 1 }, { unique: true });
+  await collection.createIndex({ parentSourceKey: 1, updatedAt: -1 });
+  await collection.createIndex({ 'messages.userId': 1, 'messages.createdAt': -1 });
+  await collection.createIndex({ updatedAt: -1 });
+  return collection;
+}
+
 export async function getMediaFeedItems({ source, limit } = {}) {
   try {
     const collection = await getMediaFeedCollection();
@@ -401,6 +411,130 @@ export async function deleteAnnouncement(id) {
     const col = await getAnnouncementsCollection();
     const result = await col.deleteOne({ _id });
     return { success: true, deletedCount: result.deletedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getBankerFeedThread(tweetKey) {
+  try {
+    if (!tweetKey) {
+      return { success: false, error: 'tweetKey is required' };
+    }
+
+    const collection = await getBankerFeedThreadsCollection();
+    const thread = await collection.findOne({ tweetKey });
+    return { success: true, thread: thread || null };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function appendBankerFeedThreadMessages({
+  tweetKey,
+  parentSourceKey,
+  parentSnapshot,
+  aiParticipants,
+  messages,
+}) {
+  try {
+    if (!tweetKey) {
+      return { success: false, error: 'tweetKey is required' };
+    }
+
+    const normalizedMessages = Array.isArray(messages) ? messages.filter(Boolean) : [];
+    if (normalizedMessages.length === 0) {
+      return { success: false, error: 'messages are required' };
+    }
+
+    const collection = await getBankerFeedThreadsCollection();
+    await collection.updateOne(
+      { tweetKey },
+      {
+        $set: {
+          updatedAt: new Date(),
+          parentSourceKey: parentSourceKey || null,
+          parentSnapshot: parentSnapshot || null,
+          aiParticipants: Array.isArray(aiParticipants) ? aiParticipants : [],
+        },
+        $setOnInsert: {
+          createdAt: new Date(),
+          tweetKey,
+        },
+        $push: {
+          messages: {
+            $each: normalizedMessages,
+          },
+        },
+      },
+      { upsert: true }
+    );
+
+    return { success: true, tweetKey };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getBankerFeedUserMessageTimestamps({ userId, since }) {
+  try {
+    if (!userId) {
+      return { success: false, error: 'userId is required' };
+    }
+
+    const collection = await getBankerFeedThreadsCollection();
+    const pipeline = [
+      { $unwind: '$messages' },
+      {
+        $match: {
+          'messages.authorType': 'user',
+          'messages.userId': userId,
+          ...(since ? { 'messages.createdAt': { $gte: since } } : {}),
+        },
+      },
+      { $sort: { 'messages.createdAt': 1 } },
+      { $project: { _id: 0, createdAt: '$messages.createdAt' } },
+    ];
+
+    const rows = await collection.aggregate(pipeline).toArray();
+    return {
+      success: true,
+      timestamps: rows.map((row) => row.createdAt).filter(Boolean),
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getBankerFeedThreadCounts(tweetKeys = []) {
+  try {
+    const normalizedKeys = Array.from(new Set((Array.isArray(tweetKeys) ? tweetKeys : []).filter(Boolean)));
+    if (normalizedKeys.length === 0) {
+      return { success: true, counts: {} };
+    }
+
+    const collection = await getBankerFeedThreadsCollection();
+    const rows = await collection.aggregate([
+      { $match: { tweetKey: { $in: normalizedKeys } } },
+      {
+        $project: {
+          _id: 0,
+          tweetKey: 1,
+          replyCount: { $size: { $ifNull: ['$messages', []] } },
+        },
+      },
+    ]).toArray();
+
+    const counts = normalizedKeys.reduce((accumulator, key) => {
+      accumulator[key] = 0;
+      return accumulator;
+    }, {});
+
+    rows.forEach((row) => {
+      counts[row.tweetKey] = Number(row.replyCount || 0);
+    });
+
+    return { success: true, counts };
   } catch (error) {
     return { success: false, error: error.message };
   }

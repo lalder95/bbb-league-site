@@ -2,109 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image"; // Add this import
-
-function getFeedNoteLabel(tweet) {
-  if (tweet?._source !== "free-agent-auction") return null;
-
-  const labels = {
-    bid: "Auction Bid",
-    winner: "Auction Winner",
-    reveal: "Blind Reveal",
-  };
-
-  return labels[String(tweet?._eventType || "").toLowerCase()] || "Auction";
-}
-
-// --- BankerFeed component (copied from Home page) ---
-function BankerFeed({ tweets }) {
-  if (!tweets || tweets.length === 0) {
-    return (
-      <div className="text-center text-white/70 py-6 md:py-8">
-        No posts available
-      </div>
-    );
-  }
-  return (
-    <div
-      className="space-y-2 overflow-y-auto"
-      style={{
-        maxHeight: "420px",
-        scrollbarWidth: "thin",
-        scrollbarColor: "#FF4B1F #1a232b",
-      }}
-    >
-      {tweets.map((tweet, idx) => (
-        <div
-          key={idx}
-          className="bg-black/20 rounded-xl px-4 py-3 border border-white/10 flex flex-col gap-2"
-        >
-          {/* Top: Avatar, Name, Handle */}
-          <div className="flex items-center gap-3">
-            {/* Avatar */}
-            <div className="flex-shrink-0">
-              {tweet.role === "journalist" ? (
-                <span
-                  title="Verified"
-                  className="flex w-12 h-12 rounded-full bg-blue-600 items-center justify-center text-white font-bold text-2xl border-2 border-blue-300"
-                >
-                  ✓
-                </span>
-              ) : (
-                <span className="flex w-12 h-12 rounded-full bg-gray-700 items-center justify-center text-white font-bold text-2xl border-2 border-gray-500">
-                  {tweet.name?.charAt(1) || "@"}
-                </span>
-              )}
-            </div>
-            {/* Name and handle */}
-            <div className="flex flex-col">
-              <span className="font-bold text-white leading-tight text-base">
-                {tweet.name?.replace(/^@/, "") || "Unknown"}
-              </span>
-              <span className="text-gray-400 text-sm leading-tight">
-                @{tweet.name?.replace(/^@/, "")}
-              </span>
-            </div>
-          </div>
-          {/* Body */}
-          <div className="text-white/90 text-lg leading-snug px-1 pt-1 pb-2">
-            {tweet.reaction}
-          </div>
-          {/* Timestamp */}
-          <div className="text-xs text-gray-400 pl-1 pt-1 flex items-center gap-2">
-            {tweet._timestamp ? formatTweetDate(tweet._timestamp) : ""}
-            <span>·</span>
-            <span className="text-blue-400 font-medium">bAnker for iPhone</span>
-          </div>
-          {/* NEW: Small print from contract change notes */}
-          {tweet._parentNotes ? (
-            <div className="text-[11px] text-white/50 italic pl-1 flex flex-wrap items-center gap-2">
-              {getFeedNoteLabel(tweet) ? (
-                <span className="rounded-full border border-[#FF4B1F]/35 bg-[#FF4B1F]/12 px-2 py-0.5 not-italic font-semibold uppercase tracking-[0.14em] text-[#ff9a7f]">
-                  {getFeedNoteLabel(tweet)}
-                </span>
-              ) : null}
-              {tweet._parentNotes}
-            </div>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Helper to format the date like ... (e.g., "1:21 PM · 1/4/21")
-function formatTweetDate(dateString) {
-  const date = new Date(dateString);
-  if (isNaN(date)) return "";
-  const hours = date.getHours() % 12 || 12;
-  const minutes = date.getMinutes().toString().padStart(2, "0");
-  const ampm = date.getHours() >= 12 ? "PM" : "AM";
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const year = date.getFullYear().toString().slice(-2);
-  return `${hours}:${minutes} ${ampm} · ${month}/${day}/${year}`;
-}
-// --- End BankerFeed ---
+import BankerFeed from "@/components/BankerFeed";
 
 export default function MediaPage() {
   const [images, setImages] = useState([]);
@@ -117,6 +15,16 @@ export default function MediaPage() {
   const [peopleEnabled, setPeopleEnabled] = useState({});
   const [teamOptions, setTeamOptions] = useState(["All"]);
   const [selectedTeam, setSelectedTeam] = useState("All");
+
+  function extractTweetTeams(tweet) {
+    const teamValue = String(tweet?._team || "").trim();
+    if (!teamValue) return [];
+
+    return teamValue
+      .split(',')
+      .map((team) => team.trim())
+      .filter(Boolean);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -142,7 +50,7 @@ export default function MediaPage() {
           const display = (t?.name || "").replace(/^@/, "").trim();
           const norm = display.toLowerCase();
           if (display) personMap[norm] = display;
-          if (t?._team) teamSet.add(t._team);
+          extractTweetTeams(t).forEach((team) => teamSet.add(team));
         });
 
         setTweets(sorted);
@@ -186,9 +94,7 @@ export default function MediaPage() {
       const key = (t?.name || "").replace(/^@/, "").trim().toLowerCase();
       return peopleEnabled[key] !== false;
     })
-    .filter(
-      (t) => selectedTeam === "All" || (t._team || "") === selectedTeam
-    );
+    .filter((t) => selectedTeam === "All" || extractTweetTeams(t).includes(selectedTeam));
 
   // --- End BankerFeed state and fetch ---
 
