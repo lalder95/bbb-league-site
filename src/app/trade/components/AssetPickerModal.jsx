@@ -415,7 +415,7 @@ export default function AssetPickerModal({
           className="flex h-full w-full flex-col overflow-hidden border border-white/10 bg-[#001A2B] sm:h-[calc(100vh-1.5rem)] sm:max-w-6xl sm:rounded-3xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="border-b border-white/10 bg-[#00111F]/95 px-4 py-4 backdrop-blur-sm sm:px-6">
+          <div className="hidden border-b border-white/10 bg-[#00111F]/95 px-4 py-4 backdrop-blur-sm sm:block sm:px-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/45">Asset Browser</div>
@@ -437,26 +437,41 @@ export default function AssetPickerModal({
             </div>
           </div>
 
-          <div className="border-b border-white/10 bg-[#001523] px-4 py-4 sm:px-6">
-            <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-black/20 p-2">
-              <PickerToolbarButton active={assetMode === 'players'} onClick={() => setAssetMode('players')} label="Show players">
-                <PlayersIcon />
-              </PickerToolbarButton>
-              <PickerToolbarButton active={assetMode === 'picks'} onClick={() => setAssetMode('picks')} label="Show picks">
-                <PicksIcon />
-              </PickerToolbarButton>
+          <div className="border-b border-white/10 bg-[#001523] px-3 py-3 sm:px-6 sm:py-4">
+            <div className="flex items-center gap-2 sm:block">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 rounded-full border border-white/10 bg-black/20 p-2">
+                <PickerToolbarButton active={assetMode === 'players'} onClick={() => setAssetMode('players')} label="Show players">
+                  <PlayersIcon />
+                </PickerToolbarButton>
+                <PickerToolbarButton active={assetMode === 'picks'} onClick={() => setAssetMode('picks')} label="Show picks">
+                  <PicksIcon />
+                </PickerToolbarButton>
 
-              <div className="mx-1 h-6 w-px bg-white/12" aria-hidden="true" />
+                <div className="mx-1 h-6 w-px bg-white/12" aria-hidden="true" />
 
-              <PickerToolbarButton active={viewMode === 'carousel'} onClick={() => setViewMode('carousel')} label="Carousel view">
-                <CarouselIcon />
-              </PickerToolbarButton>
-              <PickerToolbarButton active={viewMode === 'table'} onClick={() => setViewMode('table')} label="Table view">
-                <TableIcon />
-              </PickerToolbarButton>
+                <PickerToolbarButton active={viewMode === 'carousel'} onClick={() => setViewMode('carousel')} label="Carousel view">
+                  <CarouselIcon />
+                </PickerToolbarButton>
+                <PickerToolbarButton active={viewMode === 'table'} onClick={() => setViewMode('table')} label="Table view">
+                  <TableIcon />
+                </PickerToolbarButton>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:hidden"
+                aria-label="Close asset browser"
+                title="Close"
+              >
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.9" className="h-4.5 w-4.5" aria-hidden="true">
+                  <path d="M5 5l10 10" />
+                  <path d="M15 5 5 15" />
+                </svg>
+              </button>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.9fr)_minmax(220px,1fr)]">
+            <div className="mt-3 grid grid-cols-1 gap-3 lg:mt-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.9fr)_minmax(220px,1fr)]">
               <input
                 type="text"
                 value={searchValue}
@@ -495,7 +510,7 @@ export default function AssetPickerModal({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-5">
             {displayedAssets.length === 0 ? (
               <div className="flex h-full min-h-[14rem] items-center justify-center rounded-3xl border border-dashed border-white/10 bg-black/20 px-6 text-center text-sm text-white/50">
                 {emptyCopy}
@@ -513,45 +528,50 @@ export default function AssetPickerModal({
                   </div>
                 </div>
 
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={`${assetMode}-${viewMode}`}
-                    ref={carouselRef}
-                    variants={carouselLaneVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="hidden"
-                    className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2"
-                  >
-                    {assetMode === 'players'
-                      ? playerAssets.map((player) => (
-                          <PlayerCarouselCard
-                            key={player.uniqueKey}
-                            player={player}
-                            currentSeason={currentSeason}
-                            selected={selectedAssetKeys.has(getAssetKey(player))}
-                            onToggle={handleToggleAsset}
-                            onOpenInfo={setPopupPlayer}
-                            ktcPerDollar={ktcPerDollar}
-                            usePositionRatios={usePositionRatios}
-                            positionRatios={positionRatios}
-                            avgKtcByPosition={avgKtcByPosition}
-                          />
-                        ))
-                      : pickAssets.map((pick) => (
-                          <PickCarouselCard
-                            key={pick.uniqueKey}
-                            pick={pick}
-                            selected={selectedAssetKeys.has(getAssetKey(pick))}
-                            onToggle={handleToggleAsset}
-                            ktcPerDollar={ktcPerDollar}
-                            usePositionRatios={usePositionRatios}
-                            positionRatios={positionRatios}
-                            avgKtcByPosition={avgKtcByPosition}
-                          />
-                        ))}
-                  </motion.div>
-                </AnimatePresence>
+                <div className="relative">
+                  <div className="pointer-events-none absolute bottom-2 left-0 top-0 z-10 w-10 rounded-l-3xl bg-gradient-to-r from-[#001A2B] via-[#001A2B]/80 to-transparent" />
+                  <div className="pointer-events-none absolute bottom-2 right-0 top-0 z-10 w-10 rounded-r-3xl bg-gradient-to-l from-[#001A2B] via-[#001A2B]/80 to-transparent" />
+
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={`${assetMode}-${viewMode}`}
+                      ref={carouselRef}
+                      variants={carouselLaneVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="hidden"
+                      className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-3 pb-2"
+                    >
+                      {assetMode === 'players'
+                        ? playerAssets.map((player) => (
+                            <PlayerCarouselCard
+                              key={player.uniqueKey}
+                              player={player}
+                              currentSeason={currentSeason}
+                              selected={selectedAssetKeys.has(getAssetKey(player))}
+                              onToggle={handleToggleAsset}
+                              onOpenInfo={setPopupPlayer}
+                              ktcPerDollar={ktcPerDollar}
+                              usePositionRatios={usePositionRatios}
+                              positionRatios={positionRatios}
+                              avgKtcByPosition={avgKtcByPosition}
+                            />
+                          ))
+                        : pickAssets.map((pick) => (
+                            <PickCarouselCard
+                              key={pick.uniqueKey}
+                              pick={pick}
+                              selected={selectedAssetKeys.has(getAssetKey(pick))}
+                              onToggle={handleToggleAsset}
+                              ktcPerDollar={ktcPerDollar}
+                              usePositionRatios={usePositionRatios}
+                              positionRatios={positionRatios}
+                              avgKtcByPosition={avgKtcByPosition}
+                            />
+                          ))}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
               </div>
             ) : assetMode === 'players' ? (
               <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/20">

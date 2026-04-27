@@ -412,7 +412,7 @@ function TeamSection({
                 type="button"
                 disabled={!canBrowseAssets}
                 onClick={() => setShowAssetPicker(true)}
-                className={`mt-3 w-full rounded-xl px-5 py-3 text-sm font-bold transition-colors ${canBrowseAssets ? 'bg-[#FF4B1F] text-white hover:bg-[#ff6a45]' : 'cursor-not-allowed bg-white/10 text-white/35'}`}
+                className={`mt-3 w-full rounded-2xl border px-6 py-4 text-base font-extrabold tracking-[0.01em] transition-all ${canBrowseAssets ? 'border-[#ff8a6b]/40 bg-[#FF4B1F] text-white shadow-[0_14px_32px_rgba(255,75,31,0.34)] hover:-translate-y-0.5 hover:bg-[#ff6a45] hover:shadow-[0_18px_38px_rgba(255,75,31,0.4)]' : 'cursor-not-allowed border-white/10 bg-white/10 text-white/35'}`}
               >
                 Browse Assets
               </button>
@@ -679,8 +679,19 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
   const [contractYearOverride, setContractYearOverride] = useState(null);
   const [shareWarnings, setShareWarnings] = useState([]);
   const [shareStatus, setShareStatus] = useState(null);
+  const [importToast, setImportToast] = useState(null);
   const [hydratedShareToken, setHydratedShareToken] = useState('');
   const capDisplaySeason = Number.isFinite(contractYearOverride) ? contractYearOverride : currentSeason;
+
+  useEffect(() => {
+    if (!importToast) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setImportToast(null);
+    }, 3200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [importToast]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1547,8 +1558,13 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
         selectedPlayers: Array.isArray(p.selectedPlayers) ? p.selectedPlayers : [],
       }));
     if (cleaned.length >= 2) {
+      const importedAssetCount = cleaned.reduce((sum, participant) => sum + participant.selectedPlayers.length, 0);
       setParticipants(cleaned);
       setShowSummary(false);
+      setImportToast({
+        title: 'Import applied',
+        message: `Rebuilt ${cleaned.length} teams and overwrote the current trade with ${importedAssetCount} imported asset${importedAssetCount === 1 ? '' : 's'}.`,
+      });
     }
     setShowImport(false);
   };
@@ -1660,6 +1676,40 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
 
   return (
     <main className={`min-h-screen bg-[#001A2B] text-white ${showIncomingTradeBar ? 'pb-64 md:pb-56' : ''}`}>
+      <AnimatePresence>
+        {importToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="pointer-events-none fixed right-4 top-4 z-[70] w-[min(26rem,calc(100vw-2rem))]"
+          >
+            <div className="overflow-hidden rounded-2xl border border-emerald-400/25 bg-[#05281d]/95 shadow-[0_18px_42px_rgba(0,0,0,0.35)] backdrop-blur">
+              <div className="flex items-start gap-3 px-4 py-3.5">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-300/25 bg-emerald-500/15 text-emerald-100">
+                  <svg viewBox="0 0 20 20" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="m4.5 10 3.5 3.5L15.5 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-emerald-50">{importToast.title}</div>
+                  <div className="mt-1 text-sm leading-5 text-emerald-100/85">{importToast.message}</div>
+                </div>
+              </div>
+              <div className="h-1 w-full bg-white/5">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-emerald-300 via-emerald-400 to-emerald-200"
+                  initial={{ width: '100%' }}
+                  animate={{ width: 0 }}
+                  transition={{ duration: 3.2, ease: 'linear' }}
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="bg-black/30 p-6 border-b border-white/10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
