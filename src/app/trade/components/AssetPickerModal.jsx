@@ -171,7 +171,7 @@ function PlayerCarouselCard({
     <motion.article
       variants={carouselCardVariants}
       whileHover={{ y: -4, scale: 1.01 }}
-      className={`flex h-full min-h-[28rem] w-[18rem] shrink-0 snap-start flex-col rounded-2xl border bg-[#02111f] p-4 shadow-[0_12px_30px_rgba(0,0,0,0.24)] transition-all ${selected ? 'border-[#FF4B1F] bg-[#1B0C08]' : 'border-white/10'}`}
+      className={`flex h-full min-h-[28rem] w-[18rem] shrink-0 snap-center flex-col rounded-2xl border bg-[#02111f] p-4 shadow-[0_12px_30px_rgba(0,0,0,0.24)] transition-all ${selected ? 'border-[#FF4B1F] bg-[#1B0C08]' : 'border-white/10'}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -271,7 +271,7 @@ function PickCarouselCard({ pick, selected, onToggle, ktcPerDollar, usePositionR
     <motion.article
       variants={carouselCardVariants}
       whileHover={{ y: -4, scale: 1.01 }}
-      className={`flex h-full min-h-[23rem] w-[16.5rem] shrink-0 snap-start flex-col rounded-2xl border bg-[#02111f] p-4 shadow-[0_12px_30px_rgba(0,0,0,0.24)] transition-all ${selected ? 'border-[#FF4B1F] bg-[#1B0C08]' : 'border-white/10'}`}
+      className={`flex h-full min-h-[23rem] w-[16.5rem] shrink-0 snap-center flex-col rounded-2xl border bg-[#02111f] p-4 shadow-[0_12px_30px_rgba(0,0,0,0.24)] transition-all ${selected ? 'border-[#FF4B1F] bg-[#1B0C08]' : 'border-white/10'}`}
     >
       <div className="rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-500/15 via-indigo-500/10 to-violet-500/10 p-4 text-center">
         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-100">Draft Pick</div>
@@ -415,6 +415,7 @@ export default function AssetPickerModal({
   const sortValue = participant.sortOption || DEFAULT_SORT_OPTION;
   const positionValue = participant.positionFilter || DEFAULT_POSITION_FILTER;
   const searchValue = participant.searchTerm || '';
+  const carouselEdgeSpacerWidth = assetMode === 'players' ? 'calc(50% - 9rem)' : 'calc(50% - 8.25rem)';
   const emptyCopy = assetMode === 'players'
     ? 'No players match the current search and filter.'
     : 'No picks match the current search.';
@@ -564,8 +565,13 @@ export default function AssetPickerModal({
                       initial="hidden"
                       animate="visible"
                       exit="hidden"
-                      className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-3 pb-2"
+                      className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2"
                     >
+                      <div
+                        aria-hidden="true"
+                        className="shrink-0"
+                        style={{ width: carouselEdgeSpacerWidth }}
+                      />
                       {assetMode === 'players'
                         ? playerAssets.map((player) => (
                             <PlayerCarouselCard
@@ -593,6 +599,11 @@ export default function AssetPickerModal({
                               avgKtcByPosition={avgKtcByPosition}
                             />
                           ))}
+                      <div
+                        aria-hidden="true"
+                        className="shrink-0"
+                        style={{ width: carouselEdgeSpacerWidth }}
+                      />
                     </motion.div>
                   </AnimatePresence>
                 </div>
