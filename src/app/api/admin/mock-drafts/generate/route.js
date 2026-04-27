@@ -386,6 +386,127 @@ function safeJson(str) {
   return null;
 }
 
+function normalizePlayerReference(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[.'’,-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function textMentionsPlayer(text, playerName) {
+  const normalizedText = normalizePlayerReference(text);
+  const normalizedPlayer = normalizePlayerReference(playerName);
+  if (!normalizedText || !normalizedPlayer) return false;
+  return normalizedText.includes(normalizedPlayer);
+}
+
+function analyzeReasonConsistency({ reason, pickedName, desiredName, candidateNames = [] }) {
+  const mentionsPicked = textMentionsPlayer(reason, pickedName);
+  const mentionedCandidates = candidateNames.filter(name => {
+    if (!name || name === pickedName) return false;
+    return textMentionsPlayer(reason, name);
+  });
+  const mentionsDesired = desiredName && desiredName !== pickedName
+    ? textMentionsPlayer(reason, desiredName)
+    : false;
+
+  return {
+    mentionsPicked,
+    mentionsDesired,
+    mentionedCandidates,
+    needsRepair: !mentionsPicked || mentionsDesired || mentionedCandidates.length > 0,
+  };
+}
+
+function positionRoomLabel(position) {
+  const pos = String(position || '').toUpperCase();
+  if (pos === 'QB') return 'QB room';
+  if (pos === 'RB') return 'RB room';
+  if (pos === 'WR') return 'WR room';
+  if (pos === 'TE') return 'TE room';
+  return `${pos || 'bench'} room`;
+}
+
+function buildAlignedReason({ picked, teamProfile, quality, teamRow, decisionLens, openingStyle }) {
+  const pickedName = picked?.name || 'This player';
+  const position = String(picked?.position || '').toUpperCase();
+  const roomLabel = positionRoomLabel(position);
+  const needWeight = teamRow?.positions?.[position]?.needWeight ?? 1;
+  const roomRank = teamRow?.positions?.[position]?.rank ?? null;
+  const teamCount = teamRow?.positions ? Object.keys(teamRow.positions).length : null;
+  const needClause = needWeight >= 1.2
+    ? `Our ${roomLabel} needs real help, and ${pickedName} gives us a credible way to address it without punting the board.`
+    : needWeight >= 1.05
+      ? `${pickedName} gives our ${roomLabel} another realistic path to usable weeks if the depth chart gets stressed.`
+      : `${pickedName} fits because the value stays reasonable here and we do not have to force a thinner reach.`;
+
+  let opener;
+  switch (openingStyle?.key) {
+    case 'need-first':
+      opener = `The ${roomLabel} is where ${teamProfile.teamName} can still tighten things up, and ${pickedName} is the cleanest answer left in range.`;
+      break;
+    case 'player-fragment':
+      opener = `${pickedName} here works.`;
+      break;
+    case 'value-first':
+      opener = `At this price, ${pickedName} is the kind of swing worth taking.`;
+      break;
+    case 'timeline-first':
+      opener = `${pickedName} does not have to fix the roster immediately to justify this spot.`;
+      break;
+    case 'board-first':
+    default:
+      opener = `The board makes ${pickedName} a clean pick here.`;
+      break;
+  }
+
+  let lensSentence;
+  switch (decisionLens?.key) {
+    case 'starter-path upgrade':
+      lensSentence = `There is a believable path for ${pickedName} to create real lineup pressure in our ${roomLabel}, which matters more than chasing a flashier but shakier fit.`;
+      break;
+    case 'roster insulation':
+      lensSentence = `${pickedName} gives the roster better insulation in the ${roomLabel} and makes the weekly depth picture less fragile.`;
+      break;
+    case 'stash upside':
+      lensSentence = `This is more upside stash than instant answer, but ${pickedName} is the kind of bet that can matter once roles settle.`;
+      break;
+    case 'contingency bet':
+      lensSentence = `${pickedName} fits as a contingency bet who becomes much more useful if touches or targets open up later.`;
+      break;
+    case 'weekly floor':
+      lensSentence = `${pickedName} gives this roster a more believable shot at usable weeks instead of just adding another anonymous bench swing.`;
+      break;
+    case 'ceiling swing':
+      lensSentence = `If this pick hits, ${pickedName} gives the roster the kind of payoff that is worth chasing from this part of the board.`;
+      break;
+    case 'roster balance':
+      lensSentence = `Adding ${position} depth here keeps the roster from getting too concentrated in stronger rooms while still respecting the board.`;
+      break;
+    case 'market value':
+    default:
+      lensSentence = `${pickedName} is still good value for the slot, so there is no reason to get cute when a clean fit is sitting here.`;
+      break;
+  }
+
+  const qualitySentence = quality?.band === 'blue-chip' || quality?.band === 'high-end starter'
+    ? 'There is still projection involved, but the talent and slot value line up cleanly enough to make this an easy bet.'
+    : quality?.band === 'solid contributor'
+      ? 'There is still some projection here, but the role and value mix make the bet easy to justify.'
+      : 'There is real volatility here, but this stage of the draft is exactly where that kind of upside swing makes sense.';
+
+  const roomContext = roomRank && teamCount
+    ? `The ${roomLabel} is currently ${roomRank} of ${teamCount} on the roster-strength board, so the fit is not hard to justify.`
+    : needClause;
+
+  return [opener, lensSentence, roomContext, qualitySentence]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function sanitizeReason(reason, pickedName, opts = {}) {
   const mode = opts.mode || 'light';
   const withMeta = !!opts.withMeta;
@@ -781,6 +902,8 @@ export async function POST(request) {
         sanitizedChanged: false,
         sanitizeDeltaChars: 0,
         sanitizeSkipped: false,
+        reasonRepairMode: 'none',
+        reasonRepairNotes: null,
         rawReasonPreview: null,
         sanitizedReasonPreview: null,
       };
@@ -920,15 +1043,48 @@ export async function POST(request) {
       }
 
       const rawReason = parsed.reason || '';
-      const reason = String(rawReason || '').trim();
+      const consistency = analyzeReasonConsistency({
+        reason: rawReason,
+        pickedName: picked.name,
+        desiredName: desired,
+        candidateNames: window.map(candidate => candidate.name),
+      });
+      let reasonSource = String(rawReason || '').trim();
+      if (consistency.needsRepair) {
+        reasonSource = buildAlignedReason({
+          picked,
+          teamProfile,
+          quality,
+          teamRow,
+          decisionLens,
+          openingStyle,
+        });
+        debugEntry.reasonRepairMode = 'regenerated';
+        debugEntry.reasonRepairNotes = {
+          desiredName: desired,
+          mentionsPicked: consistency.mentionsPicked,
+          mentionsDesired: consistency.mentionsDesired,
+          mentionedCandidates: consistency.mentionedCandidates.slice(0, 3),
+        };
+        trace && traceLog.push({
+          pickNumber,
+          team: teamProfile.teamName,
+          warning: 'Reason did not match final pick; explanation regenerated',
+          desiredPick: desired,
+          finalPick: picked.name,
+          mentionedCandidates: consistency.mentionedCandidates.slice(0, 3),
+        });
+      }
+      const sanitized = sanitizeReason(reasonSource, picked.name, { mode: 'light', withMeta: true });
+      const reason = sanitized.text;
 
       debugEntry.rawReasonPreview = clip(rawReason, 220);
       debugEntry.sanitizedReasonPreview = clip(reason, 220);
-      debugEntry.sanitizeMode = 'skipped';
-      debugEntry.sanitizeEscalated = false;
-      debugEntry.sanitizedChanged = false;
-      debugEntry.sanitizeDeltaChars = 0;
-      debugEntry.sanitizeSkipped = true;
+      debugEntry.sanitizeMode = 'light';
+      debugEntry.sanitizeEscalated = !!sanitized.escalated;
+      debugEntry.sanitizedChanged = reasonSource !== sanitized.text;
+      debugEntry.sanitizeDeltaChars = (sanitized.text || '').length - (reasonSource || '').length;
+      debugEntry.sanitizeSkipped = false;
       generationDebug.picks.push(debugEntry);
       recentReasonOpeners.push(extractOpeningFingerprint(rawReason));
 
@@ -941,7 +1097,7 @@ export async function POST(request) {
           team: teamProfile.teamName,
           promptPreview: userMsg.slice(0, 400),
           choice: picked.name,
-          reason: parsed.reason || '',
+          reason: reason,
         });
       }
     }

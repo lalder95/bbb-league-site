@@ -42,16 +42,16 @@
     "value": 0
   },
   {
-    "id": "2005",
-    "name": "Kenyon Sadiq",
-    "position": "TE",
+    "id": "1935",
+    "name": "Jadarian Price",
+    "position": "RB",
     "rank": 7,
     "value": 0
   },
   {
-    "id": "1935",
-    "name": "Jadarian Price",
-    "position": "RB",
+    "id": "2005",
+    "name": "Kenyon Sadiq",
+    "position": "TE",
     "rank": 8,
     "value": 0
   },
@@ -98,9 +98,9 @@
     "value": 0
   },
   {
-    "id": "1944",
-    "name": "Mike Washington Jr.",
-    "position": "RB",
+    "id": "1968",
+    "name": "Chris Bell",
+    "position": "WR",
     "rank": 15,
     "value": 0
   },
@@ -112,37 +112,37 @@
     "value": 0
   },
   {
-    "id": "1968",
-    "name": "Chris Bell",
+    "id": "1971",
+    "name": "Chris Brazzell II",
     "position": "WR",
     "rank": 17,
     "value": 0
   },
   {
-    "id": "1971",
-    "name": "Chris Brazzell II",
-    "position": "WR",
-    "rank": 18,
-    "value": 0
-  },
-  {
-    "id": "1969",
-    "name": "Zachariah Branch",
-    "position": "WR",
-    "rank": 19,
-    "value": 0
-  },
-  {
-    "id": "1936",
-    "name": "Emmett Johnson",
+    "id": "1944",
+    "name": "Mike Washington Jr.",
     "position": "RB",
-    "rank": 20,
+    "rank": 18,
     "value": 0
   },
   {
     "id": "1965",
     "name": "Germie Bernard",
     "position": "WR",
+    "rank": 19,
+    "value": 0
+  },
+  {
+    "id": "1969",
+    "name": "Zachariah Branch",
+    "position": "WR",
+    "rank": 20,
+    "value": 0
+  },
+  {
+    "id": "1936",
+    "name": "Emmett Johnson",
+    "position": "RB",
     "rank": 21,
     "value": 0
   },
@@ -154,23 +154,23 @@
     "value": 0
   },
   {
-    "id": "1927",
-    "name": "Garrett Nussmeier",
-    "position": "QB",
-    "rank": 23,
-    "value": 0
-  },
-  {
     "id": "1940",
     "name": "Kaytron Allen",
     "position": "RB",
-    "rank": 24,
+    "rank": 23,
     "value": 0
   },
   {
     "id": "1979",
     "name": "Ja'Kobi Lane",
     "position": "WR",
+    "rank": 24,
+    "value": 0
+  },
+  {
+    "id": "1927",
+    "name": "Garrett Nussmeier",
+    "position": "QB",
     "rank": 25,
     "value": 0
   },
@@ -245,99 +245,99 @@
     "value": 0
   },
   {
+    "id": "1928",
+    "name": "Carson Beck",
+    "position": "QB",
+    "rank": 36,
+    "value": 0
+  },
+  {
     "id": "1948",
     "name": "Jam Miller",
     "position": "RB",
-    "rank": 36,
+    "rank": 37,
     "value": 0
   },
   {
     "id": "1949",
     "name": "J'Mari Taylor",
     "position": "RB",
-    "rank": 37,
-    "value": 0
-  },
-  {
-    "id": "1966",
-    "name": "CJ Daniels",
-    "position": "WR",
     "rank": 38,
-    "value": 0
-  },
-  {
-    "id": "1928",
-    "name": "Carson Beck",
-    "position": "QB",
-    "rank": 39,
-    "value": 0
-  },
-  {
-    "id": "1937",
-    "name": "Seth McGowan",
-    "position": "RB",
-    "rank": 40,
     "value": 0
   },
   {
     "id": "1930",
     "name": "Drew Allar",
     "position": "QB",
+    "rank": 39,
+    "value": 0
+  },
+  {
+    "id": "1966",
+    "name": "CJ Daniels",
+    "position": "WR",
+    "rank": 40,
+    "value": 0
+  },
+  {
+    "id": "1950",
+    "name": "Terion Stewart",
+    "position": "RB",
     "rank": 41,
+    "value": 0
+  },
+  {
+    "id": "2007",
+    "name": "Jack Endries",
+    "position": "TE",
+    "rank": 42,
     "value": 0
   },
   {
     "id": "1976",
     "name": "De'Zhaun Stribling",
     "position": "WR",
-    "rank": 42,
+    "rank": 43,
     "value": 0
   },
   {
     "id": "1981",
     "name": "Bryce Lance",
     "position": "WR",
-    "rank": 43,
+    "rank": 44,
     "value": 0
   },
   {
     "id": "2013",
     "name": "Oscar Delp",
     "position": "TE",
-    "rank": 44,
+    "rank": 45,
     "value": 0
   },
   {
     "id": "1947",
     "name": "Kaelon Black",
     "position": "RB",
-    "rank": 45,
+    "rank": 46,
     "value": 0
   },
   {
     "id": "1983",
     "name": "Zavion Thomas",
     "position": "WR",
-    "rank": 46,
+    "rank": 47,
     "value": 0
   },
   {
     "id": "2011",
     "name": "Sam Roush",
     "position": "TE",
-    "rank": 47,
+    "rank": 48,
     "value": 0
   },
   {
     "id": "2010",
     "name": "Justin Joly",
-    "position": "TE",
-    "rank": 48,
-    "value": 0
-  },
-  {
-    "id": "2018",
-    "name": "Eli Raridon",
     "position": "TE",
     "rank": 49,
     "value": 0
@@ -350,10 +350,24 @@
     "value": 0
   },
   {
+    "id": "2018",
+    "name": "Eli Raridon",
+    "position": "TE",
+    "rank": 51,
+    "value": 0
+  },
+  {
     "id": "1991",
     "name": "Brenen Thompson",
     "position": "WR",
-    "rank": 51,
+    "rank": 52,
+    "value": 0
+  },
+  {
+    "id": "2040",
+    "name": "Malik Benson",
+    "position": "WR",
+    "rank": 53,
     "value": 0
   }
 ]
