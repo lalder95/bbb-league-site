@@ -31,25 +31,26 @@ export function resolveHomepagePhase({
   const month = Number(calendarMonth);
   const week = Number(nflWeek);
   const normalizedStatus = normalizeLeagueStatus(leagueStatus);
+  const isRookieDraftState = normalizedStatus === 'pre_draft' || normalizedStatus === 'drafting';
 
   if (month === 3) {
     return HOMEPAGE_PHASES.OFFSEASON_TAGS;
   }
 
   if (month === 4 || month === 5) {
-    if (normalizedStatus === 'pre_draft') {
+    if (isRookieDraftState) {
       return HOMEPAGE_PHASES.OFFSEASON_PRE_DRAFT;
     }
   }
 
   if (month === 5 || month === 6 || month === 7) {
-    if (normalizedStatus !== 'pre_draft') {
+    if (!isRookieDraftState) {
       return HOMEPAGE_PHASES.OFFSEASON_FREE_AGENCY;
     }
   }
 
   if (month === 8) {
-    if (normalizedStatus !== 'pre_draft') {
+    if (!isRookieDraftState) {
       return HOMEPAGE_PHASES.OFFSEASON_EXTENSIONS;
     }
   }
