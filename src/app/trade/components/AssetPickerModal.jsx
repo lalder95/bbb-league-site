@@ -341,7 +341,7 @@ export default function AssetPickerModal({
 }) {
   const [assetMode, setAssetMode] = useState('players');
   const [viewMode, setViewMode] = useState('carousel');
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [popupPlayer, setPopupPlayer] = useState(null);
   const carouselRef = useRef(null);
 
@@ -373,7 +373,7 @@ export default function AssetPickerModal({
 
     setAssetMode('players');
     setViewMode('carousel');
-    setShowMobileFilters(false);
+    setShowFilters(false);
     setPopupPlayer(null);
   }, [isOpen, participant?.id]);
 
@@ -428,16 +428,11 @@ export default function AssetPickerModal({
           className="flex h-full w-full flex-col overflow-hidden border border-white/10 bg-[#001A2B] sm:h-[calc(100vh-1.5rem)] sm:max-w-6xl sm:rounded-3xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="hidden border-b border-white/10 bg-[#00111F]/95 px-4 py-4 backdrop-blur-sm sm:block sm:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="hidden border-b border-white/10 bg-[#00111F]/95 px-4 py-3 backdrop-blur-sm sm:block sm:px-6">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/45">Asset Browser</div>
                 <h2 className="mt-1 text-2xl font-black text-[#FF4B1F]">{participant.team}</h2>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/70">
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{playerAssets.length} players available</span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{pickAssets.length} picks available</span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{participant.selectedPlayers.length} selected on page</span>
-                </div>
               </div>
 
               <button
@@ -452,33 +447,48 @@ export default function AssetPickerModal({
 
           <div className="border-b border-white/10 bg-[#001523] px-3 py-3 sm:px-6 sm:py-4">
             <div className="flex items-center gap-2 sm:block">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 rounded-full border border-white/10 bg-black/20 p-2">
-                <PickerToolbarButton active={assetMode === 'players'} onClick={() => setAssetMode('players')} label="Show players">
-                  <PlayersIcon />
-                </PickerToolbarButton>
-                <PickerToolbarButton active={assetMode === 'picks'} onClick={() => setAssetMode('picks')} label="Show picks">
-                  <PicksIcon />
-                </PickerToolbarButton>
+              <div className="flex min-w-0 flex-1 flex-wrap items-start gap-2 rounded-full border border-white/10 bg-black/20 px-2.5 py-2">
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <PickerToolbarButton active={assetMode === 'players'} onClick={() => setAssetMode('players')} label="Show players">
+                      <PlayersIcon />
+                    </PickerToolbarButton>
+                    <PickerToolbarButton active={assetMode === 'picks'} onClick={() => setAssetMode('picks')} label="Show picks">
+                      <PicksIcon />
+                    </PickerToolbarButton>
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Asset Type</div>
+                </div>
 
-                <div className="mx-1 h-6 w-px bg-white/12" aria-hidden="true" />
+                <div className="mx-2 flex h-11 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <div className="h-8 w-[2px] rounded-full bg-[#FF4B1F]" />
+                </div>
 
-                <PickerToolbarButton active={viewMode === 'carousel'} onClick={() => setViewMode('carousel')} label="Carousel view">
-                  <CarouselIcon />
-                </PickerToolbarButton>
-                <PickerToolbarButton active={viewMode === 'table'} onClick={() => setViewMode('table')} label="Table view">
-                  <TableIcon />
-                </PickerToolbarButton>
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <PickerToolbarButton active={viewMode === 'carousel'} onClick={() => setViewMode('carousel')} label="Carousel view">
+                      <CarouselIcon />
+                    </PickerToolbarButton>
+                    <PickerToolbarButton active={viewMode === 'table'} onClick={() => setViewMode('table')} label="Table view">
+                      <TableIcon />
+                    </PickerToolbarButton>
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">View</div>
+                </div>
 
-                <div className="mx-1 h-6 w-px bg-white/12 sm:hidden" aria-hidden="true" />
+                <div className="mx-2 flex h-11 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <div className="h-8 w-[2px] rounded-full bg-[#FF4B1F]" />
+                </div>
 
-                <div className="sm:hidden">
+                <div className="flex flex-col items-center gap-1.5">
                   <PickerToolbarButton
-                    active={showMobileFilters}
-                    onClick={() => setShowMobileFilters((prev) => !prev)}
-                    label={showMobileFilters ? 'Hide filters' : 'Show filters'}
+                    active={showFilters}
+                    onClick={() => setShowFilters((prev) => !prev)}
+                    label={showFilters ? 'Hide filters' : 'Show filters'}
                   >
                     <FilterIcon />
                   </PickerToolbarButton>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Filter</div>
                 </div>
               </div>
 
@@ -496,7 +506,7 @@ export default function AssetPickerModal({
               </button>
             </div>
 
-            <div className={`${showMobileFilters ? 'mt-3 grid grid-cols-1 gap-3' : 'hidden'} sm:mt-4 sm:grid sm:grid-cols-1 sm:gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.9fr)_minmax(220px,1fr)]`}>
+            <div className={`${showFilters ? 'mt-3 grid grid-cols-1 gap-3' : 'hidden'} lg:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.9fr)_minmax(220px,1fr)]`}>
               <input
                 type="text"
                 value={searchValue}
