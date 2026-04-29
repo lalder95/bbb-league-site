@@ -297,7 +297,7 @@ function PickCarouselCard({ pick, selected, onToggle, ktcPerDollar, usePositionR
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+      <div className="mt-4 grid grid-cols-2 gap-2 text-center">
         <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
           <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">KTC</div>
           <div className="mt-1 text-base font-bold text-white">{Math.round(Number(pick.ktcValue) || 0).toLocaleString()}</div>
@@ -305,10 +305,6 @@ function PickCarouselCard({ pick, selected, onToggle, ktcPerDollar, usePositionR
         <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
           <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">BV</div>
           <div className="mt-1 text-base font-bold text-[#FFB199]">{budgetValue ?? '-'}</div>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
-          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Slot</div>
-          <div className="mt-1 text-base font-bold text-white">{getDisplayDraftSlot(pick) || '-'}</div>
         </div>
       </div>
 
@@ -682,10 +678,8 @@ export default function AssetPickerModal({
                     <thead className="bg-white/5 text-left text-[11px] uppercase tracking-[0.12em] text-white/60">
                       <tr>
                         <th className="px-3 py-3 font-semibold">Pick</th>
-                        <th className="px-3 py-3 font-semibold">Slot</th>
                         <th className="px-3 py-3 font-semibold">KTC</th>
                         <th className="px-3 py-3 font-semibold">BV</th>
-                        <th className="px-3 py-3 font-semibold">Cap</th>
                         <th className="px-3 py-3 font-semibold">Original Team</th>
                         <th className="px-3 py-3 font-semibold text-right">Action</th>
                       </tr>
@@ -698,10 +692,8 @@ export default function AssetPickerModal({
                         return (
                           <tr key={pick.uniqueKey} className={`border-t border-white/10 transition-colors ${isSelected ? 'bg-[#FF4B1F]/10' : 'hover:bg-white/5'}`}>
                             <td className="px-3 py-3 font-semibold text-white">{pick.playerName}</td>
-                            <td className="px-3 py-3 text-white/75">{getDisplayDraftSlot(pick) || '-'}</td>
                             <td className="px-3 py-3 text-white/75">{Math.round(Number(pick.ktcValue) || 0).toLocaleString()}</td>
                             <td className="px-3 py-3 text-white/75">{budgetValue ?? '-'}</td>
-                            <td className="px-3 py-3 text-white/75">{formatSalary(pick.pickSalary)}</td>
                             <td className="px-3 py-3 text-white/75">{pick.originalTeam || '-'}</td>
                             <td className="px-3 py-3">
                               <div className="flex justify-end">
