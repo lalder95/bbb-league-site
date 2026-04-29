@@ -70,8 +70,10 @@ const carouselCardVariants = {
   },
 };
 
+const TOOLBAR_ICON_CLASS = 'h-3 w-3 sm:h-4.5 sm:w-4.5';
+
 const modeButtonClassName = (active) => (
-  `flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${active ? 'border-[#FF4B1F]/40 bg-[#FF4B1F]/20 text-[#FFD0C2]' : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'}`
+  `flex h-7 w-7 items-center justify-center rounded-full border transition-colors sm:h-10 sm:w-10 ${active ? 'border-[#FF4B1F]/40 bg-[#FF4B1F]/20 text-[#FFD0C2]' : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'}`
 );
 
 function PickerToolbarButton({ active, label, children, onClick, type = 'button' }) {
@@ -84,7 +86,7 @@ function PickerToolbarButton({ active, label, children, onClick, type = 'button'
 
 function PlayersIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4.5 w-4.5" aria-hidden="true">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className={TOOLBAR_ICON_CLASS} aria-hidden="true">
       <path d="M6.5 7.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Z" />
       <path d="M13.75 8.5a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z" />
       <path d="M2.75 15.75a3.75 3.75 0 0 1 7.5 0" />
@@ -95,7 +97,7 @@ function PlayersIcon() {
 
 function PicksIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4.5 w-4.5" aria-hidden="true">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className={TOOLBAR_ICON_CLASS} aria-hidden="true">
       <path d="M4 5.75h12" />
       <path d="M4 10h12" />
       <path d="M4 14.25h7.5" />
@@ -106,7 +108,7 @@ function PicksIcon() {
 
 function CarouselIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4.5 w-4.5" aria-hidden="true">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className={TOOLBAR_ICON_CLASS} aria-hidden="true">
       <rect x="2.75" y="5" width="4" height="10" rx="1.2" />
       <rect x="8" y="3.5" width="4" height="13" rx="1.2" />
       <rect x="13.25" y="5" width="4" height="10" rx="1.2" />
@@ -116,7 +118,7 @@ function CarouselIcon() {
 
 function TableIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4.5 w-4.5" aria-hidden="true">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className={TOOLBAR_ICON_CLASS} aria-hidden="true">
       <rect x="3" y="4" width="14" height="12" rx="1.4" />
       <path d="M3 8h14" />
       <path d="M8 8v8" />
@@ -127,7 +129,7 @@ function TableIcon() {
 
 function FilterIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4.5 w-4.5" aria-hidden="true">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className={TOOLBAR_ICON_CLASS} aria-hidden="true">
       <path d="M3 5.25h14" />
       <path d="M5.5 10h9" />
       <path d="M8 14.75h4" />
