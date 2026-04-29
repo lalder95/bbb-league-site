@@ -197,14 +197,57 @@ function resolvePickedPlayerPosition(pick, poolPlayer) {
   ).toUpperCase();
 }
 
+function findPlayerInPool(pool, { playerId, playerName } = {}) {
+  const normalizedId = String(playerId || '').trim();
+  if (normalizedId) {
+    const byId = pool.find((player) => String(player?.id || '').trim() === normalizedId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  const normalizedPlayerName = normalizeName(playerName);
+  if (!normalizedPlayerName) {
+    return null;
+  }
+
+  return pool.find((player) => normalizeName(player?.name) === normalizedPlayerName) || null;
+}
+
+function matchesPoolPlayer(player, { playerId, playerName } = {}) {
+  const normalizedId = String(playerId || '').trim();
+  if (normalizedId && String(player?.id || '').trim() === normalizedId) {
+    return true;
+  }
+
+  const normalizedPlayerName = normalizeName(playerName);
+  if (normalizedPlayerName && normalizeName(player?.name) === normalizedPlayerName) {
+    return true;
+  }
+
+  return false;
+}
+
 function buildBoardBeforePick(pool, priorPicks) {
+  const draftedIds = new Set(
+    priorPicks
+      .map((pick) => String(pick?.player_id || '').trim())
+      .filter(Boolean)
+  );
   const draftedNames = new Set(
     priorPicks
       .map((pick) => normalizeName(resolvePickedPlayerName(pick)))
       .filter(Boolean)
   );
 
-  return pool.filter((player) => !draftedNames.has(normalizeName(player.name)));
+  return pool.filter((player) => {
+    const playerId = String(player?.id || '').trim();
+    if (playerId && draftedIds.has(playerId)) {
+      return false;
+    }
+
+    return !draftedNames.has(normalizeName(player?.name));
+  });
 }
 
 function getNeedWeight(teamNeeds, teamName, position) {
@@ -269,14 +312,14 @@ function buildValueSummary({ teamNeeds, teamName, pickedPlayer, boardBeforePick,
   if (negative) {
     return {
       tone: 'negative',
-      summary: `${pickedPlayer.name} fits a need, but the board still had stronger value sitting there, so the reaction should treat this as a reach relative to the remaining options.`,
+      summary: `${pickedPlayer.name} fits a need, but the computed board leaned toward stronger value alternatives, so the reaction should treat this as a reach relative to the remaining tier.`,
       alternatives: boardAfterPick.slice(0, 3).map((player) => player.name),
     };
   }
 
   return {
     tone: 'mixed',
-    summary: `${pickedPlayer.name} makes enough roster sense to defend, but there were still comparable alternatives available, so the reaction should land in the middle instead of all praise or all panic.`,
+    summary: `${pickedPlayer.name} makes enough roster sense to defend, but the computed board showed comparable alternatives in the same range, so the reaction should land in the middle instead of all praise or all panic.`,
     alternatives: boardAfterPick.slice(0, 3).map((player) => player.name),
   };
 }
@@ -304,9 +347,12 @@ async function generateDraftReactions({
   const rng = createRng({ seed, salt: 'rookie-draft-feed' });
   const characters = await loadCharactersForPick(seed, reactionCount);
   const styleToken = buildStyleToken({ rng });
-  const availableNames = boardAfterPick.slice(0, 5).map((player) => `${player.name} (${player.position})`).join(', ');
   const pickedPlayerName = pickedPlayer?.name || resolvePickedPlayerName(pick) || 'Unknown Player';
   const pickedPlayerPosition = resolvePickedPlayerPosition(pick, pickedPlayer);
+  const hasConfidentBoardMatch = Boolean(pickedPlayer);
+  const availableNames = hasConfidentBoardMatch
+    ? boardAfterPick.slice(0, 5).map((player) => `${player.name} (${player.position})`).join(', ')
+    : '';
 
   if (!process.env.OPENAI_API_KEY) {
     return characters.map((character) => ({
@@ -323,6 +369,8 @@ Each object must include name, role, persona, and reaction.
 Each reaction must be 1-2 sentences, sound like the listed character, and explicitly mention ${team.teamName} and ${pickedPlayerName}.
 Each reaction must include two ideas: roster construction fit, and whether the value against the remaining board is positive, negative, or mixed.
 Do not write about real NFL coaching or scheme. Stay fantasy-focused: weekly usability, roster build, depth, floor, ceiling, stash value, and reach/value language.
+Only mention specific alternative players if they appear in the computed remaining alternatives list.
+If matching confidence is limited, speak generally about value tiers and fit instead of naming players as still available.
 Use this board verdict as a hard anchor: ${valueSummary.tone.toUpperCase()}.
 Style note: ${styleToken}`;
 
@@ -334,7 +382,9 @@ Style note: ${styleToken}`;
 - Player: ${pickedPlayerName}
 - Position: ${pickedPlayerPosition}
 - Board verdict: ${valueSummary.summary}
-- Best remaining alternatives after the pick: ${availableNames || 'No clear alternatives available'}
+- Computed remaining alternatives after the pick: ${hasConfidentBoardMatch
+  ? (availableNames || 'No clear alternatives remained on the computed board.')
+  : 'Matching confidence was limited for this pick, so do not claim that specific named players were still available.'}
 
 Roster context:
 ${teamNeedsText || 'Roster context unavailable. Keep the fit language broad but still fantasy-focused.'}
@@ -443,10 +493,15 @@ export async function syncActiveRookieDraftFeed() {
     const pickNo = Number(pick?.pick_no || 0);
     const boardBeforePick = buildBoardBeforePick(playerPool, sortedPicks.filter((entry) => Number(entry?.pick_no || 0) < pickNo));
     const pickedPlayerName = resolvePickedPlayerName(pick);
-    const pickedPlayer = boardBeforePick.find((player) => normalizeName(player.name) === normalizeName(pickedPlayerName))
-      || playerPool.find((player) => normalizeName(player.name) === normalizeName(pickedPlayerName))
+    const pickedPlayer = findPlayerInPool(boardBeforePick, { playerId: pick?.player_id, playerName: pickedPlayerName })
+      || findPlayerInPool(playerPool, { playerId: pick?.player_id, playerName: pickedPlayerName })
       || null;
-    const boardAfterPick = boardBeforePick.filter((player) => normalizeName(player.name) !== normalizeName(pickedPlayerName));
+    if (!pickedPlayer) {
+      console.warn(`[rookie-draft-feed] Unable to match pick ${pickNo} (${pickedPlayerName || 'Unknown Player'}) to the rookie pool.`);
+    }
+    const boardAfterPick = pickedPlayer
+      ? boardBeforePick.filter((player) => !matchesPoolPlayer(player, { playerId: pickedPlayer.id, playerName: pickedPlayer.name }))
+      : boardBeforePick;
     const team = resolvePickTeam(pick, rosterMaps);
     const valueSummary = buildValueSummary({
       teamNeeds,
