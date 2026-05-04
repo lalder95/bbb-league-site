@@ -240,7 +240,7 @@ function getReplyTargetExcerpt(message, maxLength = 140) {
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
 }
 
-export default function BankerFeed({ tweets }) {
+export default function BankerFeed({ tweets, error = '' }) {
   const { data: session } = useSession();
   const [selectedTweet, setSelectedTweet] = useState(null);
   const [thread, setThread] = useState(null);
@@ -479,6 +479,14 @@ export default function BankerFeed({ tweets }) {
         </div>
       );
     });
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-6 text-center text-sm text-red-100">
+        Failed to load posts: {error}
+      </div>
+    );
   }
 
   if (!tweets || tweets.length === 0) {

@@ -24,6 +24,37 @@ const MemoPlayerProfileCard = React.memo(
     prev.expanded === next.expanded
 );
 
+const HOMEPAGE_LOADING_MESSAGES = [
+  'Balancing checkbooks...',
+  'Balancing the budget...',
+  'Looking for spare change...',
+  'Smashing piggy banks...',
+  'Crying over dead cap...',
+  'Applying for a 2nd mortgage...',
+  'Writing bad checks...',
+  "Scouting free agents you can't afford...",
+  'Pinching our pennies...',
+  'Checking the couch cushions...',
+  'Spending birthday money from Grandma...',
+  'Cooking rice and ramen...',
+  'Selling MLM on Facebook...',
+  'Researching selling a kidney...',
+  'Considering tax evasion...',
+];
+
+function getRandomHomepageLoadingMessage(previousMessage) {
+  if (HOMEPAGE_LOADING_MESSAGES.length === 1) {
+    return HOMEPAGE_LOADING_MESSAGES[0];
+  }
+
+  let nextMessage = previousMessage;
+  while (nextMessage === previousMessage) {
+    nextMessage = HOMEPAGE_LOADING_MESSAGES[Math.floor(Math.random() * HOMEPAGE_LOADING_MESSAGES.length)];
+  }
+
+  return nextMessage;
+}
+
 export default function Home() {
   const { data: session } = useSession();
   // Testing mode to help troubleshooting
@@ -33,6 +64,7 @@ export default function Home() {
   const [standings, setStandings] = useState([]);
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingSlow, setLoadingSlow] = useState(false);
   const [error, setError] = useState(null);
   const [currentWeek, setCurrentWeek] = useState(null);
 
@@ -66,6 +98,7 @@ export default function Home() {
   const [homepagePhaseError, setHomepagePhaseError] = useState('');
   const [homepagePhaseLoading, setHomepagePhaseLoading] = useState(false);
   const [forcedPhase, setForcedPhase] = useState('');
+  const [homepageLoadingMessage, setHomepageLoadingMessage] = useState(() => getRandomHomepageLoadingMessage());
 
   const isAdmin = session?.user?.role === 'admin';
 
@@ -218,22 +251,30 @@ export default function Home() {
   useEffect(() => {
     const loadingTimeout = setTimeout(() => {
       if (loading) {
-        console.log('Loading timeout reached - activating debug mode');
+        console.log('Loading is taking longer than expected');
         setTestMode(true);
-        setLoading(false);
-        setError('Loading timeout reached. The data fetch is taking too long or has stalled. Check console for details.');
+        setLoadingSlow(true);
       }
-    }, 10000); // 10 seconds timeout 
+    }, process.env.NODE_ENV === 'development' ? 30000 : 15000);
     
     return () => clearTimeout(loadingTimeout);
   }, [loading]);
 
+  useEffect(() => {
+    if (loading) return;
+    setLoadingSlow(false);
+  }, [loading]);
+
   // First, find the correct BBB league
   useEffect(() => {
+    let cancelled = false;
+
     async function findBBBLeague() {
       try {
         console.log('Starting league search...');
         setLoading(true);
+        setLoadingSlow(false);
+        setError(null);
         
         // Get current NFL season
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
@@ -319,25 +360,36 @@ export default function Home() {
         // Sort by season and take the most recent
         const mostRecentLeague = bbbLeagues.sort((a, b) => b.season - a.season)[0];
         console.log('Selected league ID:', mostRecentLeague.league_id, 'Name:', mostRecentLeague.name);
-        setLeagueId(mostRecentLeague.league_id);
+        if (!cancelled) {
+          setLeagueId(mostRecentLeague.league_id);
+        }
         // Don't set loading to false here as the second useEffect will handle that
       } catch (err) {
         console.error('Error finding BBB league:', err);
-        setError(err.message);
-        setLoading(false);
+        if (!cancelled) {
+          setError(err.message);
+          setLoading(false);
+        }
       }
     }
     
     findBBBLeague();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Once we have the league ID, fetch all the league data
+  // Once we have the league ID, fetch the league metadata that is shared across weeks.
   useEffect(() => {
     if (!leagueId) return;
+
+    let cancelled = false;
     
     async function fetchData() {
       try {
         console.log('Fetching data for league ID:', leagueId);
+        setError(null);
         
         // Get current NFL week
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
@@ -350,16 +402,16 @@ export default function Home() {
           week = 1;
         }
 
-        setCurrentWeek(week); // Set currentWeek from API
-
-        // NEW: Set selectedWeek to currentWeek if not already set
-        setSelectedWeek(w => w ?? week);
+        if (!cancelled) {
+          setCurrentWeek(week);
+        }
 
         // Fetch league info
         const leagueResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`);
         if (!leagueResponse.ok) throw new Error('Failed to fetch league data');
         const leagueInfo = await leagueResponse.json();
         console.log('League info fetched successfully');
+        if (cancelled) return;
         setLeagueData(leagueInfo);
 
         // Force week to 1 if week is 0 and league is in season
@@ -367,7 +419,9 @@ export default function Home() {
           week = 1;
         }
         console.log('Current NFL week:', week);
-        setCurrentWeek(week);
+        if (!cancelled) {
+          setCurrentWeek(week);
+        }
         
         // Fetch users in the league
         console.log('Fetching league users...');
@@ -375,7 +429,8 @@ export default function Home() {
         if (!usersResponse.ok) throw new Error('Failed to fetch users');
         const users = await usersResponse.json();
         console.log('Users fetched:', users.length);
-  setLeagueUsers(users);
+        if (cancelled) return;
+        setLeagueUsers(users);
 
         // NEW: build team avatar map for PlayerProfileCard
         const avatarMap = {};
@@ -390,46 +445,8 @@ export default function Home() {
         if (!rostersResponse.ok) throw new Error('Failed to fetch rosters');
         const rosters = await rostersResponse.json();
         console.log('Rosters fetched:', rosters.length);
-  setLeagueRosters(rosters);
-        
-        // Fetch matchups for selectedWeek (not week)
-        console.log('Fetching matchups for week:', selectedWeek ?? week);
-        const matchupsResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${selectedWeek ?? week}`);
-        if (!matchupsResponse.ok) throw new Error('Failed to fetch matchups');
-        const matchupsData = await matchupsResponse.json();
-        console.log('Matchups API data:', matchupsData);
-        
-        // Process matchups data to include team names & starters
-        const processedMatchups = processMatchups(matchupsData, users, rosters);
-        setMatchups(processedMatchups);
-
-        // Also seed playoff matchups cache for the current week once playoffs are underway.
-        // This avoids selectedWeek affecting bracket tile labels/scores during Playoff Mode.
-        const playoffStart = Number(leagueInfo?.settings?.playoff_week_start);
-        if (Number.isFinite(playoffStart) && playoffStart > 0 && Number(selectedWeek ?? week) >= playoffStart) {
-          setPlayoffMatchupsByWeek(prev => {
-            const wk = Number(selectedWeek ?? week);
-            if (prev?.[wk]) return prev;
-            return { ...prev, [wk]: processedMatchups };
-          });
-        }
-
-        // Collect unique starter IDs
-        const starterIds = [...new Set(
-          matchupsData.flatMap(m => (m.starters || []).filter(s => s && s !== '0'))
-        )];
-
-        if (starterIds.length) {
-          setPlayersLoading(true);
-          try {
-            const info = await fetchStarterPlayerInfo(starterIds);
-            setPlayerInfoMap(info);
-          } catch (e) {
-            console.warn('Failed to load starter player info from contracts CSV:', e);
-          } finally {
-            setPlayersLoading(false);
-          }
-        }
+        if (cancelled) return;
+        setLeagueRosters(rosters);
         
         // Process standings with division information
         const processedStandings = processStandings(rosters, users, leagueInfo);
@@ -448,16 +465,104 @@ export default function Home() {
         }
         
         console.log('All data loaded successfully');
-        setLoading(false);
+        if (!cancelled && (!Number.isFinite(week) || week <= 0)) {
+          setMatchups([]);
+          setPlayerInfoMap({});
+          setLoading(false);
+        }
       } catch (err) {
         console.error('Error fetching league data:', err);
-        setError(err.message);
-        setLoading(false);
+        if (!cancelled) {
+          setError(err.message);
+          setLoading(false);
+        }
       }
     }
     
     fetchData();
-  }, [leagueId, selectedWeek]); // <-- Add selectedWeek as dependency
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leagueId]);
+
+  // Fetch only the week-specific matchup slice when the selected week changes.
+  useEffect(() => {
+    if (!leagueId) return;
+    if (!Array.isArray(leagueUsers) || leagueUsers.length === 0) return;
+    if (!Array.isArray(leagueRosters) || leagueRosters.length === 0) return;
+
+    const weekToFetch = Number(selectedWeek ?? currentWeek);
+    if (!Number.isFinite(weekToFetch) || weekToFetch <= 0) {
+      setMatchups([]);
+      setPlayerInfoMap({});
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchMatchupsForWeek() {
+      try {
+        console.log('Fetching matchups for week:', weekToFetch);
+        const matchupsResponse = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${weekToFetch}`);
+        if (!matchupsResponse.ok) throw new Error('Failed to fetch matchups');
+        const matchupsData = await matchupsResponse.json();
+        console.log('Matchups API data:', matchupsData);
+
+        if (cancelled) return;
+
+        const processedMatchups = processMatchups(matchupsData, leagueUsers, leagueRosters);
+        setMatchups(processedMatchups);
+
+        const playoffStart = Number(leagueData?.settings?.playoff_week_start);
+        if (Number.isFinite(playoffStart) && playoffStart > 0 && weekToFetch >= playoffStart) {
+          setPlayoffMatchupsByWeek(prev => {
+            if (prev?.[weekToFetch]) return prev;
+            return { ...prev, [weekToFetch]: processedMatchups };
+          });
+        }
+
+        const starterIds = [...new Set(
+          matchupsData.flatMap(m => (m.starters || []).filter(s => s && s !== '0'))
+        )];
+
+        if (starterIds.length) {
+          setPlayersLoading(true);
+          try {
+            const info = await fetchStarterPlayerInfo(starterIds);
+            if (!cancelled) {
+              setPlayerInfoMap(info);
+            }
+          } catch (e) {
+            console.warn('Failed to load starter player info from contracts CSV:', e);
+          } finally {
+            if (!cancelled) {
+              setPlayersLoading(false);
+            }
+          }
+        } else if (!cancelled) {
+          setPlayerInfoMap({});
+        }
+
+        if (!cancelled) {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error fetching matchup data:', err);
+        if (!cancelled) {
+          setError(err.message);
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchMatchupsForWeek();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leagueId, selectedWeek, currentWeek, leagueUsers, leagueRosters, leagueData]);
 
   useEffect(() => {
     if (!leagueId) {
@@ -868,18 +973,51 @@ export default function Home() {
     );
   };
 
-  const actualPhase = homepagePhaseData?.phase || HOMEPAGE_PHASES.IN_SEASON;
+  const hasResolvedHomepagePhase = Boolean(homepagePhaseData) || Boolean(homepagePhaseError);
+  const actualPhase = homepagePhaseData?.phase || (homepagePhaseError ? HOMEPAGE_PHASES.IN_SEASON : null);
   const activePhase = isAdmin && forcedPhase ? forcedPhase : actualPhase;
-  const phaseMeta = getHomepagePhaseMeta(activePhase);
+  const phaseMeta = activePhase
+    ? getHomepagePhaseMeta(activePhase)
+    : {
+        title: 'Loading View',
+        subtitle: 'Checking league state before rendering the homepage.'
+      };
   const phasePayload = homepagePhaseData?.payload || {};
-  const shouldShowBankerFeed = phaseShowsBankerFeed(activePhase);
+  const activeMatchupWeek = Number(selectedWeek ?? currentWeek);
+  const shouldShowBankerFeed = activePhase ? phaseShowsBankerFeed(activePhase) : false;
   const shouldShowStandings = activePhase === HOMEPAGE_PHASES.IN_SEASON;
   const mainPanelTitle = activePhase === HOMEPAGE_PHASES.IN_SEASON
     ? (currentWeek ? `Week ${currentWeek} Matchups` : 'Current Matchups')
     : phaseMeta.title;
+  const isHomepagePhasePending = !activePhase && leagueId && !hasResolvedHomepagePhase;
+
+  useEffect(() => {
+    if (!loading && !isHomepagePhasePending) {
+      return undefined;
+    }
+
+    setHomepageLoadingMessage(previousMessage => getRandomHomepageLoadingMessage(previousMessage));
+
+    const intervalId = window.setInterval(() => {
+      setHomepageLoadingMessage(previousMessage => getRandomHomepageLoadingMessage(previousMessage));
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loading, isHomepagePhasePending]);
   
   // Helper to render content based on league status
   function renderMainContent() {
+    if (isHomepagePhasePending) {
+      return (
+        <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-white/10 bg-black/20">
+          <div className="flex flex-col items-center gap-3 text-center text-white/75">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#FF4B1F] border-t-transparent" />
+            <p className="text-sm md:text-base">{homepageLoadingMessage}</p>
+          </div>
+        </div>
+      );
+    }
+
     if (activePhase !== HOMEPAGE_PHASES.IN_SEASON) {
       return (
         <HomepagePhaseContent
@@ -977,19 +1115,19 @@ export default function Home() {
         <div className="flex items-center justify-center mb-4">
           <button
             className="px-2 py-1 rounded hover:bg-[#FF4B1F]/30 transition-colors text-[#FF4B1F] font-bold text-lg"
-            onClick={() => setSelectedWeek(w => Math.max(1, (w || 1) - 1))}
-            disabled={selectedWeek <= 1}
+            onClick={() => setSelectedWeek(Math.max(1, (Number.isFinite(activeMatchupWeek) ? activeMatchupWeek : 1) - 1))}
+            disabled={Number.isFinite(activeMatchupWeek) ? activeMatchupWeek <= 1 : true}
             aria-label="Previous Week"
             title="Previous Week"
           >
             ←
           </button>
           <span className="mx-4 text-xl font-bold text-[#FF4B1F]">
-            {selectedWeek ? `Week ${selectedWeek} Matchups` : 'Current Matchups'}
+            {Number.isFinite(activeMatchupWeek) ? `Week ${activeMatchupWeek} Matchups` : 'Current Matchups'}
           </span>
           <button
             className="px-2 py-1 rounded hover:bg-[#FF4B1F]/30 transition-colors text-[#FF4B1F] font-bold text-lg"
-            onClick={() => setSelectedWeek(w => Math.min(18, (w || 1) + 1))}
+            onClick={() => setSelectedWeek(Math.min(18, (Number.isFinite(activeMatchupWeek) ? activeMatchupWeek : 1) + 1))}
             aria-label="Next Week"
             title="Next Week"
           >
@@ -1129,6 +1267,7 @@ export default function Home() {
   }
 
   const [tweets, setTweets] = useState([]);
+  const [tweetsError, setTweetsError] = useState('');
   const [showAdamOnly, setShowAdamOnly] = useState(false);
 
   const [peopleFilterOpen, setPeopleFilterOpen] = useState(false);
@@ -1158,6 +1297,9 @@ export default function Home() {
 
         const res = await fetch('/api/media-feed?sync=1', { cache: 'no-store' });
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to load bAnker feed');
+        }
         const sorted = Array.isArray(data?.tweets) ? data.tweets : [];
 
         if (cancelled) {
@@ -1174,6 +1316,7 @@ export default function Home() {
         });
 
         setTweets(sorted);
+        setTweetsError('');
         setPeopleOptions(Object.values(personMap).sort((a, b) => a.localeCompare(b)));
         setPeopleEnabled(prev => {
           const next = { ...prev };
@@ -1188,6 +1331,7 @@ export default function Home() {
       } catch (err) {
         if (!cancelled) {
           setTweets([]);
+          setTweetsError(err?.message || 'Failed to load bAnker feed');
         }
       }
     }
@@ -1286,7 +1430,12 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
     return (
       <div className="min-h-screen bg-[#001A2B] flex items-center justify-center flex-col">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#FF4B1F] border-t-transparent mb-4"></div>
-        <p className="text-white mb-8">Loading league data...</p>
+        <p className="text-white mb-8">{homepageLoadingMessage}</p>
+        {loadingSlow && (
+          <p className="text-sm text-white/70 mb-4 text-center max-w-md px-6">
+            First load in local dev can take 20 to 30 seconds while Next.js compiles routes and warms API handlers.
+          </p>
+        )}
         <button
           onClick={() => {
             setTestMode(true);
@@ -1467,7 +1616,7 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
                   <div>
                     <div className="text-sm font-semibold text-white">Admin Phase Override</div>
                     <div className="text-xs text-white/60">
-                      Live phase: {getHomepagePhaseMeta(actualPhase).title}
+                      Live phase: {actualPhase ? getHomepagePhaseMeta(actualPhase).title : 'Loading View'}
                       {forcedPhase ? ` • Forced: ${getHomepagePhaseMeta(forcedPhase).title}` : ' • Override disabled'}
                     </div>
                   </div>
@@ -1609,7 +1758,7 @@ const ESPN_WEEK_HUB = (typeof window !== 'undefined'
                     </select>
                   </div>
                 </div>
-                <BankerFeed tweets={visibleTweets} />
+                <BankerFeed tweets={visibleTweets} error={tweetsError} />
               </div>
             )}
             

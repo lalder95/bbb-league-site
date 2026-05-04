@@ -22,6 +22,10 @@ const JOURNALISTS_FILE_PATH = path.join(process.cwd(), 'src/app/api/ai/journalis
 const CONTRACTS_CSV_URL = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv';
 const OPENAI_MODEL = 'gpt-4.1-nano';
 
+function shouldLogRookieDraftDiagnostics() {
+  return process.env.DEBUG_ROOKIE_DRAFT_FEED === '1';
+}
+
 function normalizeName(value) {
   return String(value || '')
     .toLowerCase()
@@ -488,6 +492,7 @@ export async function syncActiveRookieDraftFeed() {
   const unseenPicks = sortedPicks.filter((pick) => Number(pick?.pick_no || 0) > lastSeenPickNo);
   const rosterMaps = buildRosterMaps(rosters, users);
   let created = 0;
+  let unmatchedPickCount = 0;
 
   for (const pick of unseenPicks) {
     const pickNo = Number(pick?.pick_no || 0);
@@ -497,7 +502,10 @@ export async function syncActiveRookieDraftFeed() {
       || findPlayerInPool(playerPool, { playerId: pick?.player_id, playerName: pickedPlayerName })
       || null;
     if (!pickedPlayer) {
-      console.warn(`[rookie-draft-feed] Unable to match pick ${pickNo} (${pickedPlayerName || 'Unknown Player'}) to the rookie pool.`);
+      unmatchedPickCount += 1;
+      if (shouldLogRookieDraftDiagnostics()) {
+        console.warn(`[rookie-draft-feed] Unable to match pick ${pickNo} (${pickedPlayerName || 'Unknown Player'}) to the rookie pool.`);
+      }
     }
     const boardAfterPick = pickedPlayer
       ? boardBeforePick.filter((player) => !matchesPoolPlayer(player, { playerId: pickedPlayer.id, playerName: pickedPlayer.name }))
@@ -566,6 +574,7 @@ export async function syncActiveRookieDraftFeed() {
       : (unseenPicks.length > 0 ? 'processed-new-picks' : 'up-to-date'),
     created,
     inspected: unseenPicks.length,
+    unmatchedPickCount,
     draftId: activeDraft.draft_id,
     lastSeenPickNo: currentMaxPickNo,
     backfilledPickCount: isFirstSync ? unseenPicks.length : 0,

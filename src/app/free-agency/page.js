@@ -20,8 +20,9 @@ function getPositionColor(pos) {
 export default function FreeAgency() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [year, setYear] = useState('2025');
+  const [year, setYear] = useState('');
   const [years, setYears] = useState([]);
+  const [currentLeagueYear, setCurrentLeagueYear] = useState('');
   const [teamAvatars, setTeamAvatars] = useState({});
   const [leagueId, setLeagueId] = useState(null);
   // Default sort for all tables: KTC descending
@@ -74,11 +75,9 @@ export default function FreeAgency() {
 
 
 
-        // For each playerId, find all contracts where status !== 'Expired', then get max contractFinalYear
         const playerIdToContracts = {};
         allContracts.forEach(p => {
           if (!p.playerId) return;
-          if (String(p.status).toLowerCase() === 'expired') return;
           const year = parseInt(p.contractFinalYear);
           if (isNaN(year)) return;
           if (!playerIdToContracts[p.playerId]) {
@@ -89,10 +88,14 @@ export default function FreeAgency() {
 
         const playerIdToContract = {};
         Object.entries(playerIdToContracts).forEach(([playerId, contracts]) => {
-          // Find max year among non-expired contracts
-          let maxYear = Math.max(...contracts.map(c => parseInt(c.contractFinalYear)));
-          // Get all contracts with that year
-          let maxYearContracts = contracts.filter(c => parseInt(c.contractFinalYear) === maxYear);
+          const signedContracts = contracts.filter(c => {
+            const normalizedStatus = String(c.status || '').toLowerCase();
+            return normalizedStatus === 'active' || normalizedStatus === 'future';
+          });
+          const contractPool = signedContracts.length > 0 ? signedContracts : contracts;
+
+          let maxYear = Math.max(...contractPool.map(c => parseInt(c.contractFinalYear, 10)));
+          let maxYearContracts = contractPool.filter(c => parseInt(c.contractFinalYear, 10) === maxYear);
           // Prefer contract with both playerName and team
           let preferred = maxYearContracts.find(c => c.playerName && c.team);
           if (!preferred) {
@@ -117,19 +120,21 @@ export default function FreeAgency() {
         // Now, for each contract, add a computed field: freeAgencyYear = maxFinalYear + 1
         const processedPlayers = Object.values(playerIdToContract).map(p => ({
           ...p,
+          isCurrentlyUnsigned: !['active', 'future'].includes(String(p.status || '').toLowerCase()),
           freeAgencyYear: p.contractFinalYear ? (parseInt(p.contractFinalYear, 10) + 1).toString() : null
         }));
 
         setPlayers(processedPlayers);
 
-        // Collect unique years for dropdown (use maxFinalYear, not contractFinalYear)
+        // Collect upcoming free-agency years only from players who are still under contract.
         const uniqueYears = Array.from(new Set(
-          processedPlayers.map(p => p.contractFinalYear)
+          processedPlayers
+            .filter(p => !p.isCurrentlyUnsigned)
+            .map(p => p.freeAgencyYear)
         ))
           .filter(Boolean)
           .sort();
         setYears(uniqueYears);
-        if (uniqueYears.length > 0) setYear(uniqueYears[0]);
       } catch (error) {
         // Optionally handle error
       } finally {
@@ -146,6 +151,7 @@ export default function FreeAgency() {
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
         const seasonState = await seasonResponse.json();
         const currentSeason = seasonState.season;
+        setCurrentLeagueYear(String(currentSeason || ''));
         const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
         const userLeagues = await userLeaguesResponse.json();
         let bbbLeagues = userLeagues.filter(league =>
@@ -168,6 +174,31 @@ export default function FreeAgency() {
     findBBBLeague();
   }, []);
 
+  useEffect(() => {
+    if (!currentLeagueYear) return;
+
+    const currentYearNumber = parseInt(currentLeagueYear, 10);
+
+    setYears(prev => Array.from(new Set([...prev, currentLeagueYear]))
+      .filter(Boolean)
+      .filter(optionYear => {
+        const optionYearNumber = parseInt(optionYear, 10);
+        return !Number.isNaN(optionYearNumber) && optionYearNumber >= currentYearNumber;
+      })
+      .sort());
+  }, [currentLeagueYear]);
+
+  useEffect(() => {
+    if (years.length === 0) return;
+
+    if (currentLeagueYear && years.includes(currentLeagueYear)) {
+      setYear(prev => (prev && years.includes(prev) ? prev : currentLeagueYear));
+      return;
+    }
+
+    setYear(prev => (prev && years.includes(prev) ? prev : years[0]));
+  }, [years, currentLeagueYear]);
+
   // Fetch avatars using detected leagueId
   useEffect(() => {
     if (!leagueId) return;
@@ -185,11 +216,14 @@ export default function FreeAgency() {
     fetchAvatars();
   }, [leagueId]);
 
-  // Filter for selected year (players who will become FA after this year)
-  // Now, players have a computed freeAgencyYear field
-  const faYear = year ? (parseInt(year, 10) + 1).toString() : '';
+  // The current league year shows players who are already unsigned.
+  const faYear = year || '';
   const freeAgents = players.filter(
-    p => p.freeAgencyYear === faYear && p.playerName && p.team
+    p => (
+      faYear === currentLeagueYear
+        ? p.isCurrentlyUnsigned
+        : p.freeAgencyYear === faYear && !p.isCurrentlyUnsigned
+    ) && p.playerName && p.team
   );
 
   // Sorting helper
@@ -347,7 +381,7 @@ export default function FreeAgency() {
 
         {/* Year Selector */}
         <div className="flex flex-wrap items-center gap-4 mb-8">
-          <label className="text-white/80 font-semibold">Show Free Agents After:</label>
+          <label className="text-white/80 font-semibold">Free Agency Year:</label>
           <select
             className="bg-black/40 border border-white/20 rounded px-4 py-2 text-white"
             value={year}
@@ -355,7 +389,7 @@ export default function FreeAgency() {
           >
             {years.map(y => (
               <option key={y} value={y}>
-                {y} Season (FA in {parseInt(y, 10) + 1})
+                {y}
               </option>
             ))}
           </select>
