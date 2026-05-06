@@ -2175,6 +2175,35 @@ export default function PlayerProfileCard({
     </div>
   );
 
+  const renderMobileTabRail = () => (
+    <div className="mt-4 flex justify-center gap-2">
+      {TAB_CONFIG.map((tab) => {
+        const Icon = tab.icon;
+        const selected = tab.id === activeTab;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveTab(tab.id);
+              if (!drawerOpen) {
+                setDrawerOpen(true);
+                setFlippedContainer(true);
+                setFlippedCard(true);
+              }
+            }}
+            className={`flex h-11 w-11 items-center justify-center rounded-2xl border border-white/12 shadow-[0_14px_28px_rgba(5,8,18,0.28)] transition ${selected ? 'bg-[#f35b2f] text-white' : 'bg-[#112033]/92 text-white/72 hover:bg-[#16304b] hover:text-white'}`}
+            aria-label={tab.label}
+            title={tab.label}
+          >
+            <Icon className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const renderDrawerSurface = (mobile = false) => (
     <div
       className={`relative flex h-full w-full flex-col overflow-visible rounded-[1.75rem] border border-white/12 bg-[linear-gradient(180deg,rgba(10,21,37,0.98),rgba(9,17,29,0.96))] px-5 py-5 text-left text-white shadow-[0_28px_60px_rgba(5,9,18,0.45)] ${mobile ? '' : 'min-h-[32rem]'}`}
@@ -2205,7 +2234,7 @@ export default function PlayerProfileCard({
         </div>
       </div>
 
-      {renderTabRail(mobile)}
+      {!mobile && renderTabRail(false)}
     </div>
   );
 
@@ -2397,6 +2426,7 @@ export default function PlayerProfileCard({
                 </div>
               </div>
             </div>
+            {renderMobileTabRail()}
           </div>
         </div>
       </div>
