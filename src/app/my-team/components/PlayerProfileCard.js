@@ -17,6 +17,7 @@ import {
   FileText,
   History,
   NotebookPen,
+  RotateCcw,
   ShieldAlert,
   ShieldCheck,
   X,
@@ -2017,7 +2018,7 @@ export default function PlayerProfileCard({
     const age = Number(contract?.age) || 0;
 
     // Rank label
-    const rankSuffix = ktcRank === 1 ? 'st' : ktcRank === 2 ? 'nd' : ktcRank === 3 ? 'rd' : 'th';
+    const rankSuffix = (() => { const n = ktcRank; const mod100 = n % 100; const mod10 = n % 10; if (mod100 >= 11 && mod100 <= 13) return 'th'; if (mod10 === 1) return 'st'; if (mod10 === 2) return 'nd'; if (mod10 === 3) return 'rd'; return 'th'; })();
     const rankRatio = peerCount > 0 ? ktcRank / peerCount : 1;
     const rankColor = ktcRank <= 3 ? '#f7c948' : rankRatio <= 0.3 ? '#4ade80' : '#f7a37c';
 
@@ -2199,7 +2200,7 @@ export default function PlayerProfileCard({
           </div>
         </div>
 
-        <div className={`mt-6 overflow-y-auto pr-2 ${mobile ? 'max-h-[13rem]' : 'max-h-[23rem]'}`}>
+        <div className={`mt-6 overflow-y-auto pr-2 ${mobile ? 'max-h-[23rem]' : 'max-h-[23rem]'}`}>
           {renderActiveTabPanel()}
         </div>
       </div>
@@ -2337,9 +2338,21 @@ export default function PlayerProfileCard({
           </div>
 
           <div className="pt-6 md:hidden">
-            <div className="mx-auto w-full max-w-[16rem]" style={{ perspective: '1800px' }}>
+            <div className="mb-3 flex justify-center">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleDrawerToggle(); }}
+                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-[#f35b2f] px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(12,18,30,0.45)] transition hover:bg-[#ff744d] focus:outline-none focus:ring-2 focus:ring-[#f7a37c]/60"
+                aria-label={drawerOpen ? 'Reveal player image' : 'Reveal profile drawer'}
+                title={drawerOpen ? 'Reveal player image' : 'Reveal profile drawer'}
+              >
+                <RotateCcw className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+                {drawerOpen ? 'View Card' : 'View Profile'}
+              </button>
+            </div>
+            <div className="mx-auto w-full max-w-[22rem]" style={{ perspective: '1800px' }}>
               <div
-                className="relative h-[18rem] min-w-0 w-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.52,0.64,1)]"
+                className="relative h-[30rem] min-w-0 w-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.52,0.64,1)]"
                 style={{ transformStyle: 'preserve-3d', WebkitTransformStyle: 'preserve-3d', transform: flippedCard ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
               >
                 <div
@@ -2373,14 +2386,7 @@ export default function PlayerProfileCard({
                       </div>
                     </div>
                   </div>
-                  <div className="absolute right-0 top-1/2 z-30 -translate-y-1/2 translate-x-full pr-0">
-                    <ToggleDrawerButton
-                      onClick={handleDrawerToggle}
-                      open={drawerOpen}
-                      title={drawerOpen ? 'Reveal player image' : 'Reveal profile drawer'}
-                      mobile
-                    />
-                  </div>
+
                 </div>
 
                 <div
