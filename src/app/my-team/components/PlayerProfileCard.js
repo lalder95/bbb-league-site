@@ -2199,7 +2199,7 @@ export default function PlayerProfileCard({
           </div>
         </div>
 
-        <div className={`mt-6 overflow-y-auto pr-2 ${mobile ? 'max-h-[18rem]' : 'max-h-[23rem]'}`}>
+        <div className={`mt-6 overflow-y-auto pr-2 ${mobile ? 'max-h-[13rem]' : 'max-h-[23rem]'}`}>
           {renderActiveTabPanel()}
         </div>
       </div>
@@ -2337,9 +2337,9 @@ export default function PlayerProfileCard({
           </div>
 
           <div className="pt-6 md:hidden">
-            <div className="mx-auto w-full max-w-[22.5rem]" style={{ perspective: '1800px' }}>
+            <div className="mx-auto w-full max-w-[16rem]" style={{ perspective: '1800px' }}>
               <div
-                className="relative h-[25.5rem] min-w-0 w-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.52,0.64,1)]"
+                className="relative h-[18rem] min-w-0 w-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.52,0.64,1)]"
                 style={{ transformStyle: 'preserve-3d', WebkitTransformStyle: 'preserve-3d', transform: flippedCard ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
               >
                 <div
