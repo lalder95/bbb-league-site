@@ -1374,6 +1374,7 @@ export default function PlayerProfileCard({
 
     return (
       <div className="flex min-h-full flex-col gap-6">
+        <div className={isMobile ? 'mx-auto w-[85%]' : ''}>
         <div className="grid gap-3 sm:grid-cols-3">
           {summaryCards.map((item) => {
             const Icon = item.icon;
@@ -1395,7 +1396,9 @@ export default function PlayerProfileCard({
             );
           })}
         </div>
+        </div>
 
+        <div className={isMobile ? 'mx-auto w-[85%]' : ''}>
         <div className="grid gap-3 sm:grid-cols-3">
           {eligibilityCards.map((item) => {
             const Icon = item.active ? ShieldCheck : ShieldAlert;
@@ -1413,6 +1416,7 @@ export default function PlayerProfileCard({
               </div>
             );
           })}
+        </div>
         </div>
 
         <div className="rounded-[1.25rem] border border-white/10 bg-black/20 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
