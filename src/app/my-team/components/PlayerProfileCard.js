@@ -1848,7 +1848,7 @@ export default function PlayerProfileCard({
             Private notes
           </p>
           <textarea
-            className="mt-3 h-[14.4rem] w-full resize-none rounded-[1rem] border border-[#d7dde7] bg-white px-4 py-3 text-sm font-medium leading-6 text-slate-900 caret-slate-900 outline-none transition placeholder:!text-slate-400 focus:border-[#f35b2f]/70"
+            className="mt-3 h-[11.52rem] w-full resize-none rounded-[1rem] border border-[#d7dde7] bg-white px-4 py-3 text-sm font-medium leading-6 text-slate-900 caret-slate-900 outline-none transition placeholder:!text-slate-400 focus:border-[#f35b2f]/70"
             style={{ color: '#0f172a' }}
             value={playerNote}
             onChange={(event) => {
