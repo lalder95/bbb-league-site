@@ -48,7 +48,7 @@ export default function NewsTicker() {
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 bg-black/80 border-t border-white/10 z-50"
+      className="hidden md:block fixed bottom-0 left-0 right-0 bg-black/80 border-t border-white/10 z-50"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
