@@ -2199,7 +2199,7 @@ export default function PlayerProfileCard({
           </div>
         </div>
 
-        <div className={`mt-6 overflow-y-auto pr-2 ${mobile ? 'max-h-[24rem]' : 'max-h-[23rem]'}`}>
+        <div className={`mt-6 overflow-y-auto pr-2 ${mobile ? 'max-h-[18rem]' : 'max-h-[23rem]'}`}>
           {renderActiveTabPanel()}
         </div>
       </div>
@@ -2337,9 +2337,9 @@ export default function PlayerProfileCard({
           </div>
 
           <div className="pt-6 md:hidden">
-            <div className="mx-auto w-full max-w-[30rem]" style={{ perspective: '1800px' }}>
+            <div className="mx-auto w-full max-w-[22.5rem]" style={{ perspective: '1800px' }}>
               <div
-                className="relative h-[34rem] min-w-0 w-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.52,0.64,1)]"
+                className="relative h-[25.5rem] min-w-0 w-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.52,0.64,1)]"
                 style={{ transformStyle: 'preserve-3d', WebkitTransformStyle: 'preserve-3d', transform: flippedCard ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
               >
                 <div
@@ -2363,7 +2363,7 @@ export default function PlayerProfileCard({
 
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#08101b] via-[#08101be6] to-transparent px-5 pb-5 pt-14 text-white">
                       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.32em] text-white/48">Player profile</p>
-                      <h2 className="mt-2 text-[1.8rem] font-black uppercase tracking-[0.08em] text-white">
+                      <h2 className="mt-2 text-[1.35rem] font-black uppercase tracking-[0.08em] text-white">
                         {safeDisplay(contract.playerName)}
                       </h2>
                       <div className="mt-4 flex flex-wrap gap-2">
