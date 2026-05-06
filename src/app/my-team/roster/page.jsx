@@ -324,7 +324,7 @@ export default function RosterPage() {
                     <tr key={player.uniqueKey} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
                       <td className="p-3">
                         <div style={{ width: 32, height: 32 }} className="flex items-center justify-center">
-                          <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-8 h-8 rounded-full overflow-hidden shadow" />
+                          <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-8 h-8 rounded-full overflow-hidden shadow" />
                         </div>
                       </td>
                       <td className="p-3 font-medium text-white/90 cursor-pointer underline" onClick={() => setSelectedPlayerId(player.playerId)}>{player.playerName}</td>

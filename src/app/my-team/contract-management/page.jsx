@@ -1009,9 +1009,9 @@ export default function ContractManagementPage() {
                 <thead>
                   <tr>
                     <th className="p-2 text-white/80">Year</th>
-                    <th className="p-2 text-white/80 border-l border-white/10">Cap Used</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space Before</th>
                     <th className="p-2 text-white/80 border-l border-white/10">Extension Cost</th>
-                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space After</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1027,15 +1027,19 @@ export default function ContractManagementPage() {
                       }
                     });
                     const capUsed = yearSalaries[i] + yearDead[i];
+                    const capSpaceBefore = CAP - capUsed;
+                    const capSpaceAfter = capSpaceBefore - (i === 0 ? 0 : extensionCost);
                     return (
                       <tr key={i} className="cursor-pointer hover:bg-white/10" onClick={() => openCapModal(i)}>
                         <td className="p-2">{curYear + i}</td>
-                        <td className="p-2 border-l border-white/10">${capUsed.toFixed(1)}</td>
+                        <td className={`p-2 border-l border-white/10 font-bold ${capSpaceBefore < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                          {capSpaceBefore.toFixed(1)}
+                        </td>
                         <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">
                           {i === 0 ? '-' : `$${extensionCost.toFixed(1)}`}
                         </td>
-                        <td className={`p-2 border-l border-white/10 font-bold ${capUsed > CAP ? 'text-red-400' : 'text-green-400'}`}>
-                          {(CAP - capUsed).toFixed(1)}
+                        <td className={`p-2 border-l border-white/10 font-bold ${capSpaceAfter < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                          {i === 0 ? '-' : capSpaceAfter.toFixed(1)}
                         </td>
                       </tr>
                     );
@@ -1073,7 +1077,7 @@ export default function ContractManagementPage() {
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                             <div className="min-w-0">
                               <div className="text-white font-bold text-2xl leading-7 truncate">{player.playerName}</div>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
@@ -1522,7 +1526,7 @@ export default function ContractManagementPage() {
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                             <div className="min-w-0">
                               <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
@@ -1799,7 +1803,7 @@ export default function ContractManagementPage() {
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                             <div className="min-w-0">
                               <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
@@ -2220,7 +2224,7 @@ export default function ContractManagementPage() {
                     return (
                       <div key={String(a._id || a.playerId)} className="bg-[#0C1B26] border border-white/10 rounded-xl p-4 shadow">
                       <div className="flex items-center gap-3">
-                        <PlayerProfileCard playerId={a.playerId} expanded={false} className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                        <PlayerProfileCard playerId={a.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                         <div className="min-w-0">
                           <div className="text-white font-semibold">{a.playerName} <span className="text-white/50 text-sm">(#{a.playerId})</span></div>
                           <div className="text-white/60 text-xs">Assigned to: {a.assignedTeam}</div>

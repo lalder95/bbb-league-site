@@ -922,7 +922,7 @@ export default function TradeHistoryPage() {
                                       <div key={`pl-in-${p.player_id}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(p.player_id))}>
                                         {/* Reserve label space for alignment */}
                                         <div className="h-5 w-full" />
-                                        <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                        <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} avatarOnly className="w-24 h-28 sm:w-28 sm:h-32" />
                                         {sleeper && (
                                           <div className="w-full mt-1 flex flex-col items-center">
                                             <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
@@ -956,7 +956,7 @@ export default function TradeHistoryPage() {
                                       <div key={`pk-in-${idx}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(drafted.player_id))}>
                                         <DraftedPickWrapper pk={pk}>
                                           <div className="pt-5" />
-                                          <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                          <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} avatarOnly className="w-24 h-28 sm:w-28 sm:h-32" />
                                           <div className="w-full mt-1 flex flex-col items-center px-1 pb-2">
                                             <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
                                               {playerName} · {position || 'N/A'}
@@ -1016,7 +1016,7 @@ export default function TradeHistoryPage() {
                                       return (
                                         <div key={`pl-out-${p.player_id}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(p.player_id))}>
                                           <div className="h-5 w-full" />
-                                          <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                          <PlayerProfileCard playerId={p.player_id} contracts={minimalContract} expanded={false} avatarOnly className="w-24 h-28 sm:w-28 sm:h-32" />
                                           {sleeper && (
                                             <div className="w-full mt-1 flex flex-col items-center">
                                               <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
@@ -1050,7 +1050,7 @@ export default function TradeHistoryPage() {
                                         <div key={`pk-out-${idx}`} className="w-28 cursor-pointer flex flex-col items-center hover:scale-[1.02] transition-transform" onClick={() => setSelectedPlayerId(String(drafted.player_id))}>
                                           <DraftedPickWrapper pk={pk}>
                                             <div className="pt-5" />
-                                            <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} className="w-24 h-28 sm:w-28 sm:h-32" />
+                                            <PlayerProfileCard playerId={drafted.player_id} contracts={minimalContract} expanded={false} avatarOnly className="w-24 h-28 sm:w-28 sm:h-32" />
                                             <div className="w-full mt-1 flex flex-col items-center px-1 pb-2">
                                               <div className="text-[12px] sm:text-[11px] text-center text-white/80 whitespace-normal break-words leading-tight">
                                                 {playerName} · {position || 'N/A'}

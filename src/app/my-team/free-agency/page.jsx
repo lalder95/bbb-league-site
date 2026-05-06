@@ -314,7 +314,7 @@ export default function FreeAgencyPage() {
                       {rfa.map(player => (
                         <li key={player.playerId} className="py-2 flex items-center gap-3 px-1">
                           <div className="w-6 h-6 flex-shrink-0">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-6 h-6 rounded overflow-hidden" />
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-6 h-6 rounded overflow-hidden" />
                           </div>
                           <div className="min-w-0 flex items-center gap-2">
                             <button className="font-medium text-white/90 text-sm hover:text-white truncate" onClick={() => setSelectedPlayerId(player.playerId)}>
@@ -341,7 +341,7 @@ export default function FreeAgencyPage() {
                       {ufa.map(player => (
                         <li key={player.playerId} className="py-2 flex items-center gap-3 px-1">
                           <div className="w-6 h-6 flex-shrink-0">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-6 h-6 rounded overflow-hidden" />
+                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-6 h-6 rounded overflow-hidden" />
                           </div>
                           <div className="min-w-0 flex items-center gap-2">
                             <button className="font-medium text-white/90 text-sm hover:text-white truncate" onClick={() => setSelectedPlayerId(player.playerId)}>

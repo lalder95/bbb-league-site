@@ -19,7 +19,7 @@ export default function FranchiseTagCard({
     <div className="flex items-center gap-6 bg-[#101c2a] border border-white/10 rounded-xl shadow-sm px-5 py-4 mb-4 hover:shadow-lg transition-shadow">
       {/* Left: Avatar, Name, Age */}
       <div className="flex items-center gap-3 min-w-[180px]">
-        <PlayerProfileCard playerId={player.playerId} expanded={false} className="w-12 h-12 rounded-lg overflow-hidden shadow" />
+        <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-12 h-12 rounded-lg overflow-hidden shadow" />
         <div>
           <div className="font-bold text-white text-lg leading-tight break-words whitespace-normal max-w-[140px]">{player.playerName}</div>
           <div className="text-xs text-white/60 mt-1">Age: {player.age ?? '-'}</div>

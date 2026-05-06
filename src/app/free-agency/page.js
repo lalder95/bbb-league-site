@@ -459,6 +459,7 @@ export default function FreeAgency() {
                                 playerId={p.playerId}
                                 contracts={[p]}
                                 imageExtension="png"
+                                avatarOnly
                                 className="!w-9 !h-9 min-w-[2.25rem] min-h-[2.25rem] max-w-[2.25rem] max-h-[2.25rem] rounded-full overflow-hidden shadow object-cover"
                                 cloudinaryTransform="f_auto,q_auto,w_96"
                               />
@@ -575,6 +576,7 @@ export default function FreeAgency() {
                                 playerId={p.playerId}
                                 contracts={[p]}
                                 imageExtension="png"
+                                avatarOnly
                                 className="!w-8 !h-8 min-w-[2rem] min-h-[2rem] max-w-[2rem] max-h-[2rem] rounded-full overflow-hidden shadow object-cover"
                                 cloudinaryTransform="f_auto,q_auto,w_96"
                               />
@@ -647,6 +649,7 @@ export default function FreeAgency() {
                   <PlayerProfileCard
                     playerId={p.playerId}
                     expanded={false}
+                    avatarOnly
                     className="w-12 h-12 rounded-full overflow-hidden shadow"
                   />
                   <div className="flex-1">
@@ -760,6 +763,7 @@ export default function FreeAgency() {
                           <PlayerProfileCard
                             playerId={p.playerId}
                             expanded={false}
+                            avatarOnly
                             className="w-8 h-8 rounded-full overflow-hidden shadow"
                           />
                         </div>

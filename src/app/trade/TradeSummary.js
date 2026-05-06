@@ -669,6 +669,7 @@ const TradeSummary = ({
                                 playerId={player.id}
                                 imageExtension="png"
                                 expanded={false}
+                                avatarOnly
                                 className="w-20 h-20 object-contain"
                                 ktcPerDollar={salaryKtcRatio ?? ratiosCtx.ktcPerDollar}
                                 usePositionRatios={usePositionRatios ?? ratiosCtx.usePositionRatios}

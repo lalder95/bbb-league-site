@@ -456,6 +456,7 @@ function TeamSection({
                                   playerId={player.id}
                                   imageExtension="png"
                                   expanded={false}
+                                  avatarOnly
                                   className="w-14 h-14"
                                   ktcPerDollar={ktcPerDollar}
                                   usePositionRatios={usePositionRatios}

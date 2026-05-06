@@ -32,14 +32,18 @@ export default function Analytics() {
   useEffect(() => {
     async function findBBBLeague() {
       try {
-        // Get current NFL season
         const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
         if (!seasonResponse.ok) throw new Error('Failed to fetch NFL state');
         const seasonState = await seasonResponse.json();
         const currentSeason = seasonState.season;
+        // In the offseason, use the prior completed season for matchup data
+        const isOffseason = seasonState.season_type === 'off' || (seasonState.week || 0) === 0;
+        const dataSeason = isOffseason
+          ? (parseInt(currentSeason) - 1).toString()
+          : currentSeason;
 
-        // Get user's leagues for the current season
-        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${currentSeason}`);
+        // Get user's leagues for the data season
+        const userLeaguesResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${dataSeason}`);
         if (!userLeaguesResponse.ok) throw new Error('Failed to fetch user leagues');
         const userLeagues = await userLeaguesResponse.json();
 
@@ -56,7 +60,7 @@ export default function Analytics() {
 
         // If not found, try previous season
         if (bbbLeagues.length === 0) {
-          const prevSeason = (parseInt(currentSeason) - 1).toString();
+          const prevSeason = (parseInt(dataSeason) - 1).toString();
           const prevSeasonResponse = await fetch(`https://api.sleeper.app/v1/user/${USER_ID}/leagues/nfl/${prevSeason}`);
           if (prevSeasonResponse.ok) {
             const prevSeasonLeagues = await prevSeasonResponse.json();
@@ -320,30 +324,31 @@ export default function Analytics() {
     async function fetchPlayerPoints() {
       setPointsLoading(true);
       try {
-        // Get current season and week from Sleeper API
         const stateResp = await fetch('https://api.sleeper.app/v1/state/nfl');
         const state = await stateResp.json();
-        const currentWeek = state.week;
+        // In the offseason week is 0 — use full 18-week season instead
+        const rawWeek = typeof state?.week === 'number' ? state.week : 18;
+        const currentWeek = rawWeek > 0 ? rawWeek : 18;
 
-        // Fetch all rosters to get all player IDs in the league
-        const rostersResp = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`);
-        const rosters = await rostersResp.json();
-        const allPlayerIds = Array.from(new Set(rosters.flatMap(r => r.players || [])));
+        const totals = {}; // playerId → total points
+        const weeks  = {}; // playerId → weeks with points > 0 (matches player-performance PPG logic)
 
-        // Fetch weekly points for each player for all weeks up to currentWeek
-        const pointsMap = {};
         for (let week = 1; week <= currentWeek; week++) {
           const matchupsResp = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
+          if (!matchupsResp.ok) continue;
           const matchups = await matchupsResp.json();
+          if (!Array.isArray(matchups)) continue;
           matchups.forEach(m => {
             const pts = m.players_points || {};
             Object.entries(pts).forEach(([pid, val]) => {
-              if (!pointsMap[pid]) pointsMap[pid] = [];
-              pointsMap[pid][week - 1] = typeof val === 'number' ? val : 0;
+              const v = typeof val === 'number' ? val : 0;
+              totals[pid] = (totals[pid] || 0) + v;
+              if (v > 0) weeks[pid] = (weeks[pid] || 0) + 1;
             });
           });
         }
-        setPlayerPointsMap(pointsMap);
+        // Store as { totals, weeks } so getAvgPoints can divide correctly
+        setPlayerPointsMap({ totals, weeks });
       } catch (err) {
         setPlayerPointsMap({});
       } finally {
@@ -353,12 +358,12 @@ export default function Analytics() {
     fetchPlayerPoints();
   }, [leagueId]);
 
-  // --- Helper: Get average points for a player ---
+  // --- Helper: Get PPG for a player (excludes zero-point weeks, matching player-performance) ---
   function getAvgPoints(playerId) {
-    const arr = playerPointsMap[playerId] || [];
-    const nums = arr.filter(x => typeof x === 'number' && !isNaN(x));
-    if (!nums.length) return 0;
-    return nums.reduce((a, b) => a + b, 0) / nums.length;
+    const { totals = {}, weeks = {} } = playerPointsMap || {};
+    const w = weeks[playerId] || 0;
+    if (!w) return 0;
+    return (totals[playerId] || 0) / w;
   }
 
   // --- Prepare scatter data for Salary vs. Avg Points chart ---
@@ -372,18 +377,17 @@ export default function Analytics() {
         p.position === selectedPosition && // <-- position filter added
         !isNaN(parseFloat(p.curYear))
       )
-      .map(p => {
+      .flatMap(p => {
         const avgPoints = getAvgPoints(p.playerId);
+        if (avgPoints < 0.1) return [];
         const curYear = parseFloat(p.curYear);
-        // Clamp to small positive values for log scale
         const EPS_Y = 0.01;
-        const EPS_X = 0.01;
-        return {
+        return [{
           ...p,
           curYear: Math.max(curYear, EPS_Y),
-          avgPoints: Math.max(avgPoints, EPS_X),
+          avgPoints,
           playerName: p.playerName || '',
-        };
+        }];
       }), [players, playerPointsMap, selectedTeam, selectedPosition]
   );
 

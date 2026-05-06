@@ -416,6 +416,79 @@ export async function deleteAnnouncement(id) {
   }
 }
 
+// Rule Changes helpers
+async function getRuleChangesCollection() {
+  const db = await getDatabase();
+  return db.collection('ruleChanges');
+}
+
+export async function addRuleChange({ description, effectiveYear, createdBy }) {
+  try {
+    if (!description || !effectiveYear) {
+      return { success: false, error: 'description and effectiveYear are required' };
+    }
+    const year = parseInt(effectiveYear, 10);
+    if (!Number.isFinite(year)) {
+      return { success: false, error: 'effectiveYear must be a valid year' };
+    }
+    const col = await getRuleChangesCollection();
+    const doc = {
+      description: String(description),
+      effectiveYear: year,
+      createdAt: new Date(),
+      createdBy: createdBy || null,
+    };
+    const result = await col.insertOne(doc);
+    return { success: true, insertedId: result.insertedId, ruleChange: { ...doc, _id: result.insertedId } };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getAllRuleChanges() {
+  try {
+    const col = await getRuleChangesCollection();
+    const list = await col.find({}).sort({ effectiveYear: 1, createdAt: -1 }).toArray();
+    return list;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateRuleChange(id, { description, effectiveYear }) {
+  try {
+    if (!id) return { success: false, error: 'id is required' };
+    const _id = typeof id === 'string' ? new ObjectId(id) : id;
+    const col = await getRuleChangesCollection();
+    const update = {};
+    if (description !== undefined) update.description = String(description);
+    if (effectiveYear !== undefined) {
+      const year = parseInt(effectiveYear, 10);
+      if (!Number.isFinite(year)) return { success: false, error: 'Invalid effectiveYear' };
+      update.effectiveYear = year;
+    }
+    if (Object.keys(update).length === 0) {
+      return { success: false, error: 'No fields to update' };
+    }
+    const result = await col.updateOne({ _id }, { $set: update });
+    return { success: true, modifiedCount: result.modifiedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteRuleChange(id) {
+  try {
+    if (!id) return { success: false, error: 'id is required' };
+    const _id = typeof id === 'string' ? new ObjectId(id) : id;
+    const col = await getRuleChangesCollection();
+    const result = await col.deleteOne({ _id });
+    return { success: true, deletedCount: result.deletedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 export async function getBankerFeedThread(tweetKey) {
   try {
     if (!tweetKey) {

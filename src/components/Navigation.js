@@ -150,6 +150,7 @@ export default function Navigation() {
         { href: '/my-team/assistant-gm', label: 'Assistant GM' },
         { href: '/my-team/badges', label: 'Badges' },
         { href: '/my-team/contract-management', label: 'Contract Management' },
+        { href: '/my-team/notes-and-lists', label: 'Notes & Lists' },
       ]
     },
     {
@@ -277,12 +278,6 @@ export default function Navigation() {
 
       if (closeMobileMenu) {
         setIsMenuOpen(false);
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            setSelectedPlayerId(item.playerId);
-          });
-        });
-        return;
       }
 
       setSelectedPlayerId(item.playerId);
@@ -512,7 +507,7 @@ export default function Navigation() {
                     />
                   </div>
                   {showResults && (searchQuery.length > 0 || loadingPlayers) && (
-                    <div className="mt-2 bg-black/90 border border-white/10 rounded-xl max-h-80 overflow-auto">
+                    <div ref={resultsRef} className="mt-2 bg-black/90 border border-white/10 rounded-xl max-h-80 overflow-auto">
                       <div className="p-2">
                         {pageResults.length > 0 && (
                           <div className="mb-2">
@@ -618,16 +613,19 @@ export default function Navigation() {
         )}
         {/* Player quick view modal */}
         {selectedPlayerId && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/60" onClick={() => setSelectedPlayerId(null)} aria-hidden />
-            <div className="relative z-[61] w-[95vw] max-w-2xl max-h-[90vh] overflow-auto bg-black/90 border border-white/10 rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-white/80 text-sm">Player Card</div>
-                <button onClick={() => setSelectedPlayerId(null)} className="text-white/70 hover:text-white">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <PlayerProfileCard playerId={selectedPlayerId} expanded={true} />
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70"
+            onClick={() => setSelectedPlayerId(null)}
+          >
+            <div
+              className="bg-transparent p-0 rounded-lg shadow-2xl relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PlayerProfileCard
+                playerId={selectedPlayerId}
+                expanded={true}
+                onExpandClick={() => setSelectedPlayerId(null)}
+              />
             </div>
           </div>
         )}

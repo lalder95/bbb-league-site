@@ -197,6 +197,7 @@ function PlayerCarouselCard({
             playerId={player.id}
             imageExtension="png"
             expanded={false}
+            avatarOnly
             className="h-20 w-20"
           />
         </div>

@@ -5,6 +5,8 @@ import { Download } from 'lucide-react';
 export default function Rules() {
   const [windowHeight, setWindowHeight] = useState(800);
   const [isMobile, setIsMobile] = useState(false);
+  const [ruleChanges, setRuleChanges] = useState([]);
+  const [loadingChanges, setLoadingChanges] = useState(true);
 
   // Update dimensions on window resize
   useEffect(() => {
@@ -16,6 +18,14 @@ export default function Rules() {
     
     // Cleanup
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/rule-changes', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => setRuleChanges(data.ruleChanges || []))
+      .catch(() => {})
+      .finally(() => setLoadingChanges(false));
   }, []);
 
   const handleResize = () => {
@@ -86,6 +96,27 @@ export default function Rules() {
             style={{ height: `${windowHeight}px` }}
             title="BBB League Rulebook"
           />
+        </div>
+
+        {/* Additional Resources */}
+        <div className="mt-6">
+          <h2 className="text-xl font-bold text-[#FF4B1F] mb-4">Upcoming Changes</h2>
+          {loadingChanges ? (
+            <p className="text-white/50 text-sm">Loading...</p>
+          ) : ruleChanges.length === 0 ? (
+            <p className="text-white/50 text-sm">No upcoming rule changes at this time.</p>
+          ) : (
+            <div className="space-y-3">
+              {ruleChanges.map(rc => (
+                <div key={rc._id} className="bg-black/30 rounded-lg border border-white/10 p-4">
+                  <span className="inline-block text-xs font-bold text-[#FF4B1F] bg-[#FF4B1F]/10 border border-[#FF4B1F]/30 rounded px-2 py-0.5 mb-2">
+                    {rc.effectiveYear} Season
+                  </span>
+                  <p className="text-white/90">{rc.description}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Additional Resources */}
