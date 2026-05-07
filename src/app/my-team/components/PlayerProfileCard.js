@@ -2180,7 +2180,7 @@ export default function PlayerProfileCard({
   );
 
   const renderMobileTabRail = () => (
-    <div className="mt-4 flex justify-center gap-2">
+    <div className={`mt-4 flex justify-center gap-2 transition-opacity duration-500 ${flippedCard ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
       {TAB_CONFIG.map((tab) => {
         const Icon = tab.icon;
         const selected = tab.id === activeTab;

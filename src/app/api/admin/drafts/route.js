@@ -44,7 +44,11 @@ const draftSchema = new mongoose.Schema({
     }],
     timestamp: { type: Date, default: Date.now }
   }],
-  blind: { type: Boolean, default: false } // <-- Add this line
+  blind: { type: Boolean, default: false },
+  lastBidFloorEnabled: { type: Boolean, default: true },
+  lastBidFloorHours: { type: Number, default: 24 },
+  autoAddDropped: { type: Boolean, default: false },
+  sleeperLeagueId: { type: String, default: '' }
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -101,7 +105,11 @@ export async function POST(request) {
       players,
       results,
       bidLog,
-      blind: typeof body.blind === 'boolean' ? body.blind : false // <-- Ensure blind is set
+      blind: typeof body.blind === 'boolean' ? body.blind : false,
+      lastBidFloorEnabled: typeof body.lastBidFloorEnabled === 'boolean' ? body.lastBidFloorEnabled : true,
+      lastBidFloorHours: typeof body.lastBidFloorHours === 'number' ? body.lastBidFloorHours : 24,
+      autoAddDropped: typeof body.autoAddDropped === 'boolean' ? body.autoAddDropped : false,
+      sleeperLeagueId: typeof body.sleeperLeagueId === 'string' ? body.sleeperLeagueId.trim() : ''
     };
 
     const draft = await Draft.create(draftData);

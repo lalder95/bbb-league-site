@@ -27,12 +27,14 @@ export default function FreeAgency() {
   const [leagueId, setLeagueId] = useState(null);
   // Default sort for all tables: KTC descending
   const [sortConfig, setSortConfig] = useState({ key: 'ktcValue', direction: 'desc' });
-  const [positionSortConfig, setPositionSortConfig] = useState({ key: 'ktcValue', direction: 'desc' });
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
-  const [positionPages, setPositionPages] = useState({}); // { QB: 1, RB: 1, ... }
-  const [teamPages, setTeamPages] = useState({});         // { TeamA: 1, TeamB: 1, ... }
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterPosition, setFilterPosition] = useState('All');
+  const [filterTeam, setFilterTeam] = useState('All');
+  const [filterRFA, setFilterRFA] = useState('All');
+  const [filterTag, setFilterTag] = useState('All');
 
   // Detect mobile
   useEffect(() => {
@@ -245,21 +247,6 @@ export default function FreeAgency() {
     });
   }
 
-  // Sorting helper for position tables
-  function sortPlayersByPosition(players, key, direction) {
-    return [...players].sort((a, b) => {
-      let aValue = a[key];
-      let bValue = b[key];
-      if (key === 'ktcValue' || key === 'age') {
-        aValue = aValue === null ? -1 : Number(aValue);
-        bValue = bValue === null ? -1 : Number(bValue);
-      }
-      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }
-
   // Sort handlers
   const handleSort = (key) => {
     setSortConfig((prev) => {
@@ -270,28 +257,29 @@ export default function FreeAgency() {
     });
   };
 
+  // Available teams for filter dropdown
+  const availableTeams = Array.from(new Set(freeAgents.map(p => p.team))).sort();
+
+  // Apply filters and search
+  const filteredFreeAgents = freeAgents.filter(p => {
+    if (searchQuery && !p.playerName?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (filterPosition !== 'All' && p.position !== filterPosition) return false;
+    if (filterTeam !== 'All' && p.team !== filterTeam) return false;
+    if (filterRFA !== 'All') {
+      const isRFA = String(p.rfaEligible).toLowerCase() === 'true';
+      if (filterRFA === 'Yes' && !isRFA) return false;
+      if (filterRFA === 'No' && isRFA) return false;
+    }
+    if (filterTag !== 'All') {
+      const isTag = String(p.franchiseTagEligible).toLowerCase() === 'true';
+      if (filterTag === 'Yes' && !isTag) return false;
+      if (filterTag === 'No' && isTag) return false;
+    }
+    return true;
+  });
+
   // Sorted data
-  const sortedFreeAgents = sortPlayers(freeAgents, sortConfig.key);
-
-  // For position and team breakdowns, sort by playerName
-  const faByPosition = ['QB', 'RB', 'WR', 'TE'].map(pos => ({
-    pos,
-    players: sortPlayersByPosition(
-      freeAgents.filter(p => p.position === pos),
-      positionSortConfig.key,
-      positionSortConfig.direction
-    )
-  }));
-
-  const teams = Array.from(new Set(freeAgents.map(p => p.team))).sort();
-  const faByTeam = teams.map(team => ({
-    team,
-    players: sortPlayers(
-      freeAgents.filter(p => p.team === team),
-      sortConfig.key,
-      sortConfig.direction
-    )
-  }));
+  const sortedFreeAgents = sortPlayers(filteredFreeAgents, sortConfig.key);
 
   // Pagination logic
   const itemsPerPage = isMobile ? 10 : 25;
@@ -301,28 +289,15 @@ export default function FreeAgency() {
     currentPage * itemsPerPage
   );
 
-  // Reset page if year changes or filter changes
+  // Reset page if year, filters, search, or sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [year, sortConfig, isMobile]);
+  }, [year, sortConfig, isMobile, searchQuery, filterPosition, filterTeam, filterRFA, filterTag]);
 
-  // Reset position/team pages when year, isMobile, or player data changes
+  // Reset team filter when year changes
   useEffect(() => {
-    setPositionPages({});
-    setTeamPages({});
-  }, [year, isMobile, players]);
-
-  // Helper to get paginated players for a group
-  function getPaginated(players, page) {
-    const itemsPerPage = isMobile ? 10 : 25;
-    const totalPages = Math.ceil(players.length / itemsPerPage);
-    const currentPage = Math.min(page || 1, totalPages || 1);
-    return {
-      paginated: players.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
-      totalPages,
-      currentPage,
-    };
-  }
+    setFilterTeam('All');
+  }, [year]);
 
   if (loading) return (
     <div className="min-h-screen bg-[#001A2B] flex items-center justify-center">
@@ -395,249 +370,58 @@ export default function FreeAgency() {
           </select>
         </div>
 
-        {/* Position Breakdown */}
-        <section className="bg-black/40 border border-[#FF4B1F]/30 rounded-xl p-6 mb-10">
-          <h2 className="text-2xl font-bold text-[#FF4B1F] mb-6">Free Agents by Position</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {faByPosition.map(({ pos, players }) => {
-              const { paginated, totalPages, currentPage } = getPaginated(players, positionPages[pos] || 1);
-              return (
-                <div key={pos} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold text-white ${getPositionColor(pos)}`}>{pos}</span>
-                    <span className="font-semibold text-white">{pos} ({players.length})</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-white/80">
-                      <thead>
-                        <tr>
-                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                            key: 'playerName',
-                            direction: prev.key === 'playerName' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                          }))}>
-                            Player {positionSortConfig.key === 'playerName' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                          {/* Team column hidden on mobile */}
-                          {!isMobile && (
-                            <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                              key: 'team',
-                              direction: prev.key === 'team' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                            }))}>
-                              Team {positionSortConfig.key === 'team' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                            </th>
-                          )}
-                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                            key: 'rfaEligible',
-                            direction: prev.key === 'rfaEligible' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                          }))}>
-                            RFA? {positionSortConfig.key === 'rfaEligible' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                            key: 'franchiseTagEligible',
-                            direction: prev.key === 'franchiseTagEligible' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'asc'
-                          }))}>
-                            Tag? {positionSortConfig.key === 'franchiseTagEligible' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                          <th className="p-2 text-left cursor-pointer" onClick={() => setPositionSortConfig(prev => ({
-                            key: 'ktcValue',
-                            direction: prev.key === 'ktcValue' ? (prev.direction === 'asc' ? 'desc' : 'asc') : 'desc'
-                          }))}>
-                            KTC {positionSortConfig.key === 'ktcValue' && (positionSortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginated.length === 0 && (
-                          <tr>
-                            <td colSpan={isMobile ? 4 : 5} className="text-white/40 p-2">No free agents</td>
-                          </tr>
-                        )}
-                        {paginated.map(p => (
-                          <tr key={p.uniqueKey}>
-                            <td className="p-2 flex items-center gap-2">
-                              <PlayerProfileCard
-                                playerId={p.playerId}
-                                contracts={[p]}
-                                imageExtension="png"
-                                avatarOnly
-                                className="!w-9 !h-9 min-w-[2.25rem] min-h-[2.25rem] max-w-[2.25rem] max-h-[2.25rem] rounded-full overflow-hidden shadow object-cover"
-                                cloudinaryTransform="f_auto,q_auto,w_96"
-                              />
-                              <span
-                                className="underline cursor-pointer hover:text-[#FF4B1F]"
-                                onClick={() => setSelectedPlayerId(p.playerId)}
-                              >
-                                {p.playerName}
-                              </span>
-                            </td>
-                            {/* Team column hidden on mobile */}
-                            {!isMobile && <td className="p-2">{p.team}</td>}
-                            <td className="p-2">
-                              {String(p.rfaEligible).toLowerCase() === 'true' ? (
-                                <span className="text-green-400 font-bold">Yes</span>
-                              ) : (
-                                <span className="text-red-400">No</span>
-                              )}
-                            </td>
-                            <td className="p-2">
-                              {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
-                                <span className="text-yellow-400 font-bold">Yes</span>
-                              ) : (
-                                <span className="text-gray-400">No</span>
-                              )}
-                            </td>
-                            <td className="p-2">{p.ktcValue ?? '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {/* Pagination Controls at the bottom */}
-                  {totalPages > 1 && (
-                    <div className="flex justify-between items-center mt-2">
-                      <button
-                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
-                        onClick={() => setPositionPages(p => ({ ...p, [pos]: Math.max(1, (p[pos] || 1) - 1) }))}
-                        disabled={currentPage === 1}
-                      >Prev</button>
-                      <span className="text-white/60 text-xs">Page {currentPage} of {totalPages}</span>
-                      <button
-                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
-                        onClick={() => setPositionPages(p => ({ ...p, [pos]: Math.min(totalPages, (p[pos] || 1) + 1) }))}
-                        disabled={currentPage === totalPages}
-                      >Next</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Team Breakdown */}
-        <section className="bg-black/40 border border-white/10 rounded-xl p-6 mb-10">
-          <h2 className="text-2xl font-bold text-[#FF4B1F] mb-6">Free Agents by Team</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            {faByTeam.map(({ team, players }) => {
-              const { paginated, totalPages, currentPage } = getPaginated(players, teamPages[team] || 1);
-              return (
-                <div key={team} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    {teamAvatars[team] ? (
-                      <Image
-                        src={`https://sleepercdn.com/avatars/${teamAvatars[team]}`}
-                        alt={team}
-                        width={24}
-                        height={24}
-                        className="w-6 h-6 rounded-full"
-                        loading="lazy"
-                        unoptimized
-                      />
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-white/10 inline-block"></span>
-                    )}
-                    <span className="font-semibold text-white">{team}</span>
-                    <span className="text-white/40 text-xs">({players.length})</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-white/80">
-                      <thead>
-                        <tr>
-                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('playerName')}>
-                            Player {sortConfig.key === 'playerName' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                          {/* Team column hidden on mobile */}
-                          {!isMobile && (
-                            <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('position')}>
-                              Pos {sortConfig.key === 'position' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                            </th>
-                          )}
-                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('rfaEligible')}>
-                            RFA? {sortConfig.key === 'rfaEligible' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('franchiseTagEligible')}>
-                            Tag? {sortConfig.key === 'franchiseTagEligible' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                          <th className="p-2 text-left cursor-pointer" onClick={() => handleSort('ktcValue')}>
-                            KTC {sortConfig.key === 'ktcValue' && (sortConfig.direction === 'asc' ? '▲' : '▼')}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginated.length === 0 && (
-                          <tr>
-                            <td colSpan={isMobile ? 4 : 5} className="text-white/40 p-2">No free agents</td>
-                          </tr>
-                        )}
-                        {paginated.map(p => (
-                          <tr key={p.uniqueKey}>
-                            <td className="p-2 flex items-center gap-2">
-                              <PlayerProfileCard
-                                playerId={p.playerId}
-                                contracts={[p]}
-                                imageExtension="png"
-                                avatarOnly
-                                className="!w-8 !h-8 min-w-[2rem] min-h-[2rem] max-w-[2rem] max-h-[2rem] rounded-full overflow-hidden shadow object-cover"
-                                cloudinaryTransform="f_auto,q_auto,w_96"
-                              />
-                              <span
-                                className="underline cursor-pointer hover:text-[#FF4B1F]"
-                                onClick={() => setSelectedPlayerId(p.playerId)}
-                              >
-                                {p.playerName}
-                              </span>
-                            </td>
-                            {/* Team column hidden on mobile */}
-                            {!isMobile && (
-                              <td className="p-2">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white ${getPositionColor(p.position)}`}>{p.position}</span>
-                              </td>
-                            )}
-                            <td className="p-2">
-                              {String(p.rfaEligible).toLowerCase() === 'true' ? (
-                                <span className="text-green-400 font-bold">Yes</span>
-                              ) : (
-                                <span className="text-red-400">No</span>
-                              )}
-                            </td>
-                            <td className="p-2">
-                              {String(p.franchiseTagEligible).toLowerCase() === 'true' ? (
-                                <span className="text-yellow-400 font-bold">Yes</span>
-                              ) : (
-                                <span className="text-gray-400">No</span>
-                              )}
-                            </td>
-                            <td className="p-2">{p.ktcValue ?? '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {/* Pagination Controls at the bottom */}
-                  {totalPages > 1 && (
-                    <div className="flex justify-between items-center mt-2">
-                      <button
-                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
-                        onClick={() => setTeamPages(p => ({ ...p, [team]: Math.max(1, (p[team] || 1) - 1) }))}
-                        disabled={currentPage === 1}
-                      >Prev</button>
-                      <span className="text-white/60 text-xs">Page {currentPage} of {totalPages}</span>
-                      <button
-                        className="px-2 py-0.5 rounded bg-[#FF4B1F] text-white text-xs disabled:opacity-50"
-                        onClick={() => setTeamPages(p => ({ ...p, [team]: Math.min(totalPages, (p[team] || 1) + 1) }))}
-                        disabled={currentPage === totalPages}
-                      >Next</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Full Table */}
+        {/* All Free Agents */}
         <section className="bg-black/30 border border-white/10 rounded-xl p-8 mb-10">
           <h2 className="text-2xl font-bold text-[#FF4B1F] mb-4">All Free Agents ({faYear})</h2>
+          {/* Filters */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="Search player..."
+              className="bg-black/40 border border-white/20 rounded px-3 py-1.5 text-white text-sm placeholder-white/40 focus:outline-none focus:border-[#FF4B1F]"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            <select
+              className="bg-black/40 border border-white/20 rounded px-3 py-1.5 text-white text-sm"
+              value={filterPosition}
+              onChange={e => setFilterPosition(e.target.value)}
+            >
+              <option value="All">All Positions</option>
+              <option value="QB">QB</option>
+              <option value="RB">RB</option>
+              <option value="WR">WR</option>
+              <option value="TE">TE</option>
+            </select>
+            <select
+              className="bg-black/40 border border-white/20 rounded px-3 py-1.5 text-white text-sm"
+              value={filterTeam}
+              onChange={e => setFilterTeam(e.target.value)}
+            >
+              <option value="All">All Teams</option>
+              {availableTeams.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <select
+              className="bg-black/40 border border-white/20 rounded px-3 py-1.5 text-white text-sm"
+              value={filterRFA}
+              onChange={e => setFilterRFA(e.target.value)}
+            >
+              <option value="All">RFA: All</option>
+              <option value="Yes">RFA: Yes</option>
+              <option value="No">RFA: No</option>
+            </select>
+            <select
+              className="bg-black/40 border border-white/20 rounded px-3 py-1.5 text-white text-sm"
+              value={filterTag}
+              onChange={e => setFilterTag(e.target.value)}
+            >
+              <option value="All">Tag: All</option>
+              <option value="Yes">Tag: Yes</option>
+              <option value="No">Tag: No</option>
+            </select>
+          </div>
           {/* Mobile Card Layout */}
           {isMobile ? (
             <div className="flex flex-col gap-4">

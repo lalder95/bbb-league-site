@@ -32,7 +32,9 @@ export function getPlayerEndTime(
   playerId,
   draftBlind = false,
   draftTimeZone = 'America/Chicago',
-  draftEndDate = null
+  draftEndDate = null,
+  lastBidFloorEnabled = true,
+  lastBidFloorHours = 24
 ) {
   const start = getPlayerStartTime(draftStartDate, startDelay, draftTimeZone);
 
@@ -50,6 +52,11 @@ export function getPlayerEndTime(
   const effectiveDuration = Number(nomDuration || 0) * (1 - reductionPercent);
   const calculatedEnd = new Date(start.getTime() + effectiveDuration * 60 * 1000);
 
+  if (!lastBidFloorEnabled) {
+    return calculatedEnd;
+  }
+
+  const floorMs = Number(lastBidFloorHours) * 60 * 60 * 1000;
   const playerBids = (bidLog || []).filter((bid) => String(bid.playerId) === String(playerId));
   let latestBidTime = null;
   if (playerBids.length > 0) {
@@ -62,7 +69,7 @@ export function getPlayerEndTime(
 
   let minEnd = null;
   if (latestBidTime) {
-    minEnd = new Date(latestBidTime.getTime() + 24 * 60 * 60 * 1000);
+    minEnd = new Date(latestBidTime.getTime() + floorMs);
   }
 
   if (minEnd && minEnd > calculatedEnd) {

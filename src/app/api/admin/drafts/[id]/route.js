@@ -43,7 +43,11 @@ const draftSchema = new mongoose.Schema({
     }],
     timestamp: { type: Date, default: Date.now }
   }],
-  blind: { type: Boolean, default: false } // <-- ADD THIS LINE
+  blind: { type: Boolean, default: false },
+  lastBidFloorEnabled: { type: Boolean, default: true },
+  lastBidFloorHours: { type: Number, default: 24 },
+  autoAddDropped: { type: Boolean, default: false },
+  sleeperLeagueId: { type: String, default: '' }
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -60,6 +64,10 @@ export async function PATCH(request, { params }) {
   if (typeof body.nomDuration === 'number') updateFields.nomDuration = body.nomDuration;
   if (typeof body.state === 'string') updateFields.state = body.state;
   if (typeof body.blind === 'boolean') updateFields.blind = body.blind;
+  if (typeof body.lastBidFloorEnabled === 'boolean') updateFields.lastBidFloorEnabled = body.lastBidFloorEnabled;
+  if (typeof body.lastBidFloorHours === 'number') updateFields.lastBidFloorHours = body.lastBidFloorHours;
+  if (typeof body.autoAddDropped === 'boolean') updateFields.autoAddDropped = body.autoAddDropped;
+  if (typeof body.sleeperLeagueId === 'string') updateFields.sleeperLeagueId = body.sleeperLeagueId.trim();
 
   if (Array.isArray(body.players)) {
     updateFields.players = body.players.map(p => ({

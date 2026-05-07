@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { formatInTimeZone } from 'date-fns-tz';
 import Papa from 'papaparse';
 import Image from 'next/image';
+import PlayerProfileCard from '@/app/my-team/components/PlayerProfileCard';
 import {
   getDraftTimeZone,
   getPlayerEndTime,
@@ -260,6 +261,9 @@ export default function FreeAgentAuctionPage() {
   const [adminToolStartDelays, setAdminToolStartDelays] = useState({});
   const [adminToolStartDate, setAdminToolStartDate] = useState('');
   const [adminToolEndDate, setAdminToolEndDate] = useState('');
+  const [adminToolLastBidFloorEnabled, setAdminToolLastBidFloorEnabled] = useState(true);
+  const [adminToolLastBidFloorHours, setAdminToolLastBidFloorHours] = useState('24');
+  const [profileCardPlayerId, setProfileCardPlayerId] = useState(null);
   const initialLoadDone = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -286,7 +290,7 @@ export default function FreeAgentAuctionPage() {
         const result = draft.results?.find(r => r.playerId === p.playerId);
         const contractPoints = result ? Number(result.contractPoints) : 0;
         const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
-          const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate);
+          const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
         let group = 'Ended';
         if (now < playerStartTime) group = 'Upcoming';
         else if (now >= playerStartTime && now < playerEndTime) group = 'Active';
@@ -430,6 +434,22 @@ export default function FreeAgentAuctionPage() {
     }, 1000);
     return () => clearInterval(interval);
   }, [draft?.startDate, draft?.timeZone]);
+
+  // Auto-add dropped players polling (every 5 minutes)
+  useEffect(() => {
+    if (!draft?._id || !draft?.autoAddDropped || !draft?.sleeperLeagueId) return;
+    const syncDropped = async () => {
+      try {
+        await fetch(`/api/admin/drafts/${draft._id}/sync-dropped-players`, { method: 'POST' });
+        await fetchDraft();
+      } catch {
+        // silently ignore polling errors
+      }
+    };
+    syncDropped(); // run immediately on mount / when draft changes
+    const interval = setInterval(syncDropped, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [draft?._id, draft?.autoAddDropped, draft?.sleeperLeagueId]);
 
   const handleBid = async () => {
     if (!isUserInDraft(session, draft)) {
@@ -820,6 +840,8 @@ export default function FreeAgentAuctionPage() {
     const draftTimeZone = getDraftTimeZone(draft);
     setAdminToolStartDate(formatDraftDateTimeInput(draft.startDate, draftTimeZone));
     setAdminToolEndDate(formatDraftDateTimeInput(draft.endDate, draftTimeZone));
+    setAdminToolLastBidFloorEnabled(draft.lastBidFloorEnabled ?? true);
+    setAdminToolLastBidFloorHours(String(draft.lastBidFloorHours ?? 24));
   }, [showAdminToolsModal, draft]);
 
   const contractedPlayerIdSet = React.useMemo(
@@ -900,8 +922,43 @@ export default function FreeAgentAuctionPage() {
     await updateDraftPlayers(nextPlayers, nextResults, nextBidLog);
   };
 
-  const handleAdminUpdateSchedule = async () => {
+  const handleAdminUpdateBidFloor = async () => {
     if (!draft?._id) return;
+
+    const hours = Number(adminToolLastBidFloorHours);
+    if (!Number.isFinite(hours) || hours < 1) {
+      setAdminToolError('Please enter a valid floor duration (minimum 1 hour).');
+      return;
+    }
+
+    setAdminToolSaving(true);
+    setAdminToolError('');
+
+    try {
+      const patchRes = await fetch(`/api/admin/drafts/${draft._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lastBidFloorEnabled: adminToolLastBidFloorEnabled,
+          lastBidFloorHours: hours
+        })
+      });
+
+      if (!patchRes.ok) {
+        throw new Error(await patchRes.text());
+      }
+
+      const updatedDraft = await patchRes.json();
+      setDraft(updatedDraft);
+      setSuccess('Bid floor settings updated.');
+    } catch (err) {
+      setAdminToolError(err.message || 'Failed to update bid floor settings.');
+    } finally {
+      setAdminToolSaving(false);
+    }
+  };
+
+  const handleAdminUpdateSchedule = async () => {    if (!draft?._id) return;
 
     const draftTimeZone = getDraftTimeZone(draft);
     const nextStartDate = adminToolStartDate ? fromZonedTime(adminToolStartDate, draftTimeZone).toISOString() : '';
@@ -984,8 +1041,8 @@ export default function FreeAgentAuctionPage() {
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
-        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
+        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
+        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
       }
       if (sortConfig.key === 'countdown') {
         const now = getCurrentTime();
@@ -993,8 +1050,8 @@ export default function FreeAgentAuctionPage() {
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
-        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate);
+        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
+        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
         aValue = aEnd - now;
         bValue = bEnd - now;
       }
@@ -1028,7 +1085,7 @@ export default function FreeAgentAuctionPage() {
       const result = draft.results?.find(r => r.playerId === p.playerId);
       const contractPoints = result ? Number(result.contractPoints) : 0;
       const start = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
-      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate);
+      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
 
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         groups.Ended.push(p);
@@ -1086,7 +1143,9 @@ export default function FreeAgentAuctionPage() {
       player.playerId,
       draft.blind,
       draftTimeZone,
-      draft.endDate
+      draft.endDate,
+      draft?.lastBidFloorEnabled ?? true,
+      draft?.lastBidFloorHours ?? 24
     );
     const now = getCurrentTime();
 
@@ -1201,20 +1260,23 @@ export default function FreeAgentAuctionPage() {
       ? `$${view.salary} / ${view.years}y`
       : 'No bids yet';
 
+    const handleSelectPlayer = () => {
+      setShowConfirm(false);
+      setResetConfirmId(null);
+      if (String(selectedPlayer?.playerId) !== String(player.playerId)) {
+        setBidSalary('');
+        setBidYears('');
+      }
+      setSelectedPlayer(player);
+    };
     return (
-      <button
-        type="button"
-        onClick={() => {
-          setShowConfirm(false);
-          setResetConfirmId(null);
-          if (String(selectedPlayer?.playerId) !== String(player.playerId)) {
-            setBidSalary('');
-            setBidYears('');
-          }
-          setSelectedPlayer(player);
-        }}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleSelectPlayer}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectPlayer(); } }}
         className={cn(
-          'group relative w-full overflow-hidden rounded-[20px] border px-3 py-3 text-left transition-all duration-150',
+          'group relative w-full overflow-hidden rounded-[20px] border px-3 py-3 text-left transition-all duration-150 cursor-pointer',
           isSelected
             ? 'border-[#FFB800]/60 bg-[linear-gradient(90deg,rgba(255,184,0,0.2),rgba(255,184,0,0.06)_18%,rgba(19,40,56,0.9)_52%,rgba(11,23,34,0.98)_100%)] shadow-[0_14px_38px_rgba(0,0,0,0.34)] ring-1 ring-[#FFB800]/35'
             : 'border-white/10 bg-[linear-gradient(90deg,rgba(18,38,53,0.92),rgba(10,21,33,0.98))] hover:border-white/20 hover:bg-[#102638] ring-1 ring-white/5',
@@ -1254,7 +1316,11 @@ export default function FreeAgentAuctionPage() {
 
             <div className="mt-2.5 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-[17px] font-semibold leading-tight tracking-tight text-white">{player.playerName}</div>
+                <button
+                  type="button"
+                  className="truncate text-[17px] font-semibold leading-tight tracking-tight text-white text-left hover:underline transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setProfileCardPlayerId(player.playerId); }}
+                >{player.playerName}</button>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-white/45">
                   <span>KTC {player.ktc || '-'}</span>
                   {Number(player.startDelay || 0) > 0 ? <span>Starts +{Number(player.startDelay || 0)}h</span> : null}
@@ -1298,7 +1364,7 @@ export default function FreeAgentAuctionPage() {
             </div>
           </div>
         </div>
-      </button>
+      </div>
     );
   }
 
@@ -1610,9 +1676,9 @@ export default function FreeAgentAuctionPage() {
           </div>
         )}
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(360px,0.62fr)_minmax(0,1.38fr)] xl:items-stretch 2xl:grid-cols-[minmax(380px,0.58fr)_minmax(0,1.42fr)]">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(320px,0.62fr)_minmax(0,1.38fr)] lg:items-stretch 2xl:grid-cols-[minmax(360px,0.58fr)_minmax(0,1.42fr)]">
           <section className="xl:min-h-0">
-            <div className="flex flex-col rounded-[30px] border border-white/10 bg-white/[0.04] p-3.5 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-4 xl:h-[calc(100vh-15rem)] xl:min-h-[680px] xl:max-h-[calc(100vh-15rem)] xl:overflow-hidden">
+            <div className="flex flex-col rounded-[30px] border border-white/10 bg-white/[0.04] p-3.5 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-4 lg:h-[calc(100vh-15rem)] lg:min-h-[680px] lg:max-h-[calc(100vh-15rem)] lg:overflow-hidden">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">Marketplace</div>
@@ -1636,14 +1702,14 @@ export default function FreeAgentAuctionPage() {
                 </button>
               </div>
 
-              <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-[26px] border border-white/10 bg-[#020817]/72 p-2.5 xl:overflow-hidden">
+              <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-[26px] border border-white/10 bg-[#020817]/72 p-2.5 lg:overflow-hidden">
                 {filteredPlayerCount === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-white/10 px-6 py-14 text-center xl:flex-1 xl:place-content-center">
                     <div className="text-lg font-medium text-white">No players match the current filters</div>
                     <p className="mt-2 text-sm text-white/55">Try clearing the search or switching to another position group.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 overflow-auto pr-1 xl:h-full xl:min-h-0 xl:max-h-full">
+                  <div className="space-y-4 overflow-auto pr-1 lg:h-full lg:min-h-0 lg:max-h-full">
                     {['Active', 'Upcoming', 'Ended'].map(group => (
                       groupedPlayers[group].length > 0 ? (
                         <div key={group} className="space-y-2.5">
@@ -1664,7 +1730,7 @@ export default function FreeAgentAuctionPage() {
             </div>
           </section>
 
-          <aside className="xl:sticky xl:top-6 xl:self-start">
+          <aside className="lg:sticky lg:top-6 lg:self-start">
             <div className="rounded-[30px] border border-white/10 bg-white/[0.04] p-4 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-5">
               {selectedPlayerView ? (
                 <>
@@ -1710,7 +1776,11 @@ export default function FreeAgentAuctionPage() {
                           <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0">
                               <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Selected player</div>
-                              <h2 className="mt-2 truncate text-3xl font-semibold tracking-tight text-white sm:text-[38px]">{selectedPlayer.playerName}</h2>
+                              <button
+                                type="button"
+                                className="mt-2 block w-full truncate text-left text-3xl font-semibold tracking-tight text-white hover:underline transition-colors sm:text-[38px]"
+                                onClick={() => setProfileCardPlayerId(selectedPlayer.playerId)}
+                              >{selectedPlayer.playerName}</button>
                             </div>
                             <div className="rounded-[18px] border border-cyan-300/20 bg-[#08111f]/95 px-4 py-3 text-center shadow-lg shadow-black/20">
                               <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/45">KTC</div>
@@ -2414,6 +2484,46 @@ export default function FreeAgentAuctionPage() {
               </div>
 
               <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Bid floor settings</div>
+                    <h3 className="mt-2 text-lg font-semibold">Last-bid floor</h3>
+                    <p className="mt-1 text-sm text-white/55">Minimum time after any bid before a player can close (non-blind only).</p>
+                  </div>
+                  <SurfaceButton tone="blue" onClick={handleAdminUpdateBidFloor} disabled={adminToolSaving}>
+                    {adminToolSaving ? 'Saving…' : 'Save floor'}
+                  </SurfaceButton>
+                </div>
+                <div className="mt-5 space-y-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adminToolLastBidFloorEnabled}
+                      onChange={(e) => setAdminToolLastBidFloorEnabled(e.target.checked)}
+                      className="form-checkbox rounded"
+                    />
+                    <span className="text-sm text-white/80">Enable last-bid floor</span>
+                  </label>
+                  {adminToolLastBidFloorEnabled && (
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50 whitespace-nowrap">Floor duration (hours)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={adminToolLastBidFloorHours}
+                        onChange={(e) => setAdminToolLastBidFloorHours(e.target.value)}
+                        className="w-28 rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                      />
+                    </div>
+                  )}
+                  <div className="text-xs text-white/45">
+                    Current: {draft?.lastBidFloorEnabled ?? true ? `Enabled — ${draft?.lastBidFloorHours ?? 24}h floor` : 'Disabled'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Current player pool</div>
@@ -2532,6 +2642,32 @@ export default function FreeAgentAuctionPage() {
             </div>
           </div>
         </ModalShell>
+      )}
+
+      {profileCardPlayerId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setProfileCardPlayerId(null)}
+        >
+          <div
+            className="relative bg-transparent p-0"
+            onClick={e => e.stopPropagation()}
+          >
+            <PlayerProfileCard
+              playerId={profileCardPlayerId}
+              expanded={true}
+              className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
+              teamAvatars={teamAvatars}
+              onExpandClick={() => setProfileCardPlayerId(null)}
+            />
+            <button
+              className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black"
+              onClick={() => setProfileCardPlayerId(null)}
+            >
+              ×
+            </button>
+          </div>
+        </div>
       )}
     </main>
   );

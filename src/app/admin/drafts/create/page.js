@@ -63,6 +63,13 @@ export default function CreateDraftPage() {
   const [error, setError] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'playerName', direction: 'asc' });
   const [blind, setBlind] = useState(false);
+  const [lastBidFloorEnabled, setLastBidFloorEnabled] = useState(true);
+  const [lastBidFloorHours, setLastBidFloorHours] = useState('24');
+  const [autoAddDropped, setAutoAddDropped] = useState(false);
+  const [sleeperLeagueId, setSleeperLeagueId] = useState('');
+  const [sleeperLeagueName, setSleeperLeagueName] = useState('');
+  const [sleeperLeagueDetecting, setSleeperLeagueDetecting] = useState(false);
+  const [sleeperLeagueError, setSleeperLeagueError] = useState('');
   const [playerStartDelays, setPlayerStartDelays] = useState({});
   const [idImportMode, setIdImportMode] = useState('select'); // 'select' | 'deselect'
   const [idImportStats, setIdImportStats] = useState(null); // { total, matched, unmatched }
@@ -70,6 +77,33 @@ export default function CreateDraftPage() {
   const [playerNameSearch, setPlayerNameSearch] = useState('');
   const [rfaFilter, setRfaFilter] = useState('all');
   const [contractFinalYearFilter, setContractFinalYearFilter] = useState('all');
+
+  useEffect(() => {
+    if (!autoAddDropped) return;
+    let cancelled = false;
+    setSleeperLeagueDetecting(true);
+    setSleeperLeagueError('');
+    setSleeperLeagueId('');
+    setSleeperLeagueName('');
+    fetch('/api/sleeper/bbb-league-id')
+      .then(res => res.json())
+      .then(data => {
+        if (cancelled) return;
+        if (data.error) {
+          setSleeperLeagueError(data.error);
+        } else {
+          setSleeperLeagueId(data.leagueId);
+          setSleeperLeagueName(data.leagueName || '');
+        }
+      })
+      .catch(err => {
+        if (!cancelled) setSleeperLeagueError(err.message || 'Failed to detect league.');
+      })
+      .finally(() => {
+        if (!cancelled) setSleeperLeagueDetecting(false);
+      });
+    return () => { cancelled = true; };
+  }, [autoAddDropped]);
 
   useEffect(() => {
     fetch('/api/admin/users')
@@ -296,7 +330,11 @@ export default function CreateDraftPage() {
           players: selectedPlayerObjs,
           results: [],
           bidLog: [],
-          blind
+          blind,
+          lastBidFloorEnabled,
+          lastBidFloorHours: Number(lastBidFloorHours) || 24,
+          autoAddDropped,
+          sleeperLeagueId: sleeperLeagueId.trim()
         })
       });
       if (!res.ok) throw new Error(await res.text());
@@ -592,6 +630,60 @@ export default function CreateDraftPage() {
               />
               <span>If enabled, all bids and bidders will be hidden.</span>
             </label>
+          </div>
+          {!blind && (
+            <div className="space-y-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={lastBidFloorEnabled}
+                  onChange={e => setLastBidFloorEnabled(e.target.checked)}
+                  className="form-checkbox"
+                />
+                <span>Enable last-bid floor (minimum time after a bid before player can close)</span>
+              </label>
+              {lastBidFloorEnabled && (
+                <div className="ml-6 flex items-center gap-3">
+                  <label className="text-sm text-white/80">Floor duration (hours):</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={lastBidFloorHours}
+                    onChange={e => setLastBidFloorHours(e.target.value)}
+                    className="w-24 p-1 rounded bg-white/10 border border-white/10 text-white"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          <div className="space-y-2 border border-white/10 rounded p-3 bg-white/5">
+            <p className="font-semibold text-sm text-white/80">Sleeper Integration</p>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={autoAddDropped}
+                onChange={e => setAutoAddDropped(e.target.checked)}
+                className="form-checkbox"
+              />
+              <span>Automatically add dropped players to the auction</span>
+            </label>
+            {autoAddDropped && (
+              <div className="ml-6 text-sm">
+                {sleeperLeagueDetecting && (
+                  <span className="text-white/50">Detecting Sleeper league…</span>
+                )}
+                {!sleeperLeagueDetecting && sleeperLeagueError && (
+                  <span className="text-red-400">{sleeperLeagueError}</span>
+                )}
+                {!sleeperLeagueDetecting && !sleeperLeagueError && sleeperLeagueId && (
+                  <span className="text-green-400">
+                    Detected: <b>{sleeperLeagueName || sleeperLeagueId}</b>
+                    <span className="ml-2 text-white/40 text-xs">(ID: {sleeperLeagueId})</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <button
             type="submit"
