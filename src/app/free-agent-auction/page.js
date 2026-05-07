@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import Papa from 'papaparse';
 import Image from 'next/image';
 import PlayerProfileCard from '@/app/my-team/components/PlayerProfileCard';
