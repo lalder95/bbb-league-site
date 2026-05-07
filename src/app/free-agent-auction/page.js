@@ -244,7 +244,6 @@ export default function FreeAgentAuctionPage() {
   const [filterPosition, setFilterPosition] = useState('ALL');
   const [searchName, setSearchName] = useState('');
   const [showBoardFiltersModal, setShowBoardFiltersModal] = useState(false);
-  const [isPortraitDevice, setIsPortraitDevice] = useState(false);
   const [showCapModal, setShowCapModal] = useState(false);
   const [bidLogSearch, setBidLogSearch] = useState('');
   const [bidLogBidder, setBidLogBidder] = useState('ALL');
@@ -264,20 +263,19 @@ export default function FreeAgentAuctionPage() {
   const [adminToolLastBidFloorEnabled, setAdminToolLastBidFloorEnabled] = useState(true);
   const [adminToolLastBidFloorHours, setAdminToolLastBidFloorHours] = useState('24');
   const [profileCardPlayerId, setProfileCardPlayerId] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobilePlayerModal, setShowMobilePlayerModal] = useState(false);
+  const [showMobileBidModal, setShowMobileBidModal] = useState(false);
   const initialLoadDone = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
   const isAdmin = session?.user?.role === 'admin';
 
   useEffect(() => {
-    function updateOrientationState() {
-      const isPortrait = window.innerHeight > window.innerWidth;
-      const isSmallViewport = window.innerWidth < 768;
-      setIsPortraitDevice(isPortrait && isSmallViewport);
-    }
-    updateOrientationState();
-    window.addEventListener('resize', updateOrientationState);
-    return () => window.removeEventListener('resize', updateOrientationState);
+    function checkMobile() { setIsMobile(window.innerWidth < 768); }
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   useEffect(() => {
@@ -1268,6 +1266,7 @@ export default function FreeAgentAuctionPage() {
         setBidYears('');
       }
       setSelectedPlayer(player);
+      if (isMobile) setShowMobilePlayerModal(true);
     };
     return (
       <div
@@ -1581,49 +1580,33 @@ export default function FreeAgentAuctionPage() {
     );
   }
 
-  if (isPortraitDevice) {
-    return (
-      <main className="min-h-screen bg-[#001A2B] px-4 py-10 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center">
-          <div className="w-full rounded-[32px] border border-white/10 bg-white/[0.04] p-8 text-center shadow-2xl shadow-black/20 backdrop-blur-sm">
-            <div className="text-[11px] uppercase tracking-[0.3em] text-white/45">Free Agent Auction</div>
-            <h1 className="mt-4 text-3xl font-semibold">Rotate your device</h1>
-            <p className="mt-3 text-sm text-white/60">
-              This page is designed for a landscape layout. Rotate your device to continue using the auction board.
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#001A2B] text-white">
       <div className="relative isolate overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,75,31,0.22),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_30%),linear-gradient(180deg,_rgba(2,6,23,0.45),_rgba(2,6,23,0.12))]" />
-        <div className="relative mx-auto max-w-[1700px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
-          <div className="rounded-[30px] border border-white/10 bg-white/[0.045] p-5 shadow-2xl shadow-black/20 backdrop-blur-sm sm:p-6">
-            <div className={cn('grid gap-6 xl:items-start', auctionStarted ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(0,1.5fr)_minmax(420px,0.9fr)]')}>
+        <div className="relative mx-auto max-w-[1700px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
+          <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-3.5 shadow-2xl shadow-black/20 backdrop-blur-sm sm:rounded-[30px] sm:p-6">
+            <div className={cn('grid gap-4 xl:items-start sm:gap-6', auctionStarted ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(0,1.5fr)_minmax(420px,0.9fr)]')}>
               <div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/20">
-                    <img src="/logo.png" alt="BBB League" className="h-8 w-8 object-contain" />
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 sm:h-12 sm:w-12 sm:rounded-2xl">
+                    <img src="/logo.png" alt="BBB League" className="h-6 w-6 object-contain sm:h-8 sm:w-8" />
                   </div>
-                  <span className={cn('inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]', draft?.blind ? 'border-violet-400/30 bg-violet-500/15 text-violet-200' : 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200')}>
+                  <span className={cn('inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] sm:px-3 sm:py-1 sm:text-[11px] sm:tracking-[0.2em]', draft?.blind ? 'border-violet-400/30 bg-violet-500/15 text-violet-200' : 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200')}>
                     {draft?.blind ? 'Blind auction' : 'Open auction'}
                   </span>
-                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
+                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70 sm:px-3 sm:py-1 sm:text-[11px] sm:tracking-[0.2em]">
                     {auctionStatus}
                   </span>
-                  <div className="ml-auto flex items-center gap-2">
+                  <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
                     <button
                       type="button"
                       onClick={() => setShowCapModal(true)}
                       title="View cap space"
                       aria-label="View cap space"
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30 sm:h-12 sm:w-12 sm:rounded-2xl"
                     >
-                      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <circle cx="12" cy="12" r="9" />
                         <path d="M12 7v1m0 8v1M9.5 9.5A2.5 2.5 0 0 1 12 8h1a2 2 0 0 1 0 4h-2a2 2 0 0 0 0 4h1.5A2.5 2.5 0 0 0 15 14" />
                       </svg>
@@ -1633,9 +1616,9 @@ export default function FreeAgentAuctionPage() {
                       onClick={() => setShowBidLogModal(true)}
                       title="View bid log"
                       aria-label="View bid log"
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30 sm:h-12 sm:w-12 sm:rounded-2xl"
                     >
-                      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <rect x="4" y="3" width="16" height="18" rx="2" />
                         <line x1="8" y1="8" x2="16" y2="8" />
                         <line x1="8" y1="12" x2="16" y2="12" />
@@ -1648,9 +1631,9 @@ export default function FreeAgentAuctionPage() {
                         onClick={() => setShowAdminToolsModal(true)}
                         title="Admin tools"
                         aria-label="Admin tools"
-                        className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-500/15 text-violet-200 transition hover:bg-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/30"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15 text-violet-200 transition hover:bg-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/30 sm:h-12 sm:w-12 sm:rounded-2xl"
                       >
-                        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                         </svg>
                       </button>
@@ -1662,13 +1645,13 @@ export default function FreeAgentAuctionPage() {
                         title={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
                         aria-label={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
                         className={cn(
-                          'inline-flex h-12 w-12 items-center justify-center rounded-2xl border transition focus-visible:outline-none focus-visible:ring-2',
+                          'inline-flex h-9 w-9 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 sm:h-12 sm:w-12 sm:rounded-2xl',
                           showResetButtons
                             ? 'border-amber-400/30 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 focus-visible:ring-amber-400/30'
                             : 'border-white/10 bg-black/20 text-white/70 hover:bg-white/10 hover:text-white focus-visible:ring-[#FF4B1F]/30'
                         )}
                       >
-                        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                           <path d="M3 3v5h5" />
                         </svg>
@@ -1677,39 +1660,39 @@ export default function FreeAgentAuctionPage() {
                   </div>
                 </div>
 
-                <div className="mt-5">
-                  <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Free Agent Auction</h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/62">
+                <div className="mt-3 sm:mt-5">
+                  <h1 className="text-2xl font-semibold tracking-tight sm:text-4xl">Free Agent Auction</h1>
+                  <p className="mt-1.5 max-w-2xl text-xs leading-5 text-white/62 sm:mt-2 sm:text-sm sm:leading-6">
                     Scan the board, lock onto a target, and work the contract panel without leaving the market view.
                   </p>
                 </div>
               </div>
 
               {!auctionStarted && (
-                <div className="rounded-[26px] border border-white/10 bg-[#020817]/70 p-4 shadow-lg shadow-black/20">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="rounded-[22px] border border-white/10 bg-[#020817]/70 p-3 shadow-lg shadow-black/20 sm:rounded-[26px] sm:p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
                     <div>
                       <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">
                         {auctionStarted ? 'Auction status' : 'Auction countdown'}
                       </div>
-                      <div className="mt-2 text-3xl font-semibold tracking-tight text-white">
+                      <div className="mt-1.5 text-2xl font-semibold tracking-tight text-white sm:mt-2 sm:text-3xl">
                         {auctionStarted ? 'Live now' : (countdown || 'Pending')}
                       </div>
                     </div>
-                    <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[11px] uppercase tracking-[0.22em] text-white/55">
+                    <div className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-white/55 sm:px-3 sm:py-1.5 sm:text-[11px] sm:tracking-[0.22em]">
                       {draftTimeZone}
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[18px] border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/62">
+                  <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-3 sm:grid-cols-2">
+                    <div className="rounded-[16px] border border-white/10 bg-black/20 px-3 py-2.5 text-xs text-white/62 sm:rounded-[18px] sm:py-3 sm:text-sm">
                       <div className="text-[10px] uppercase tracking-[0.2em] text-white/42">Window</div>
                       <div className="mt-1.5">Start: {draft?.startDate ? formatDraftDateTime(draft.startDate, draftTimeZone) : '—'}</div>
                       <div className="mt-1">End: {draft?.endDate ? formatDraftDateTime(draft.endDate, draftTimeZone) : '—'}</div>
                     </div>
-                    <div className="rounded-[18px] border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/62">
+                    <div className="rounded-[16px] border border-white/10 bg-black/20 px-3 py-2.5 text-xs text-white/62 sm:rounded-[18px] sm:py-3 sm:text-sm">
                       <div className="text-[10px] uppercase tracking-[0.2em] text-white/42">Your room</div>
-                      <div className="mt-1.5 text-xl font-semibold text-white">
+                      <div className="mt-1.5 text-lg font-semibold text-white sm:text-xl">
                         {currentUserCap ? formatCapSpace(currentUserCap.curYear.remaining) : '—'}
                       </div>
                       <div className="mt-1 text-xs text-white/50">
@@ -1724,7 +1707,7 @@ export default function FreeAgentAuctionPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1700px] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1700px] px-2 py-4 sm:px-4 sm:py-6 lg:px-8 lg:py-8">
         {success && (
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
             {success}
@@ -1736,7 +1719,7 @@ export default function FreeAgentAuctionPage() {
           </div>
         )}
 
-        <div className="mt-6 grid gap-6 grid-cols-[minmax(280px,0.62fr)_minmax(0,1.38fr)] items-stretch 2xl:grid-cols-[minmax(360px,0.58fr)_minmax(0,1.42fr)]">
+        <div className="mt-3 grid gap-2 grid-cols-1 md:grid-cols-[minmax(280px,0.55fr)_minmax(0,1.45fr)] items-stretch sm:mt-6 sm:gap-4 lg:gap-6 2xl:grid-cols-[minmax(360px,0.58fr)_minmax(0,1.42fr)]">
           <section className="xl:min-h-0">
             <div className="flex flex-col rounded-[30px] border border-white/10 bg-white/[0.04] p-3.5 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-4 sm:h-[calc(100vh-15rem)] sm:min-h-[500px] sm:max-h-[calc(100vh-15rem)] sm:overflow-hidden">
               <div className="flex items-start justify-between gap-3">
@@ -1790,7 +1773,7 @@ export default function FreeAgentAuctionPage() {
             </div>
           </section>
 
-          <aside className="sm:sticky sm:top-6 sm:self-start">
+          <aside className="hidden md:block sm:sticky sm:top-6 sm:self-start">
             <div className="rounded-[30px] border border-white/10 bg-white/[0.04] p-4 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-5">
               {selectedPlayerView ? (
                 <>
@@ -2679,6 +2662,195 @@ export default function FreeAgentAuctionPage() {
                 }}
               >
                 Retract bid
+              </SurfaceButton>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+
+      {/* ── Mobile: selected-player modal ──────────────────────────── */}
+      {showMobilePlayerModal && selectedPlayer && selectedPlayerView && (
+        <ModalShell
+          title={selectedPlayer.playerName}
+          subtitle={`${selectedPlayer.position} · KTC ${selectedPlayer.ktc || '—'}`}
+          onClose={() => setShowMobilePlayerModal(false)}
+          maxWidth="max-w-lg"
+        >
+          <div className="space-y-4">
+            {/* Status + countdown */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-white/42">{selectedPlayerView.countdownLabel}</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{playerCountdowns[selectedPlayer.playerId] ?? <span className="text-white/35">—</span>}</div>
+              </div>
+              <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-white/42">Your cap room</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{currentUserCap ? formatCapSpace(currentUserCap.curYear.remaining) : '—'}</div>
+              </div>
+            </div>
+
+            {/* Market info */}
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-3">
+              {!draft?.blind ? (
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Current market</div>
+                    <div className="mt-1.5 text-lg font-semibold text-white">
+                      {selectedPlayerView.result ? `$${selectedPlayerView.salary} / ${selectedPlayerView.years}y` : 'No bids yet'}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-white/40">Score</div>
+                    <div className="mt-1.5 font-mono text-2xl font-bold text-[#FFB800]">{selectedPlayerView.result ? selectedPlayerView.contractScore : '—'}</div>
+                  </div>
+                </div>
+              ) : selectedPlayerView.group === 'Ended' ? (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-200/65">{selectedPlayerView.hasBlindTie ? 'Final tie' : 'Final result'}</div>
+                  <div className="mt-1.5 text-lg font-semibold text-white">
+                    {selectedPlayerView.hasBlindTie ? `Tie at ${selectedPlayerView.contractScore}` : selectedPlayerView.result ? `$${selectedPlayerView.result.salary} / ${selectedPlayerView.result.years}y` : 'No bids'}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Blind market</div>
+                  <div className="mt-1.5 text-base font-semibold text-white">
+                    {selectedPlayerView.userLastBid ? `Your offer: $${selectedPlayerView.userLastBid.salary} / ${selectedPlayerView.userLastBid.years}y` : 'No personal bid yet'}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bid activity */}
+            {(!draft?.blind || selectedPlayerView.group === 'Ended') && selectedPlayerBidActivity.length > 0 && (
+              <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-white/42">Bid activity</div>
+                <div className="mt-3 max-h-[200px] space-y-2 overflow-y-auto pr-1">
+                  {selectedPlayerBidActivity.slice(0, 6).map((bid, index) => (
+                    <div key={`mb-${bid.username}-${bid.timestamp}-${index}`} className="flex items-center justify-between rounded-[14px] border border-white/10 bg-[#08111f]/72 px-3 py-2">
+                      <span className="text-sm text-white/80">{bid.username}</span>
+                      <span className="font-mono text-sm text-sky-200">${bid.salary} / {bid.years}y · <span className="text-[#FFB800]">{bid.contractPoints}</span></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bid CTA */}
+            {selectedPlayerAlreadyRostered ? (
+              <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">You already have this player on an active contract.</div>
+            ) : selectedPlayerView.canBid ? (
+              <SurfaceButton
+                className="w-full"
+                onClick={() => { setShowMobilePlayerModal(false); setShowMobileBidModal(true); }}
+              >
+                Build your bid
+              </SurfaceButton>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-sm text-white/50">{selectedPlayerView.actionLabel}</div>
+            )}
+          </div>
+        </ModalShell>
+      )}
+
+      {/* ── Mobile: bid builder modal ───────────────────────────────── */}
+      {showMobileBidModal && selectedPlayer && selectedPlayerView && (
+        <ModalShell
+          title="Build your offer"
+          subtitle={selectedPlayer.playerName}
+          onClose={() => setShowMobileBidModal(false)}
+          maxWidth="max-w-lg"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-white/55">
+              {draft?.blind ? 'Blind offers stay private until the player closes.' : 'Your contract score must top the current market.'}
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Salary ($)</label>
+                <input
+                  type="number" min={1} max={200} step={0.1}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Salary"
+                  value={bidSalary}
+                  disabled={placingBid || !selectedPlayerView.canBid}
+                  onChange={e => setBidSalary(e.target.value.replace(/[^0-9.]/g, ''))}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Years (1–4)</label>
+                <input
+                  type="number" min={1} max={4} step={1}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Years"
+                  value={bidYears}
+                  disabled={placingBid || !selectedPlayerView.canBid}
+                  onChange={e => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    if (['1','2','3','4'].includes(val) || val === '') setBidYears(val);
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Score breakdown */}
+            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-white/45">Score breakdown</div>
+                {!draft?.blind && <div className="text-xs text-white/45">Current high: {selectedPlayerView.result ? currentHighScore : '—'}</div>}
+              </div>
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10 text-left text-white/55">
+                      <th className="pb-2 pr-4 font-medium">Year</th>
+                      <th className="pb-2 pr-4 font-medium">Salary</th>
+                      <th className="pb-2 pr-4 font-medium">Weight</th>
+                      <th className="pb-2 font-medium">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedBidRows.map(row => (
+                      <tr key={row.year} className="border-b border-white/5 last:border-0">
+                        <td className="py-2 pr-4">Year {row.year}</td>
+                        <td className="py-2 pr-4">{row.salary == null ? <span className="text-white/35">—</span> : `$${row.salary.toFixed(1)}`}</td>
+                        <td className="py-2 pr-4">{row.percent}</td>
+                        <td className="py-2">{row.score == null ? <span className="text-white/35">—</span> : row.score.toFixed(1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Contract score */}
+            <div className="rounded-[22px] border border-white/10 bg-white/[0.04] px-5 py-4 flex items-center justify-between">
+              <div className="text-xs uppercase tracking-[0.18em] text-white/45">Contract score</div>
+              <div className="font-mono text-4xl font-semibold text-[#FFB800]">{selectedBidScore ?? '—'}</div>
+            </div>
+
+            {/* Confirmation */}
+            {!draft?.blind && showConfirm && (
+              <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                Your bid is {selectedBidScore - currentHighScore} above the current high contract score.
+                <div className="mt-3 flex gap-2">
+                  <SurfaceButton tone="yellow" className="flex-1" onClick={() => handleBid()} disabled={placingBid}>Yes, place bid</SurfaceButton>
+                  <SurfaceButton tone="ghost" className="flex-1" onClick={() => setShowConfirm(false)} disabled={placingBid}>Cancel</SurfaceButton>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3">
+              <SurfaceButton
+                className="w-full"
+                onClick={handleBid}
+                disabled={placingBid || !bidSalary || !bidYears || !selectedPlayerView.canBid}
+              >
+                {placingBid ? 'Placing bid…' : 'Place bid'}
+              </SurfaceButton>
+              <SurfaceButton tone="ghost" className="w-full" onClick={() => { setBidSalary(''); setBidYears(''); setShowConfirm(false); }} disabled={placingBid}>
+                Clear inputs
               </SurfaceButton>
             </div>
           </div>
