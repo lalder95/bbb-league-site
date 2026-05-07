@@ -1615,6 +1615,66 @@ export default function FreeAgentAuctionPage() {
                   <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
                     {auctionStatus}
                   </span>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCapModal(true)}
+                      title="View cap space"
+                      aria-label="View cap space"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v1m0 8v1M9.5 9.5A2.5 2.5 0 0 1 12 8h1a2 2 0 0 1 0 4h-2a2 2 0 0 0 0 4h1.5A2.5 2.5 0 0 0 15 14" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBidLogModal(true)}
+                      title="View bid log"
+                      aria-label="View bid log"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="4" y="3" width="16" height="18" rx="2" />
+                        <line x1="8" y1="8" x2="16" y2="8" />
+                        <line x1="8" y1="12" x2="16" y2="12" />
+                        <line x1="8" y1="16" x2="13" y2="16" />
+                      </svg>
+                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminToolsModal(true)}
+                        title="Admin tools"
+                        aria-label="Admin tools"
+                        className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-500/15 text-violet-200 transition hover:bg-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/30"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                        </svg>
+                      </button>
+                    )}
+                    {session?.user?.role === 'admin' && (
+                      <button
+                        type="button"
+                        onClick={() => setShowResetButtons(v => !v)}
+                        title={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
+                        aria-label={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
+                        className={cn(
+                          'inline-flex h-12 w-12 items-center justify-center rounded-2xl border transition focus-visible:outline-none focus-visible:ring-2',
+                          showResetButtons
+                            ? 'border-amber-400/30 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 focus-visible:ring-amber-400/30'
+                            : 'border-white/10 bg-black/20 text-white/70 hover:bg-white/10 hover:text-white focus-visible:ring-[#FF4B1F]/30'
+                        )}
+                      >
+                        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                          <path d="M3 3v5h5" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-5">
@@ -2199,25 +2259,6 @@ export default function FreeAgentAuctionPage() {
           </aside>
         </div>
 
-        <div className="mt-8 rounded-[26px] border border-white/10 bg-[#020817]/72 p-4 shadow-lg shadow-black/20">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Auction actions</div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <SurfaceButton className="w-full" onClick={() => setShowCapModal(true)}>View cap space</SurfaceButton>
-              <SurfaceButton className="w-full" tone="ghost" onClick={() => setShowBidLogModal(true)}>View bid log</SurfaceButton>
-              {isAdmin && (
-                <SurfaceButton className="w-full" tone="purple" onClick={() => setShowAdminToolsModal(true)}>Admin tools</SurfaceButton>
-              )}
-              {session?.user?.role === 'admin' && (
-                <SurfaceButton className="w-full" tone={showResetButtons ? 'yellow' : 'ghost'} onClick={() => setShowResetButtons(v => !v)}>
-                  {showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
-                </SurfaceButton>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
 
       {showBoardFiltersModal && (
