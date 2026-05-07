@@ -272,7 +272,7 @@ export default function FreeAgentAuctionPage() {
   useEffect(() => {
     function updateOrientationState() {
       const isPortrait = window.innerHeight > window.innerWidth;
-      const isSmallViewport = window.innerWidth < 1024;
+      const isSmallViewport = window.innerWidth < 768;
       setIsPortraitDevice(isPortrait && isSmallViewport);
     }
     updateOrientationState();
@@ -1736,9 +1736,9 @@ export default function FreeAgentAuctionPage() {
           </div>
         )}
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(320px,0.62fr)_minmax(0,1.38fr)] lg:items-stretch 2xl:grid-cols-[minmax(360px,0.58fr)_minmax(0,1.42fr)]">
+        <div className="mt-6 grid gap-6 grid-cols-[minmax(280px,0.62fr)_minmax(0,1.38fr)] items-stretch 2xl:grid-cols-[minmax(360px,0.58fr)_minmax(0,1.42fr)]">
           <section className="xl:min-h-0">
-            <div className="flex flex-col rounded-[30px] border border-white/10 bg-white/[0.04] p-3.5 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-4 lg:h-[calc(100vh-15rem)] lg:min-h-[680px] lg:max-h-[calc(100vh-15rem)] lg:overflow-hidden">
+            <div className="flex flex-col rounded-[30px] border border-white/10 bg-white/[0.04] p-3.5 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-4 sm:h-[calc(100vh-15rem)] sm:min-h-[500px] sm:max-h-[calc(100vh-15rem)] sm:overflow-hidden">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">Marketplace</div>
@@ -1762,14 +1762,14 @@ export default function FreeAgentAuctionPage() {
                 </button>
               </div>
 
-              <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-[26px] border border-white/10 bg-[#020817]/72 p-2.5 lg:overflow-hidden">
+              <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-[26px] border border-white/10 bg-[#020817]/72 p-2.5 sm:overflow-hidden">
                 {filteredPlayerCount === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-white/10 px-6 py-14 text-center xl:flex-1 xl:place-content-center">
                     <div className="text-lg font-medium text-white">No players match the current filters</div>
                     <p className="mt-2 text-sm text-white/55">Try clearing the search or switching to another position group.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 overflow-auto pr-1 lg:h-full lg:min-h-0 lg:max-h-full">
+                  <div className="space-y-4 overflow-auto pr-1 sm:h-full sm:min-h-0 sm:max-h-full">
                     {['Active', 'Upcoming', 'Ended'].map(group => (
                       groupedPlayers[group].length > 0 ? (
                         <div key={group} className="space-y-2.5">
@@ -1790,7 +1790,7 @@ export default function FreeAgentAuctionPage() {
             </div>
           </section>
 
-          <aside className="lg:sticky lg:top-6 lg:self-start">
+          <aside className="sm:sticky sm:top-6 sm:self-start">
             <div className="rounded-[30px] border border-white/10 bg-white/[0.04] p-4 shadow-xl shadow-black/10 backdrop-blur-sm sm:p-5">
               {selectedPlayerView ? (
                 <>
