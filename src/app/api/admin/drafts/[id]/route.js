@@ -52,6 +52,12 @@ const draftSchema = new mongoose.Schema({
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
 
+function roundToTenth(value, fallback = 0) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.round(numericValue * 10) / 10;
+}
+
 export async function PATCH(request, { params }) {
   await dbConnect();
   const { id } = params;
@@ -85,9 +91,9 @@ export async function PATCH(request, { params }) {
     updateFields.results = body.results.map(r => ({
       username: r.username,
       playerId: r.playerId,
-      salary: r.salary ?? 0,
+      salary: roundToTenth(r.salary, 0),
       years: r.years ?? 1,
-      contractPoints: r.contractPoints ?? 0,
+      contractPoints: roundToTenth(r.contractPoints, 0),
       state: r.state ?? 'ACTIVE',
       expiration: r.expiration ?? ''
     }));
@@ -98,9 +104,9 @@ export async function PATCH(request, { params }) {
     updateFields.bidLog = body.bidLog.map(b => ({
       username: b.username,
       playerId: b.playerId,
-      salary: b.salary ?? 0,
+      salary: roundToTenth(b.salary, 0),
       years: b.years ?? 1,
-      contractPoints: b.contractPoints ?? 0,
+      contractPoints: roundToTenth(b.contractPoints, 0),
       comments: b.comments ?? '',
       reactions: Array.isArray(b.reactions) ? b.reactions.map(r => ({
         name: r.name ?? '',
