@@ -62,7 +62,8 @@ const draftSchema = new mongoose.Schema({
   lastBidFloorEnabled: { type: Boolean, default: true },
   lastBidFloorHours: { type: Number, default: 24 },
   autoAddDropped: { type: Boolean, default: false },
-  sleeperLeagueId: { type: String, default: '' }
+  sleeperLeagueId: { type: String, default: '' },
+  pendingDroppedPlayers: [playerSchema]
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -94,17 +95,11 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Draft has an invalid startDate.' }, { status: 400 });
     }
 
-    // Get current NFL state to know which weeks to scan
-    const nflStateRes = await fetch('https://api.sleeper.app/v1/state/nfl', { cache: 'no-store' });
-    if (!nflStateRes.ok) {
-      return NextResponse.json({ error: 'Failed to fetch NFL state from Sleeper.' }, { status: 502 });
-    }
-    const nflState = await nflStateRes.json();
-    const currentWeek = Math.min(Number(nflState.week) || 1, 18);
-
-    // Collect all dropped player IDs from transactions at or after auction start
+    // Collect all dropped player IDs from transactions at or after auction start.
+    // Scan weeks 0-18 unconditionally — offseason drops in Sleeper may land in week 0
+    // and the NFL state's current week is unreliable during the off-season.
     const droppedPlayerIds = new Set();
-    for (let week = 1; week <= currentWeek; week++) {
+    for (let week = 0; week <= 18; week++) {
       let txRes;
       try {
         txRes = await fetch(
@@ -145,12 +140,15 @@ export async function POST(request, { params }) {
       return NextResponse.json({ message: 'No dropped players found since auction start.', added: 0 });
     }
 
-    // Filter out players already in the draft
-    const existingPlayerIds = new Set((draft.players || []).map(p => String(p.playerId)));
+    // Filter out players already in the draft or pending queue
+    const existingPlayerIds = new Set([
+      ...(draft.players || []).map(p => String(p.playerId)),
+      ...(draft.pendingDroppedPlayers || []).map(p => String(p.playerId))
+    ]);
     const newPlayerIds = Array.from(droppedPlayerIds).filter(id => !existingPlayerIds.has(id));
 
     if (newPlayerIds.length === 0) {
-      return NextResponse.json({ message: 'All dropped players are already in the draft.', added: 0 });
+      return NextResponse.json({ message: 'All dropped players are already in the draft or pending queue.', added: 0 });
     }
 
     // Load the player pool to enrich metadata
@@ -185,11 +183,11 @@ export async function POST(request, { params }) {
 
     const updatedDraft = await Draft.findByIdAndUpdate(
       id,
-      { $push: { players: { $each: playersToAdd } } },
+      { $push: { pendingDroppedPlayers: { $each: playersToAdd } } },
       { new: true }
     );
 
-    return NextResponse.json({ message: `Added ${playersToAdd.length} player(s).`, added: playersToAdd.length, draft: updatedDraft });
+    return NextResponse.json({ message: `Queued ${playersToAdd.length} player(s) for admin review.`, added: playersToAdd.length, draft: updatedDraft });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

@@ -47,7 +47,8 @@ const draftSchema = new mongoose.Schema({
   lastBidFloorEnabled: { type: Boolean, default: true },
   lastBidFloorHours: { type: Number, default: 24 },
   autoAddDropped: { type: Boolean, default: false },
-  sleeperLeagueId: { type: String, default: '' }
+  sleeperLeagueId: { type: String, default: '' },
+  pendingDroppedPlayers: [playerSchema]
 });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);
@@ -77,6 +78,17 @@ export async function PATCH(request, { params }) {
 
   if (Array.isArray(body.players)) {
     updateFields.players = body.players.map(p => ({
+      playerId: Number(p.playerId),
+      playerName: p.playerName ?? '',
+      position: p.position ?? '',
+      ktc: p.ktc ?? '',
+      status: p.status ?? 'UPCOMING',
+      startDelay: Number(p.startDelay ?? 0)
+    }));
+  }
+
+  if (Array.isArray(body.pendingDroppedPlayers)) {
+    updateFields.pendingDroppedPlayers = body.pendingDroppedPlayers.map(p => ({
       playerId: Number(p.playerId),
       playerName: p.playerName ?? '',
       position: p.position ?? '',

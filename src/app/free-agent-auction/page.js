@@ -135,6 +135,82 @@ function ModalShell({ title, subtitle, onClose, children, maxWidth = 'max-w-2xl'
   );
 }
 
+function AutoFitButtonText({
+  children,
+  className = '',
+  minFontSize = 24,
+  maxFontSize = 38,
+  onClick,
+  ...props
+}) {
+  const buttonRef = useRef(null);
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button || !children) return undefined;
+
+    let frameId = null;
+
+    const fitText = () => {
+      if (!button.isConnected) return;
+
+      const availableWidth = button.clientWidth;
+      if (!availableWidth) return;
+
+      let low = minFontSize;
+      let high = maxFontSize;
+      let best = minFontSize;
+
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        button.style.fontSize = `${mid}px`;
+
+        if (button.scrollWidth <= availableWidth + 1) {
+          best = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+
+      button.style.fontSize = `${best}px`;
+    };
+
+    const queueFit = () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(fitText);
+    };
+
+    queueFit();
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => queueFit())
+      : null;
+
+    resizeObserver?.observe(button);
+    window.addEventListener('resize', queueFit);
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', queueFit);
+    };
+  }, [children, minFontSize, maxFontSize]);
+
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className={cn('block w-full overflow-hidden whitespace-nowrap text-left font-semibold tracking-tight text-white transition-colors hover:underline', className)}
+      style={{ fontSize: `${maxFontSize}px`, lineHeight: 1.05 }}
+      onClick={onClick}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
 function getCurrentTime() {
   return new Date();
 }
@@ -211,6 +287,42 @@ function getDefaultPlayerImage(position) {
   return defaults[String(position || '').toLowerCase()] || '/logo.png';
 }
 
+// The KTC CSV sometimes contains embedded newlines in unquoted name cells (Excel formatting).
+// This joins any continuation line (not starting with a digit or "PlayerID") onto the previous line.
+function preprocessKtcCsv(csvText) {
+  const lines = csvText.split('\n');
+  const processed = [];
+  for (const line of lines) {
+    const trimmed = line.trimEnd();
+    if (!trimmed) continue;
+    if (/^(?:PlayerID|\d)/.test(trimmed)) {
+      processed.push(trimmed);
+    } else if (processed.length > 0) {
+      processed[processed.length - 1] += ' ' + trimmed.trim();
+    }
+  }
+  return processed.join('\n');
+}
+
+async function loadKtcMap() {
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/Players.csv', { cache: 'no-store' });
+    if (!res.ok) return {};
+    const csvText = await res.text();
+    const fixedCsv = preprocessKtcCsv(csvText);
+    const parsed = Papa.parse(fixedCsv, { header: true, skipEmptyLines: true });
+    const map = {};
+    parsed.data.forEach(row => {
+      if (row?.PlayerID && row['KTC Value'] && Number(row['KTC Value']) > 0) {
+        map[String(row.PlayerID)] = row['KTC Value'];
+      }
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 function normalizeDraftPlayer(player, fallbackStartDelay = 0) {
   return {
     playerId: Number(player.playerId),
@@ -220,6 +332,16 @@ function normalizeDraftPlayer(player, fallbackStartDelay = 0) {
     status: player.status ?? 'UPCOMING',
     startDelay: Number(player.startDelay ?? fallbackStartDelay ?? 0)
   };
+}
+
+const DEFAULT_SORT_CONFIG = { key: 'countdown', direction: 'asc' };
+const AUCTION_SORT_PREFERENCE_KEY = 'bbb-free-agent-auction-sort';
+const VALID_SORT_KEYS = new Set(['countdown', 'playerName', 'position', 'ktc', 'lastBid', 'highBid', 'highBidder']);
+
+function sanitizeSortConfig(value) {
+  const key = VALID_SORT_KEYS.has(value?.key) ? value.key : DEFAULT_SORT_CONFIG.key;
+  const direction = value?.direction === 'desc' ? 'desc' : 'asc';
+  return { key, direction };
 }
 
 export default function FreeAgentAuctionPage() {
@@ -240,9 +362,10 @@ export default function FreeAgentAuctionPage() {
   const [teamAvatars, setTeamAvatars] = useState({});
   const [cardImageIndex, setCardImageIndex] = useState([]);
   const [selectedPlayerImageSrc, setSelectedPlayerImageSrc] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'countdown', direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState(DEFAULT_SORT_CONFIG);
   const [filterPosition, setFilterPosition] = useState('ALL');
   const [searchName, setSearchName] = useState('');
+  const [leadingOnly, setLeadingOnly] = useState(false);
   const [showBoardFiltersModal, setShowBoardFiltersModal] = useState(false);
   const [showCapModal, setShowCapModal] = useState(false);
   const [bidLogSearch, setBidLogSearch] = useState('');
@@ -263,13 +386,19 @@ export default function FreeAgentAuctionPage() {
   const [adminToolLastBidFloorEnabled, setAdminToolLastBidFloorEnabled] = useState(true);
   const [adminToolLastBidFloorHours, setAdminToolLastBidFloorHours] = useState('24');
   const [profileCardPlayerId, setProfileCardPlayerId] = useState(null);
+  const [ktcLiveMap, setKtcLiveMap] = useState({});
   const [isMobile, setIsMobile] = useState(false);
   const [showMobilePlayerModal, setShowMobilePlayerModal] = useState(false);
   const [showMobileBidModal, setShowMobileBidModal] = useState(false);
   const initialLoadDone = useRef(false);
+  const sortPreferenceHydrated = useRef(false);
   const { data: session, status } = useSession();
   const router = useRouter();
   const isAdmin = session?.user?.role === 'admin';
+  const sortPreferenceStorageKey = React.useMemo(() => {
+    const userKey = session?.user?.username || session?.user?.name || 'guest';
+    return `${AUCTION_SORT_PREFERENCE_KEY}:${userKey}`;
+  }, [session?.user?.username, session?.user?.name]);
 
   useEffect(() => {
     function checkMobile() { setIsMobile(window.innerWidth < 768); }
@@ -277,6 +406,33 @@ export default function FreeAgentAuctionPage() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    loadKtcMap().then(map => setKtcLiveMap(map));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const storedValue = window.localStorage.getItem(sortPreferenceStorageKey);
+      setSortConfig(storedValue ? sanitizeSortConfig(JSON.parse(storedValue)) : DEFAULT_SORT_CONFIG);
+    } catch {
+      setSortConfig(DEFAULT_SORT_CONFIG);
+    } finally {
+      sortPreferenceHydrated.current = true;
+    }
+  }, [sortPreferenceStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !sortPreferenceHydrated.current) return;
+
+    try {
+      window.localStorage.setItem(sortPreferenceStorageKey, JSON.stringify(sanitizeSortConfig(sortConfig)));
+    } catch {
+      // Ignore storage failures and keep in-memory state.
+    }
+  }, [sortConfig, sortPreferenceStorageKey]);
 
   useEffect(() => {
     if (!draft || !draft.players) return;
@@ -435,7 +591,7 @@ export default function FreeAgentAuctionPage() {
 
   // Auto-add dropped players polling (every 5 minutes)
   useEffect(() => {
-    if (!draft?._id || !draft?.autoAddDropped || !draft?.sleeperLeagueId) return;
+    if (!draft?._id || !draft?.autoAddDropped) return;
     const syncDropped = async () => {
       try {
         await fetch(`/api/admin/drafts/${draft._id}/sync-dropped-players`, { method: 'POST' });
@@ -447,7 +603,7 @@ export default function FreeAgentAuctionPage() {
     syncDropped(); // run immediately on mount / when draft changes
     const interval = setInterval(syncDropped, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [draft?._id, draft?.autoAddDropped, draft?.sleeperLeagueId]);
+  }, [draft?._id, draft?.autoAddDropped]);
 
   const handleBid = async () => {
     if (!isUserInDraft(session, draft)) {
@@ -716,7 +872,7 @@ export default function FreeAgentAuctionPage() {
           Object.values(teamCaps).forEach(team => {
             team.spend = draft.results
               .filter(r => r.username === team.team)
-              .reduce((sum, r) => sum + (Number(r.contractPoints) || 0), 0);
+              .reduce((sum, r) => sum + (Number(r.salary) || 0), 0);
           });
         }
         setActiveContractsByTeam(rosterMap);
@@ -779,7 +935,7 @@ export default function FreeAgentAuctionPage() {
       try {
         const [playersRes, ktcRes] = await Promise.all([
           fetch('/api/players/all'),
-          fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/Players.csv')
+          fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/Players.csv', { cache: 'no-store' })
         ]);
 
         if (!playersRes.ok || !ktcRes.ok) {
@@ -787,10 +943,11 @@ export default function FreeAgentAuctionPage() {
         }
 
         const [playersData, ktcCsv] = await Promise.all([playersRes.json(), ktcRes.text()]);
-        const parsedKtc = Papa.parse(ktcCsv, { header: true });
+        const fixedCsv = preprocessKtcCsv(ktcCsv);
+        const parsedKtc = Papa.parse(fixedCsv, { header: true, skipEmptyLines: true });
         const ktcMap = {};
         parsedKtc.data.forEach(row => {
-          if (row?.PlayerID && row['KTC Value']) {
+          if (row?.PlayerID && row['KTC Value'] && Number(row['KTC Value']) > 0) {
             ktcMap[row.PlayerID] = row['KTC Value'];
           }
         });
@@ -920,6 +1077,68 @@ export default function FreeAgentAuctionPage() {
     await updateDraftPlayers(nextPlayers, nextResults, nextBidLog);
   };
 
+  const handleApproveDroppedPlayer = async (player) => {
+    if (!draft?._id) return;
+    setAdminToolSaving(true);
+    setAdminToolError('');
+    try {
+      const startDelay = Number(adminToolStartDelays[player.playerId] ?? 0);
+      const nextPlayers = [
+        ...(draft.players || []).map(p => normalizeDraftPlayer(p)),
+        normalizeDraftPlayer({ ...player, startDelay, status: 'UPCOMING' }, startDelay)
+      ];
+      const nextPending = (draft.pendingDroppedPlayers || []).filter(
+        p => String(p.playerId) !== String(player.playerId)
+      );
+      const patchRes = await fetch(`/api/admin/drafts/${draft._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          players: nextPlayers,
+          results: draft.results || [],
+          bidLog: draft.bidLog || [],
+          pendingDroppedPlayers: nextPending
+        })
+      });
+      if (!patchRes.ok) throw new Error(await patchRes.text());
+      const updatedDraft = await patchRes.json();
+      setDraft(updatedDraft);
+      setSuccess(`${player.playerName} added to the auction.`);
+    } catch (err) {
+      setAdminToolError(err.message || 'Failed to approve player.');
+    } finally {
+      setAdminToolSaving(false);
+    }
+  };
+
+  const handleDenyDroppedPlayer = async (player) => {
+    if (!draft?._id) return;
+    setAdminToolSaving(true);
+    setAdminToolError('');
+    try {
+      const nextPending = (draft.pendingDroppedPlayers || []).filter(
+        p => String(p.playerId) !== String(player.playerId)
+      );
+      const patchRes = await fetch(`/api/admin/drafts/${draft._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          players: draft.players || [],
+          results: draft.results || [],
+          bidLog: draft.bidLog || [],
+          pendingDroppedPlayers: nextPending
+        })
+      });
+      if (!patchRes.ok) throw new Error(await patchRes.text());
+      const updatedDraft = await patchRes.json();
+      setDraft(updatedDraft);
+    } catch (err) {
+      setAdminToolError(err.message || 'Failed to deny player.');
+    } finally {
+      setAdminToolSaving(false);
+    }
+  };
+
   const handleAdminUpdateBidFloor = async () => {
     if (!draft?._id) return;
 
@@ -1009,12 +1228,18 @@ export default function FreeAgentAuctionPage() {
 
   const filteredPlayers = React.useMemo(() => {
     if (!draft?.players) return [];
+    const currentUsername = String(session?.user?.name || '').trim();
     return draft.players.filter(p => {
       let positionMatch = filterPosition === 'ALL' || p.position === filterPosition;
       let nameMatch = !searchName || p.playerName.toLowerCase().includes(searchName.toLowerCase());
-      return positionMatch && nameMatch;
+      let leadingMatch = true;
+      if (leadingOnly) {
+        const result = (draft.results || []).find(r => String(r.playerId) === String(p.playerId));
+        leadingMatch = Boolean(result && currentUsername && result.username === currentUsername);
+      }
+      return positionMatch && nameMatch && leadingMatch;
     });
-  }, [draft?.players, draft?.startDate, draft?.nomDuration, filterPosition, searchName]);
+  }, [draft?.players, draft?.results, draft?.startDate, draft?.nomDuration, filterPosition, searchName, leadingOnly, session?.user?.name]);
 
   const sortedPlayers = React.useMemo(() => {
     const playersCopy = [...filteredPlayers];
@@ -1054,8 +1279,14 @@ export default function FreeAgentAuctionPage() {
         bValue = bEnd - now;
       }
       if (sortConfig.key === 'ktc') {
-        aValue = Number(a.ktc) || 0;
-        bValue = Number(b.ktc) || 0;
+        aValue = Number(ktcLiveMap[String(a.playerId)] || a.ktc) || 0;
+        bValue = Number(ktcLiveMap[String(b.playerId)] || b.ktc) || 0;
+      }
+      if (sortConfig.key === 'lastBid') {
+        const aBids = (draft.bidLog || []).filter(bid => bid.playerId === a.playerId);
+        const bBids = (draft.bidLog || []).filter(bid => bid.playerId === b.playerId);
+        aValue = aBids.length > 0 ? Math.max(...aBids.map(bid => new Date(bid.timestamp).getTime())) : 0;
+        bValue = bBids.length > 0 ? Math.max(...bBids.map(bid => new Date(bid.timestamp).getTime())) : 0;
       }
 
       // For dates, compare as numbers
@@ -1278,8 +1509,10 @@ export default function FreeAgentAuctionPage() {
           'group relative w-full overflow-hidden rounded-[20px] border px-3 py-3 text-left transition-all duration-150 cursor-pointer',
           isSelected
             ? 'border-[#FFB800]/60 bg-[linear-gradient(90deg,rgba(255,184,0,0.2),rgba(255,184,0,0.06)_18%,rgba(19,40,56,0.9)_52%,rgba(11,23,34,0.98)_100%)] shadow-[0_14px_38px_rgba(0,0,0,0.34)] ring-1 ring-[#FFB800]/35'
+            : view.isUserHighBidder && !draft?.blind
+            ? 'border-sky-300/45 bg-[linear-gradient(90deg,rgba(56,189,248,0.16),rgba(18,38,53,0.92)_22%,rgba(10,21,33,0.98)_100%)] hover:border-sky-200/60 hover:bg-[linear-gradient(90deg,rgba(56,189,248,0.24),rgba(22,44,61,0.94)_22%,rgba(12,24,37,0.98)_100%)] ring-1 ring-sky-300/25'
             : 'border-white/10 bg-[linear-gradient(90deg,rgba(18,38,53,0.92),rgba(10,21,33,0.98))] hover:border-white/20 hover:bg-[#102638] ring-1 ring-white/5',
-          view.isUserHighBidder && !draft?.blind ? 'shadow-[0_0_0_1px_rgba(252,211,77,0.28)]' : ''
+          view.isUserHighBidder && !draft?.blind ? 'shadow-[0_0_0_1px_rgba(56,189,248,0.32)]' : ''
         )}
       >
         <div
@@ -1307,7 +1540,7 @@ export default function FreeAgentAuctionPage() {
                 {player.position}
               </span>
               {view.isUserHighBidder && !draft?.blind ? (
-                <span className="inline-flex rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-amber-100">
+                <span className="inline-flex rounded-full border border-sky-300/35 bg-sky-400/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-sky-100">
                   Leading
                 </span>
               ) : null}
@@ -1321,7 +1554,7 @@ export default function FreeAgentAuctionPage() {
                   onClick={(e) => { e.stopPropagation(); setProfileCardPlayerId(player.playerId); }}
                 >{player.playerName}</button>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-white/45">
-                  <span>KTC {player.ktc || '-'}</span>
+                  <span>KTC {ktcLiveMap[String(player.playerId)] || player.ktc || '-'}</span>
                   {Number(player.startDelay || 0) > 0 ? <span>Starts +{Number(player.startDelay || 0)}h</span> : null}
                   {draft?.blind && view.group !== 'Ended' ? null : (
                   <span>{contractLine}</span>
@@ -1599,63 +1832,75 @@ export default function FreeAgentAuctionPage() {
                     {auctionStatus}
                   </span>
                   <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCapModal(true)}
-                      title="View cap space"
-                      aria-label="View cap space"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30 sm:h-12 sm:w-12 sm:rounded-2xl"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <circle cx="12" cy="12" r="9" />
-                        <path d="M12 7v1m0 8v1M9.5 9.5A2.5 2.5 0 0 1 12 8h1a2 2 0 0 1 0 4h-2a2 2 0 0 0 0 4h1.5A2.5 2.5 0 0 0 15 14" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowBidLogModal(true)}
-                      title="View bid log"
-                      aria-label="View bid log"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30 sm:h-12 sm:w-12 sm:rounded-2xl"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <rect x="4" y="3" width="16" height="18" rx="2" />
-                        <line x1="8" y1="8" x2="16" y2="8" />
-                        <line x1="8" y1="12" x2="16" y2="12" />
-                        <line x1="8" y1="16" x2="13" y2="16" />
-                      </svg>
-                    </button>
-                    {isAdmin && (
+                    <div className="flex flex-col items-center gap-0.5">
                       <button
                         type="button"
-                        onClick={() => setShowAdminToolsModal(true)}
-                        title="Admin tools"
-                        aria-label="Admin tools"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15 text-violet-200 transition hover:bg-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/30 sm:h-12 sm:w-12 sm:rounded-2xl"
+                        onClick={() => setShowCapModal(true)}
+                        title="View cap space"
+                        aria-label="View cap space"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30 sm:h-12 sm:w-12 sm:rounded-2xl"
                       >
                         <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M12 7v1m0 8v1M9.5 9.5A2.5 2.5 0 0 1 12 8h1a2 2 0 0 1 0 4h-2a2 2 0 0 0 0 4h1.5A2.5 2.5 0 0 0 15 14" />
                         </svg>
                       </button>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-white/40">Cap</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowBidLogModal(true)}
+                        title="View bid log"
+                        aria-label="View bid log"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30 sm:h-12 sm:w-12 sm:rounded-2xl"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="4" y="3" width="16" height="18" rx="2" />
+                          <line x1="8" y1="8" x2="16" y2="8" />
+                          <line x1="8" y1="12" x2="16" y2="12" />
+                          <line x1="8" y1="16" x2="13" y2="16" />
+                        </svg>
+                      </button>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-white/40">Log</span>
+                    </div>
+                    {isAdmin && (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminToolsModal(true)}
+                          title="Admin tools"
+                          aria-label="Admin tools"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15 text-violet-200 transition hover:bg-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/30 sm:h-12 sm:w-12 sm:rounded-2xl"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                          </svg>
+                        </button>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-violet-300/60">Admin</span>
+                      </div>
                     )}
                     {session?.user?.role === 'admin' && (
-                      <button
-                        type="button"
-                        onClick={() => setShowResetButtons(v => !v)}
-                        title={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
-                        aria-label={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
-                        className={cn(
-                          'inline-flex h-9 w-9 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 sm:h-12 sm:w-12 sm:rounded-2xl',
-                          showResetButtons
-                            ? 'border-amber-400/30 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 focus-visible:ring-amber-400/30'
-                            : 'border-white/10 bg-black/20 text-white/70 hover:bg-white/10 hover:text-white focus-visible:ring-[#FF4B1F]/30'
-                        )}
-                      >
-                        <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                          <path d="M3 3v5h5" />
-                        </svg>
-                      </button>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowResetButtons(v => !v)}
+                          title={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
+                          aria-label={showResetButtons ? 'Hide reset buttons' : 'Show reset buttons'}
+                          className={cn(
+                            'inline-flex h-9 w-9 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 sm:h-12 sm:w-12 sm:rounded-2xl',
+                            showResetButtons
+                              ? 'border-amber-400/30 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 focus-visible:ring-amber-400/30'
+                              : 'border-white/10 bg-black/20 text-white/70 hover:bg-white/10 hover:text-white focus-visible:ring-[#FF4B1F]/30'
+                          )}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                            <path d="M3 3v5h5" />
+                          </svg>
+                        </button>
+                        <span className={cn('text-[9px] font-semibold uppercase tracking-wider', showResetButtons ? 'text-amber-300/70' : 'text-white/40')}>Reset</span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1727,22 +1972,55 @@ export default function FreeAgentAuctionPage() {
                   <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">Marketplace</div>
                   <h2 className="mt-1 text-2xl font-semibold">Player board</h2>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowBoardFiltersModal(true)}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-white/78 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30"
-                  aria-label="Open filter and sort options"
-                  title="Filter and sort"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="4" y1="6" x2="20" y2="6" />
-                    <line x1="4" y1="12" x2="20" y2="12" />
-                    <line x1="4" y1="18" x2="20" y2="18" />
-                    <circle cx="9" cy="6" r="2" fill="currentColor" stroke="none" />
-                    <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none" />
-                    <circle cx="11" cy="18" r="2" fill="currentColor" stroke="none" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-2">
+                  <div className="group relative flex flex-col items-center gap-1">
+                    <span className="pointer-events-none absolute -top-7 z-20 rounded-md border border-white/10 bg-[#020817] px-2 py-1 text-[10px] font-medium text-white/85 opacity-0 shadow-lg shadow-black/30 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      {leadingOnly ? 'Show all players' : 'Show only players you lead'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setLeadingOnly(v => !v)}
+                      className={cn(
+                        'inline-flex h-11 w-11 items-center justify-center rounded-2xl border transition focus-visible:outline-none focus-visible:ring-2',
+                        leadingOnly
+                          ? 'border-sky-300/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/25 focus-visible:ring-sky-300/30'
+                          : 'border-white/10 bg-black/20 text-white/78 hover:bg-white/10 hover:text-white focus-visible:ring-[#FF4B1F]/30'
+                      )}
+                      aria-label={leadingOnly ? 'Show all players' : 'Show only players you are leading'}
+                      title={leadingOnly ? 'Showing players you lead' : 'Show players you lead'}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 9V5a2 2 0 0 0-4 0v4" />
+                        <path d="M4 10h16" />
+                        <path d="m6 10 1.2 8a2 2 0 0 0 2 1.7h5.6a2 2 0 0 0 2-1.7L18 10" />
+                        <path d="M12 13v3" />
+                      </svg>
+                    </button>
+                    <span className={cn('text-[9px] font-semibold uppercase tracking-wider', leadingOnly ? 'text-sky-200/80' : 'text-white/40')}>Winning</span>
+                  </div>
+                  <div className="group relative flex flex-col items-center gap-1">
+                    <span className="pointer-events-none absolute -top-7 z-20 rounded-md border border-white/10 bg-[#020817] px-2 py-1 text-[10px] font-medium text-white/85 opacity-0 shadow-lg shadow-black/30 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      Open filter and sort options
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowBoardFiltersModal(true)}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-white/78 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/30"
+                      aria-label="Open filter and sort options"
+                      title="Filter and sort"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="4" y1="6" x2="20" y2="6" />
+                        <line x1="4" y1="12" x2="20" y2="12" />
+                        <line x1="4" y1="18" x2="20" y2="18" />
+                        <circle cx="9" cy="6" r="2" fill="currentColor" stroke="none" />
+                        <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none" />
+                        <circle cx="11" cy="18" r="2" fill="currentColor" stroke="none" />
+                      </svg>
+                    </button>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider text-white/40">Filter</span>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-[26px] border border-white/10 bg-[#020817]/72 p-2.5 sm:overflow-hidden">
@@ -1819,15 +2097,16 @@ export default function FreeAgentAuctionPage() {
                           <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0">
                               <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Selected player</div>
-                              <button
-                                type="button"
-                                className="mt-2 block w-full truncate text-left text-3xl font-semibold tracking-tight text-white hover:underline transition-colors sm:text-[38px]"
+                              <AutoFitButtonText
+                                className="mt-2"
+                                minFontSize={24}
+                                maxFontSize={38}
                                 onClick={() => setProfileCardPlayerId(selectedPlayer.playerId)}
-                              >{selectedPlayer.playerName}</button>
+                              >{selectedPlayer.playerName}</AutoFitButtonText>
                             </div>
                             <div className="rounded-[18px] border border-cyan-300/20 bg-[#08111f]/95 px-4 py-3 text-center shadow-lg shadow-black/20">
                               <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/45">KTC</div>
-                              <div className="mt-1.5 text-3xl font-semibold leading-none text-[#4dd9ff]">{selectedPlayer.ktc || '-'}</div>
+                              <div className="mt-1.5 text-3xl font-semibold leading-none text-[#4dd9ff]">{ktcLiveMap[String(selectedPlayer.playerId)] || selectedPlayer.ktc || '-'}</div>
                             </div>
                           </div>
 
@@ -2291,6 +2570,7 @@ export default function FreeAgentAuctionPage() {
                 <option value="playerName">Player</option>
                 <option value="position">Position</option>
                 <option value="ktc">KTC</option>
+                <option value="lastBid">Most Recent Bid</option>
                 {!draft?.blind && <option value="highBid">Bid Value</option>}
                 {!draft?.blind && <option value="highBidder">High bidder</option>}
               </select>
@@ -2327,7 +2607,8 @@ export default function FreeAgentAuctionPage() {
                 onClick={() => {
                   setSearchName('');
                   setFilterPosition('ALL');
-                  setSortConfig({ key: 'countdown', direction: 'asc' });
+                  setLeadingOnly(false);
+                  setSortConfig(DEFAULT_SORT_CONFIG);
                 }}
               >
                 Reset filters
@@ -2547,6 +2828,55 @@ export default function FreeAgentAuctionPage() {
                 </div>
               </div>
 
+              {draft?.autoAddDropped && (
+                <div className="rounded-[24px] border border-amber-400/20 bg-amber-500/10 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-amber-200/60">Dropped player queue</div>
+                      <h3 className="mt-2 text-lg font-semibold text-amber-100">
+                        {(draft?.pendingDroppedPlayers || []).length} pending review
+                      </h3>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-white/50">Players dropped on Sleeper since the auction started. Approve to add them to the pool, or deny to dismiss.</p>
+                  <div className="mt-4 space-y-2">
+                    {(draft?.pendingDroppedPlayers || []).length === 0 ? (
+                      <div className="rounded-[18px] border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/45">
+                        No dropped players pending review.
+                      </div>
+                    ) : (
+                      (draft.pendingDroppedPlayers)
+                        .slice()
+                        .sort((a, b) => a.playerName.localeCompare(b.playerName))
+                        .map(player => (
+                          <div key={player.playerId} className="grid gap-3 rounded-2xl border border-white/10 bg-[#020817]/60 p-3 sm:grid-cols-[minmax(0,1fr)_100px_auto_auto] sm:items-center">
+                            <div>
+                              <div className="font-medium text-white">{player.playerName}</div>
+                              <div className="text-xs text-white/50">{player.position} • KTC {player.ktc || '—'} • ID {player.playerId}</div>
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/45">Start delay</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={adminToolStartDelays[player.playerId] ?? 0}
+                                onChange={(e) => setAdminToolStartDelays(prev => ({ ...prev, [player.playerId]: e.target.value }))}
+                                className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                              />
+                            </div>
+                            <SurfaceButton tone="green" className="sm:self-end" onClick={() => handleApproveDroppedPlayer(player)} disabled={adminToolSaving}>
+                              Approve
+                            </SurfaceButton>
+                            <SurfaceButton tone="danger" className="sm:self-end" onClick={() => handleDenyDroppedPlayer(player)} disabled={adminToolSaving}>
+                              Deny
+                            </SurfaceButton>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -2672,7 +3002,7 @@ export default function FreeAgentAuctionPage() {
       {showMobilePlayerModal && selectedPlayer && selectedPlayerView && (
         <ModalShell
           title={selectedPlayer.playerName}
-          subtitle={`${selectedPlayer.position} · KTC ${selectedPlayer.ktc || '—'}`}
+          subtitle={`${selectedPlayer.position} · KTC ${ktcLiveMap[String(selectedPlayer.playerId)] || selectedPlayer.ktc || '—'}`}
           onClose={() => setShowMobilePlayerModal(false)}
           maxWidth="max-w-lg"
         >
