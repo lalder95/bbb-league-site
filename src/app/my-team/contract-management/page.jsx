@@ -73,6 +73,7 @@ export default function ContractManagementPage() {
   const [holdoutDecisionSavingId, setHoldoutDecisionSavingId] = useState(null);
   const [holdoutDecisionMsg, setHoldoutDecisionMsg] = useState('');
   const [holdoutDecisionError, setHoldoutDecisionError] = useState('');
+  const [teamFines, setTeamFines] = useState({});
 
   // Admin
   const isAdmin = Boolean(
@@ -157,7 +158,26 @@ export default function ContractManagementPage() {
   // Load contracts
   useEffect(() => {
     async function fetchPlayerData() {
-      const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+      const [response, finesResponse] = await Promise.all([
+        fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv'),
+        fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv'),
+      ]);
+      // Parse fines
+      try {
+        const finesText = await finesResponse.text();
+        const finesRows = finesText.split('\n');
+        const finesMap = finesRows.slice(1).filter(r => r.trim()).reduce((acc, row) => {
+          const [team, year1, year2, year3, year4] = row.split(',');
+          if (team) acc[team.trim()] = {
+            curYear: parseFloat(year1) || 0,
+            year2: parseFloat(year2) || 0,
+            year3: parseFloat(year3) || 0,
+            year4: parseFloat(year4) || 0,
+          };
+          return acc;
+        }, {});
+        setTeamFines(finesMap);
+      } catch { /* ignore fines errors */ }
       const text = await response.text();
       const rows = text.split('\n').filter(Boolean);
       if (rows.length < 2) return setPlayerContracts([]);
@@ -376,6 +396,8 @@ export default function ContractManagementPage() {
 
   const yearSalaries = [0, 0, 0, 0];
   const yearDead = [0, 0, 0, 0];
+  const myTeamFines = teamFines[teamNameForUI?.trim()] || teamFines[Object.keys(teamFines).find(k => k.toLowerCase() === teamNameForUI?.trim().toLowerCase())] || { curYear: 0, year2: 0, year3: 0, year4: 0 };
+  const yearFines = [myTeamFines.curYear, myTeamFines.year2, myTeamFines.year3, myTeamFines.year4];
 
   myContractsAll.forEach(p => {
     if (p.status === 'Active' || p.status === 'Future') {
@@ -782,19 +804,6 @@ export default function ContractManagementPage() {
     extensionMap[p.playerId] = choice;
   });
 
-  // Simulate cap with current extension choices
-  eligiblePlayers.forEach(p => {
-    const ext = extensionMap[p.playerId] || { years: 0, deny: false };
-    if (ext.deny || !ext.years) return;
-    let base = parseFloat(p.curYear) || 0;
-    for (let i = 1; i <= ext.years; ++i) {
-      base = roundUp1(base * 1.10);
-      if (i < 4) {
-        yearSalaries[i] += base;
-      }
-    }
-  });
-
   function openCapModal(yearIdx) {
     const yearMap = [
       { salary: 'curYear', label: 'Current Year' },
@@ -1045,7 +1054,7 @@ export default function ContractManagementPage() {
                         if (i === y) extensionCost += base;
                       }
                     });
-                    const capUsed = yearSalaries[i] + yearDead[i];
+                    const capUsed = yearSalaries[i] + yearDead[i] + yearFines[i];
                     const capSpaceBefore = CAP - capUsed;
                     const capSpaceAfter = capSpaceBefore - (i === 0 ? 0 : extensionCost);
                     return (
@@ -1513,7 +1522,7 @@ export default function ContractManagementPage() {
                         }
                       }
                     }
-                    const baseCap = yearSalaries[i] + yearDead[i];
+                    const baseCap = yearSalaries[i] + yearDead[i] + yearFines[i];
                     const capSpace = CAP - (baseCap + tagCost);
                     return (
                       <tr key={i}>
