@@ -13,18 +13,22 @@ export default function RFATagCard({
   logicChecks,
   onChoiceChange,
   onFinalize,
+  onAvatarClick,
 }) {
   return (
     <div className="flex items-center gap-6 bg-[#101c2a] border border-white/10 rounded-xl shadow-sm px-5 py-4 mb-4 hover:shadow-lg transition-shadow">
       {/* Left: Avatar, Name, Age */}
       <div className="flex items-center gap-3 min-w-[180px]">
-        <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-12 h-12 rounded-lg overflow-hidden shadow" />
+        <button type="button" className="shrink-0 cursor-pointer" onClick={() => onAvatarClick?.(player.playerId)}>
+          <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-12 h-12 rounded-lg overflow-hidden shadow" />
+        </button>
         <div>
-          <div className="font-bold text-white text-lg leading-tight break-words whitespace-normal max-w-[140px]">{player.playerName}</div>
+          <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => onAvatarClick?.(player.playerId)}>
+            <div className="font-bold text-white text-lg leading-tight break-words whitespace-normal max-w-[140px]">{player.playerName}</div>
+          </button>
           <div className="text-xs text-white/60 mt-1">Age: {player.age ?? '-'}</div>
         </div>
       </div>
-      {/* Middle: Informational */}
       <div className="flex-1 flex flex-col gap-2 min-w-[180px]">
         <div className="text-white/80 text-xs">RFA Tag</div>
         <div className="text-white/50 text-xs">Eligible: Active Waiver/FA contracts only</div>

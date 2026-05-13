@@ -53,6 +53,9 @@ export default function ContractManagementPage() {
   const [holdoutRfaChoices, setHoldoutRfaChoices] = useState({}); // { [playerId]: { apply: boolean } }
   const [pendingHoldoutRfa, setPendingHoldoutRfa] = useState(null); // { player }
 
+  // Player profile modal
+  const [selectedProfilePlayerId, setSelectedProfilePlayerId] = useState(null);
+
   // Admin: manual holdout assignments
   const [adminHoldoutPlayerId, setAdminHoldoutPlayerId] = useState('');
   const [adminHoldoutAssignedTeam, setAdminHoldoutAssignedTeam] = useState('');
@@ -838,6 +841,22 @@ export default function ContractManagementPage() {
 
   return (
     <div className="w-full flex flex-col items-center px-3 sm:px-0">
+      {/* Player profile modal */}
+      {(typeof selectedProfilePlayerId === 'string' || typeof selectedProfilePlayerId === 'number') && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setSelectedProfilePlayerId(null)}>
+          <div className="bg-transparent p-0 rounded-lg shadow-2xl relative" onClick={e => e.stopPropagation()}>
+            <PlayerProfileCard
+              playerId={selectedProfilePlayerId}
+              expanded={true}
+              className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
+              teamName={teamNameForUI}
+              onExpandClick={() => setSelectedProfilePlayerId(null)}
+            />
+            <button className="absolute top-2 right-2 text-white bg-black/60 rounded-full px-3 py-1 hover:bg-black" onClick={() => setSelectedProfilePlayerId(null)}>×</button>
+          </div>
+        </div>
+      )}
+
       <h2 className="text-2xl font-bold mb-6 text-white text-center">Contract Management</h2>
 
       {/* Admin Controls */}
@@ -1077,9 +1096,13 @@ export default function ContractManagementPage() {
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
+                              <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            </button>
                             <div className="min-w-0">
-                              <div className="text-white font-bold text-2xl leading-7 truncate">{player.playerName}</div>
+                              <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
+                                <div className="text-white font-bold text-2xl leading-7 truncate">{player.playerName}</div>
+                              </button>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
@@ -1361,6 +1384,7 @@ export default function ContractManagementPage() {
                           setFinalizeLoading(false);
                         }
                       }}
+                      onAvatarClick={setSelectedProfilePlayerId}
                     />
                   );
                 })}
@@ -1526,9 +1550,13 @@ export default function ContractManagementPage() {
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
+                              <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            </button>
                             <div className="min-w-0">
-                              <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
+                              <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
+                                <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
+                              </button>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
@@ -1736,6 +1764,7 @@ export default function ContractManagementPage() {
                               setFinalizeLoading(false);
                             }
                           }}
+                          onAvatarClick={setSelectedProfilePlayerId}
                         />
                       );
                     })}
@@ -1803,9 +1832,13 @@ export default function ContractManagementPage() {
                       return (
                         <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
                           <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
-                            <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
+                              <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                            </button>
                             <div className="min-w-0">
-                              <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
+                              <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
+                                <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
+                              </button>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
@@ -2008,6 +2041,7 @@ export default function ContractManagementPage() {
                               setFinalizeLoading(false);
                             }
                           }}
+                          onAvatarClick={setSelectedProfilePlayerId}
                         />
                       );
                     })}
@@ -2224,9 +2258,13 @@ export default function ContractManagementPage() {
                     return (
                       <div key={String(a._id || a.playerId)} className="bg-[#0C1B26] border border-white/10 rounded-xl p-4 shadow">
                       <div className="flex items-center gap-3">
-                        <PlayerProfileCard playerId={a.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                        <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(a.playerId)}>
+                          <PlayerProfileCard playerId={a.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                        </button>
                         <div className="min-w-0">
-                          <div className="text-white font-semibold">{a.playerName} <span className="text-white/50 text-sm">(#{a.playerId})</span></div>
+                          <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(a.playerId)}>
+                            <div className="text-white font-semibold">{a.playerName} <span className="text-white/50 text-sm">(#{a.playerId})</span></div>
+                          </button>
                           <div className="text-white/60 text-xs">Assigned to: {a.assignedTeam}</div>
                         </div>
                       </div>
