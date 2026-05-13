@@ -182,7 +182,11 @@ async function getBankerFeedThreadsCollection() {
 export async function getMediaFeedItems({ source, limit } = {}) {
   try {
     const collection = await getMediaFeedCollection();
-    const query = {};
+    const now = new Date();
+    const query = {
+      // Only return items whose publishAt has passed (or have no publishAt)
+      $or: [{ publishAt: { $exists: false } }, { publishAt: null }, { publishAt: { $lte: now } }],
+    };
     if (source) {
       query.source = source;
     }
@@ -608,6 +612,209 @@ export async function getBankerFeedThreadCounts(tweetKeys = []) {
     });
 
     return { success: true, counts };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// ─── Trade Block ──────────────────────────────────────────────────────────────
+
+async function getTradeBlockListingsCollection() {
+  const db = await getDatabase();
+  const col = db.collection('tradeBlockListings');
+  await col.createIndex({ listingId: 1 }, { unique: true });
+  await col.createIndex({ posterUsername: 1, status: 1 });
+  await col.createIndex({ status: 1, createdAt: -1 });
+  return col;
+}
+
+async function getTradeBlockOffersCollection() {
+  const db = await getDatabase();
+  const col = db.collection('tradeBlockOffers');
+  await col.createIndex({ offerId: 1 }, { unique: true });
+  await col.createIndex({ listingId: 1, status: 1, createdAt: 1 });
+  await col.createIndex({ offererUsername: 1, status: 1 });
+  return col;
+}
+
+export async function createTradeBlockListing(doc) {
+  try {
+    const col = await getTradeBlockListingsCollection();
+    const result = await col.insertOne({ ...doc, createdAt: new Date(), updatedAt: new Date() });
+    return { success: true, insertedId: result.insertedId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getTradeBlockListings({ status, posterUsername, limit = 100 } = {}) {
+  try {
+    const col = await getTradeBlockListingsCollection();
+    const query = {};
+    if (status) query.status = Array.isArray(status) ? { $in: status } : status;
+    if (posterUsername) query.posterUsername = posterUsername;
+    const docs = await col.find(query).sort({ createdAt: -1 }).limit(limit).toArray();
+    return docs;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getTradeBlockListingById(listingId) {
+  try {
+    const col = await getTradeBlockListingsCollection();
+    const doc = await col.findOne({ listingId });
+    return doc || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function updateTradeBlockListing(listingId, update) {
+  try {
+    const col = await getTradeBlockListingsCollection();
+    const result = await col.updateOne(
+      { listingId },
+      { $set: { ...update, updatedAt: new Date() } }
+    );
+    return { success: true, modifiedCount: result.modifiedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteTradeBlockListing(listingId) {
+  try {
+    const col = await getTradeBlockListingsCollection();
+    const offerCol = await getTradeBlockOffersCollection();
+    await offerCol.deleteMany({ listingId });
+    const result = await col.deleteOne({ listingId });
+    return { success: true, deletedCount: result.deletedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function createTradeBlockOffer(doc) {
+  try {
+    const col = await getTradeBlockOffersCollection();
+    const result = await col.insertOne({ ...doc, createdAt: new Date(), updatedAt: new Date() });
+    return { success: true, insertedId: result.insertedId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getTradeBlockOffers(listingId) {
+  try {
+    const col = await getTradeBlockOffersCollection();
+    const docs = await col.find({ listingId }).sort({ createdAt: 1 }).toArray();
+    return docs;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Bulk fetch offers for multiple listings in a single DB query.
+// Returns a map of { [listingId]: offer[] }
+export async function getTradeBlockOffersForListings(listingIds) {
+  try {
+    if (!listingIds || listingIds.length === 0) return {};
+    const col = await getTradeBlockOffersCollection();
+    const docs = await col.find({ listingId: { $in: listingIds } }).sort({ createdAt: 1 }).toArray();
+    return docs.reduce((acc, doc) => {
+      if (!acc[doc.listingId]) acc[doc.listingId] = [];
+      acc[doc.listingId].push(doc);
+      return acc;
+    }, {});
+  } catch (error) {
+    return {};
+  }
+}
+
+export async function getTradeBlockOfferById(offerId) {
+  try {
+    const col = await getTradeBlockOffersCollection();
+    return await col.findOne({ offerId }) || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function updateTradeBlockOffer(offerId, update) {
+  try {
+    const col = await getTradeBlockOffersCollection();
+    const result = await col.updateOne(
+      { offerId },
+      { $set: { ...update, updatedAt: new Date() } }
+    );
+    return { success: true, modifiedCount: result.modifiedCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getTradeBlockSettings() {
+  try {
+    const col = await getAppSettingsCollection();
+    const doc = await col.findOne({ key: 'trade-block-settings' });
+    return doc || {
+      maxActivePostingsPerUser: 3,
+      autoArchiveDays: 30,
+      newPostingsEnabled: true,
+      auctionModeEnabled: true,
+      straightTradeModeEnabled: true,
+      mediaFeedEnabled: true,
+      defaultCountdownDays: 3,
+      minCountdownDays: 1,
+      maxCountdownDays: 10,
+      mediaIntensityLow: 2000,
+      mediaIntensityMid: 4000,
+      mediaIntensityHigh: 6000,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateTradeBlockSettings(settings) {
+  try {
+    const col = await getAppSettingsCollection();
+    await col.updateOne(
+      { key: 'trade-block-settings' },
+      { $set: { ...settings, key: 'trade-block-settings', updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function autoWithdrawOffersForLostAssets(listingId, offererUsername, lostPlayerIds) {
+  try {
+    if (!lostPlayerIds || lostPlayerIds.length === 0) return { success: true, withdrawn: 0 };
+    const col = await getTradeBlockOffersCollection();
+    const openOffers = await col.find({
+      listingId,
+      offererUsername,
+      status: 'pending',
+    }).toArray();
+
+    let withdrawn = 0;
+    for (const offer of openOffers) {
+      const hasLostAsset = (offer.assets || []).some(
+        (a) => a.assetType === 'player' && lostPlayerIds.includes(String(a.playerId))
+      );
+      if (hasLostAsset) {
+        await col.updateOne(
+          { offerId: offer.offerId },
+          { $set: { status: 'withdrawn', withdrawReason: 'asset_departed', updatedAt: new Date() } }
+        );
+        withdrawn++;
+      }
+    }
+    return { success: true, withdrawn };
   } catch (error) {
     return { success: false, error: error.message };
   }

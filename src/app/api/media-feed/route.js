@@ -4,6 +4,7 @@ import { getBankerFeedThreadCounts, getContractChanges, getMediaFeedItems } from
 import { syncActiveFreeAgentAuctionFeed } from '@/lib/free-agent-auction-feed';
 import { syncActiveRookieDraftFeed } from '@/lib/rookie-draft-feed';
 import { syncSleeperTransactionsFeed } from '@/lib/sleeper-transactions-feed';
+import { syncTradeBlockFeed } from '@/lib/trade-block-feed';
 
 export const runtime = 'nodejs';
 
@@ -13,12 +14,13 @@ export async function GET(request) {
     let sync = null;
 
     if (url.searchParams.get('sync') === '1') {
-      const [rookieDraft, freeAgentAuction, sleeperTransactions] = await Promise.all([
+      const [rookieDraft, freeAgentAuction, sleeperTransactions, tradeBlock] = await Promise.all([
         syncActiveRookieDraftFeed().catch((error) => ({ ok: false, error: error.message })),
         syncActiveFreeAgentAuctionFeed().catch((error) => ({ ok: false, error: error.message })),
         syncSleeperTransactionsFeed().catch((error) => ({ ok: false, error: error.message })),
+        syncTradeBlockFeed().catch((error) => ({ ok: false, error: error.message })),
       ]);
-      sync = { rookieDraft, freeAgentAuction, sleeperTransactions };
+      sync = { rookieDraft, freeAgentAuction, sleeperTransactions, tradeBlock };
     }
 
     const [contractChanges, mediaFeedItems] = await Promise.all([

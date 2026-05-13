@@ -179,7 +179,8 @@ export default function Navigation() {
         { href: '/rules', label: 'Rules' },
         { href: '/media', label: 'Media' },
         { href: '/offseason', label: 'Offseason' },
-        { href: '/trade', label: 'Trade' }
+        { href: '/trade', label: 'Trade' },
+        { href: '/trade-block', label: 'Trade Block' }
       ]
     },
     {

@@ -2307,7 +2307,7 @@ export default function PlayerProfileCard({
 
   return (
     <div className="pointer-events-auto flex justify-center px-1 py-1 text-white sm:px-2" onClick={(e) => e.stopPropagation()}>
-      <div className="w-[min(98vw,78rem)]">
+      <div className={drawerOpen ? 'w-[min(98vw,78rem)]' : 'w-fit max-w-[98vw]'}>
         <div className="relative overflow-visible pt-2 md:pt-4">
           <button
             type="button"
