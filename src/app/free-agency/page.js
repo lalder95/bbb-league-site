@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image'; // Add this import
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
@@ -354,20 +355,63 @@ export default function FreeAgency() {
           </p>
         </div>
 
-        {/* Year Selector */}
-        <div className="flex flex-wrap items-center gap-4 mb-8">
-          <label className="text-white/80 font-semibold">Free Agency Year:</label>
-          <select
-            className="bg-black/40 border border-white/20 rounded px-4 py-2 text-white"
-            value={year}
-            onChange={e => setYear(e.target.value)}
-          >
-            {years.map(y => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+        {/* Year Selector + Chart */}
+        <div className="flex flex-wrap items-start justify-between gap-6 mb-8">
+          <div className="flex items-center gap-4 pt-2">
+            <label className="text-white/80 font-semibold">Free Agency Year:</label>
+            <select
+              className="bg-black/40 border border-white/20 rounded px-4 py-2 text-white"
+              value={year}
+              onChange={e => setYear(e.target.value)}
+            >
+              {years.map(y => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* KTC Value by Position Clustered Bar Chart */}
+          {years.length > 0 && (() => {
+            const chartData = years.map(yr => {
+              const playersInYear = players.filter(
+                p => p.freeAgencyYear === yr && !p.isCurrentlyUnsigned
+              );
+              const entry = { year: yr };
+              ['QB', 'WR', 'RB', 'TE'].forEach(pos => {
+                const vals = playersInYear
+                  .filter(p => p.position === pos && p.ktcValue)
+                  .map(p => p.ktcValue);
+                entry[pos] = vals.length ? vals.reduce((s, v) => s + v, 0) : 0;
+              });
+              return entry;
+            });
+            return (
+              <div className="bg-black/30 border border-white/10 rounded-xl p-4" style={{ width: '50%', minWidth: 140, marginLeft: 'auto' }}>
+                <ResponsiveContainer width="100%" height={63}>
+                  <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="20%" barGap={2}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis dataKey="year" tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }} />
+                    <YAxis hide />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#0b1c26', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '6px 8px' }}
+                      labelStyle={{ color: 'white', fontWeight: 600, marginBottom: 2 }}
+                      itemStyle={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}
+                      formatter={(value, name) => {
+                        const posNames = { QB: 'QB', WR: 'WR', RB: 'RB', TE: 'TE' };
+                        return [value.toLocaleString(), posNames[name] || name];
+                      }}
+                    />
+                    <Bar dataKey="QB" fill="#EF4444" radius={[2,2,0,0]} />
+                    <Bar dataKey="WR" fill="#22C55E" radius={[2,2,0,0]} />
+                    <Bar dataKey="RB" fill="#3B82F6" radius={[2,2,0,0]} />
+                    <Bar dataKey="TE" fill="#A855F7" radius={[2,2,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })()}
         </div>
 
         {/* All Free Agents */}
