@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { downloadCSV, formatNullableForCSV } from '../../utils/csvUtils';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
@@ -301,6 +302,40 @@ export default function SalaryCap() {
     return baseYear + (yearOffsetMap[yearKey] || 0);
   };
 
+  const handleExportCSV = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const curYearLabel = getCapYearLabel('curYear');
+    const year2Label = getCapYearLabel('year2');
+    const year3Label = getCapYearLabel('year3');
+    const year4Label = getCapYearLabel('year4');
+
+    const csvRows = sortedTeams.map((teamData) => ({
+      Team: formatNullableForCSV(teamData.team),
+      [`${curYearLabel} Total Cap`]: formatNullableForCSV(teamData.curYear.total),
+      [`${curYearLabel} Active Cap`]: formatNullableForCSV(teamData.curYear.active),
+      [`${curYearLabel} Dead Cap`]: formatNullableForCSV(teamData.curYear.dead),
+      [`${curYearLabel} Fines`]: formatNullableForCSV(teamData.curYear.fines),
+      [`${curYearLabel} Remaining`]: formatNullableForCSV(teamData.curYear.remaining),
+      [`${year2Label} Total Cap`]: formatNullableForCSV(teamData.year2.total),
+      [`${year2Label} Active Cap`]: formatNullableForCSV(teamData.year2.active),
+      [`${year2Label} Dead Cap`]: formatNullableForCSV(teamData.year2.dead),
+      [`${year2Label} Fines`]: formatNullableForCSV(teamData.year2.fines),
+      [`${year2Label} Remaining`]: formatNullableForCSV(teamData.year2.remaining),
+      [`${year3Label} Total Cap`]: formatNullableForCSV(teamData.year3.total),
+      [`${year3Label} Active Cap`]: formatNullableForCSV(teamData.year3.active),
+      [`${year3Label} Dead Cap`]: formatNullableForCSV(teamData.year3.dead),
+      [`${year3Label} Fines`]: formatNullableForCSV(teamData.year3.fines),
+      [`${year3Label} Remaining`]: formatNullableForCSV(teamData.year3.remaining),
+      [`${year4Label} Total Cap`]: formatNullableForCSV(teamData.year4.total),
+      [`${year4Label} Active Cap`]: formatNullableForCSV(teamData.year4.active),
+      [`${year4Label} Dead Cap`]: formatNullableForCSV(teamData.year4.dead),
+      [`${year4Label} Fines`]: formatNullableForCSV(teamData.year4.fines),
+      [`${year4Label} Remaining`]: formatNullableForCSV(teamData.year4.remaining),
+    }));
+
+    downloadCSV(csvRows, `bbb-salary-cap-${today}.csv`);
+  };
+
   // Helper to open modal with player data
   const openPlayerModal = (team, yearKey) => {
     // Map yearKey to correct property names
@@ -411,6 +446,17 @@ export default function SalaryCap() {
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
+        <div className="mb-3 flex items-center justify-end gap-2">
+          <span className="text-xs text-white/60">Exports all teams in current sort order</span>
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            disabled={sortedTeams.length === 0}
+            className="px-3 py-1.5 rounded bg-[#FF4B1F] text-white text-sm font-semibold hover:bg-[#e03e0f] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Export CSV
+          </button>
+        </div>
         <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
           <table className="w-full border-collapse">
             <thead>

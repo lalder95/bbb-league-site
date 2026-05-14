@@ -4,6 +4,7 @@ import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import EscapeKeyListener from './EscapeKeyListener';
 import SwipeDownListener from './SwipeDownListener';
 import Image from 'next/image'; // Add this import
+import { downloadCSV, formatBooleanForCSV, formatNullableForCSV } from '../../utils/csvUtils';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
@@ -282,6 +283,30 @@ export default function Home() {
 
   const visiblePlayers = filteredAndSortedPlayers.slice(0, visibleCount);
 
+  const handleExportCSV = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const csvRows = filteredAndSortedPlayers.map((player) => ({
+      'Player ID': formatNullableForCSV(player.playerId),
+      'Player Name': formatNullableForCSV(player.playerName),
+      Position: formatNullableForCSV(player.position),
+      Team: formatNullableForCSV(player.team),
+      'Contract Type': formatNullableForCSV(player.contractType),
+      Status: formatNullableForCSV(player.status),
+      'Year 1 Salary': formatNullableForCSV(player.curYear),
+      'Year 2 Salary': formatNullableForCSV(player.year2),
+      'Year 3 Salary': formatNullableForCSV(player.year3),
+      'Year 4 Salary': formatNullableForCSV(player.year4),
+      'KTC Value': formatNullableForCSV(player.ktcValue),
+      'Contract Final Year': formatNullableForCSV(player.contractFinalYear),
+      Age: formatNullableForCSV(player.age),
+      'RFA Eligible': formatBooleanForCSV(player.rfaEligible),
+      'Franchise Tag Eligible': formatBooleanForCSV(player.franchiseTagEligible),
+      'Dead Cap': player.isDeadCap ? 'Yes' : 'No',
+    }));
+
+    downloadCSV(csvRows, `bbb-player-contracts-${today}.csv`);
+  };
+
   const handleShowMore = () => {
     setVisibleCount((prev) => prev + 50);
   };
@@ -543,30 +568,43 @@ export default function Home() {
           </div>
         )}
 
-        <div className="mb-4 flex flex-wrap gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-red-500"></div>
-            <span>QB</span>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-red-500"></div>
+              <span>QB</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-blue-500"></div>
+              <span>RB</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-green-500"></div>
+              <span>WR</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-purple-500"></div>
+              <span>TE</span>
+            </div>
+            <div className="flex items-center gap-2 ml-8">
+              <span className="text-green-400">$1.0</span>
+              <span>= Active Cap</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-red-400">$1.0*</span>
+              <span>= Dead Cap</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-500"></div>
-            <span>RB</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-green-500"></div>
-            <span>WR</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-purple-500"></div>
-            <span>TE</span>
-          </div>
-          <div className="flex items-center gap-2 ml-8">
-            <span className="text-green-400">$1.0</span>
-            <span>= Active Cap</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-red-400">$1.0*</span>
-            <span>= Dead Cap</span>
+            <span className="text-xs text-white/60">Exports all matching rows</span>
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              disabled={filteredAndSortedPlayers.length === 0}
+              className="px-3 py-1.5 rounded bg-[#FF4B1F] text-white text-sm font-semibold hover:bg-[#e03e0f] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Export CSV
+            </button>
           </div>
         </div>
 

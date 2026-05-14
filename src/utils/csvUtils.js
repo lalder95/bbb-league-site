@@ -144,3 +144,47 @@ export function getSampleTeamData() {
     }
   ];
 }
+
+/**
+ * Convert truthy/falsy values (including string booleans) to a CSV-friendly Yes/No value
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function formatBooleanForCSV(value) {
+  if (value === null || value === undefined || value === '') return '';
+  return String(value).toLowerCase() === 'true' ? 'Yes' : 'No';
+}
+
+/**
+ * Convert nullable values to a safe CSV display value
+ * @param {unknown} value
+ * @returns {string|number}
+ */
+export function formatNullableForCSV(value) {
+  return value === null || value === undefined ? '' : value;
+}
+
+/**
+ * Build and download a CSV file from an array of flat row objects
+ * @param {Array<Object<string, unknown>>} rows
+ * @param {string} filename
+ */
+export function downloadCSV(rows, filename) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const csvContent = Papa.unparse(safeRows, {
+    header: true,
+    skipEmptyLines: true,
+  });
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image'; // Add this import
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { downloadCSV, formatBooleanForCSV, formatNullableForCSV } from '../../utils/csvUtils';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 
@@ -233,7 +234,7 @@ export default function FreeAgency() {
   function sortPlayers(players, key, direction = sortConfig.direction) {
     return [...players].sort((a, b) => {
       let aValue = a[key];
-      let bValue = b[key];``
+      let bValue = b[key];
       // Numeric sort for KTC and age
       if (key === 'ktcValue' || key === 'age') {
         // Always put nulls at the end regardless of direction
@@ -281,6 +282,26 @@ export default function FreeAgency() {
 
   // Sorted data
   const sortedFreeAgents = sortPlayers(filteredFreeAgents, sortConfig.key);
+
+  const handleExportCSV = () => {
+    const csvRows = sortedFreeAgents.map((player) => ({
+      'Player ID': formatNullableForCSV(player.playerId),
+      'Player Name': formatNullableForCSV(player.playerName),
+      Position: formatNullableForCSV(player.position),
+      Team: formatNullableForCSV(player.team),
+      'Contract Type': formatNullableForCSV(player.contractType),
+      Status: formatNullableForCSV(player.status),
+      Age: formatNullableForCSV(player.age),
+      'KTC Value': formatNullableForCSV(player.ktcValue),
+      'Contract Final Year': formatNullableForCSV(player.contractFinalYear),
+      'Free Agency Year': formatNullableForCSV(player.freeAgencyYear),
+      'RFA Eligible': formatBooleanForCSV(player.rfaEligible),
+      'Franchise Tag Eligible': formatBooleanForCSV(player.franchiseTagEligible),
+    }));
+
+    const exportYear = faYear || 'all';
+    downloadCSV(csvRows, `bbb-free-agency-preview-${exportYear}.csv`);
+  };
 
   // Pagination logic
   const itemsPerPage = isMobile ? 10 : 25;
@@ -416,7 +437,20 @@ export default function FreeAgency() {
 
         {/* All Free Agents */}
         <section className="bg-black/30 border border-white/10 rounded-xl p-8 mb-10">
-          <h2 className="text-2xl font-bold text-[#FF4B1F] mb-4">All Free Agents ({faYear})</h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold text-[#FF4B1F]">All Free Agents ({faYear})</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/60">Exports all matching rows</span>
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                disabled={sortedFreeAgents.length === 0}
+                className="px-3 py-1.5 rounded bg-[#FF4B1F] text-white text-sm font-semibold hover:bg-[#e03e0f] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Export CSV
+              </button>
+            </div>
+          </div>
           {/* Filters */}
           <div className="flex flex-wrap gap-3 mb-4">
             <input
