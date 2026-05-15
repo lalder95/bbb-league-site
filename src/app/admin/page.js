@@ -31,6 +31,338 @@ function groupOrderPreviewByRound(orderPreview) {
     }));
 }
 
+function shuffleArray(values) {
+  const copy = Array.isArray(values) ? values.slice() : [];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function edgeKey(a, b) {
+  const left = Number(a);
+  const right = Number(b);
+  return left < right ? `${left}|${right}` : `${right}|${left}`;
+}
+
+function buildWeeklyCrossDivisionMatchings(teams) {
+  const byRosterId = new Map((teams || []).map((team) => [Number(team.rosterId), team]));
+  const rosterIds = Array.from(byRosterId.keys()).sort((a, b) => a - b);
+  const results = [];
+
+  function recurse(unpaired, currentPairs) {
+    if (unpaired.length === 0) {
+      const pairs = currentPairs
+        .slice()
+        .sort((left, right) => {
+          const leftA = Math.min(left[0], left[1]);
+          const rightA = Math.min(right[0], right[1]);
+          if (leftA !== rightA) return leftA - rightA;
+          return Math.max(left[0], left[1]) - Math.max(right[0], right[1]);
+        })
+        .map(([a, b]) => (a < b ? [a, b] : [b, a]));
+
+      results.push({
+        pairs,
+        edgeKeys: pairs.map(([a, b]) => edgeKey(a, b)),
+      });
+      return;
+    }
+
+    const first = unpaired[0];
+    const firstTeam = byRosterId.get(first);
+    const remainder = unpaired.slice(1);
+
+    for (const opponent of remainder) {
+      const opponentTeam = byRosterId.get(opponent);
+      if (!firstTeam || !opponentTeam) continue;
+      if (Number(firstTeam.divisionId) === Number(opponentTeam.divisionId)) continue;
+
+      const nextUnpaired = remainder.filter((id) => id !== opponent);
+      recurse(nextUnpaired, [...currentPairs, [first, opponent]]);
+    }
+  }
+
+  recurse(rosterIds, []);
+  return results;
+}
+
+function findEdgeCoverWithWeeklyMatchups(weeklyMatchups, allEdgeKeys) {
+  const edgeToMatchups = new Map();
+  allEdgeKeys.forEach((key) => edgeToMatchups.set(key, []));
+
+  weeklyMatchups.forEach((week, weekIndex) => {
+    week.edgeKeys.forEach((key) => {
+      const list = edgeToMatchups.get(key);
+      if (list) list.push(weekIndex);
+    });
+  });
+
+  const covered = new Set();
+  const selected = [];
+
+  function chooseNextEdge() {
+    let bestEdge = null;
+    let fewestChoices = Number.POSITIVE_INFINITY;
+
+    for (const key of allEdgeKeys) {
+      if (covered.has(key)) continue;
+      const candidates = edgeToMatchups.get(key) || [];
+      const usable = candidates.filter((index) => {
+        const week = weeklyMatchups[index];
+        return !week.edgeKeys.some((edge) => covered.has(edge));
+      });
+      if (usable.length < fewestChoices) {
+        fewestChoices = usable.length;
+        bestEdge = key;
+      }
+    }
+
+    return { bestEdge, fewestChoices };
+  }
+
+  function dfs() {
+    if (covered.size === allEdgeKeys.length) {
+      return selected.length === 8;
+    }
+    if (selected.length >= 8) return false;
+
+    const remainingEdges = allEdgeKeys.length - covered.size;
+    const remainingWeeks = 8 - selected.length;
+    if (Math.ceil(remainingEdges / 6) > remainingWeeks) return false;
+
+    const { bestEdge, fewestChoices } = chooseNextEdge();
+    if (!bestEdge || fewestChoices === 0) return false;
+
+    const candidateIndexes = shuffleArray(edgeToMatchups.get(bestEdge) || []);
+    for (const index of candidateIndexes) {
+      const week = weeklyMatchups[index];
+      if (week.edgeKeys.some((edge) => covered.has(edge))) continue;
+
+      selected.push(index);
+      week.edgeKeys.forEach((edge) => covered.add(edge));
+
+      if (dfs()) return true;
+
+      week.edgeKeys.forEach((edge) => covered.delete(edge));
+      selected.pop();
+    }
+
+    return false;
+  }
+
+  if (!dfs()) return null;
+  return selected.map((index) => weeklyMatchups[index]);
+}
+
+function buildDivisionalWeeks(divisionGroups) {
+  const earlyWeeks = [[], [], []];
+
+  for (const group of divisionGroups) {
+    const randomizedTeams = shuffleArray(group.map((team) => Number(team.rosterId)));
+    const [a, b, c, d] = randomizedTeams;
+    const pattern = [
+      [[a, b], [c, d]],
+      [[a, c], [b, d]],
+      [[a, d], [b, c]],
+    ];
+    const weekOrder = shuffleArray([0, 1, 2]);
+
+    for (let weekIndex = 0; weekIndex < 3; weekIndex += 1) {
+      const selectedPairs = pattern[weekOrder[weekIndex]];
+      earlyWeeks[weekIndex].push(...selectedPairs);
+    }
+  }
+
+  return earlyWeeks;
+}
+
+function getDivisionNameLookup(league) {
+  const settings = league?.settings || {};
+  const configuredDivisionCount = Number(settings?.divisions) || 0;
+  const lookup = new Map();
+  const fallbackNames = {
+    1: 'Wall Street',
+    2: 'Middle Class',
+    3: 'Poor House',
+  };
+
+  for (let divisionId = 1; divisionId <= configuredDivisionCount; divisionId += 1) {
+    const rawName = settings?.[`division_${divisionId}`];
+    if (typeof rawName === 'string' && rawName.trim()) {
+      lookup.set(divisionId, rawName.trim());
+      continue;
+    }
+
+    if (fallbackNames[divisionId]) {
+      lookup.set(divisionId, fallbackNames[divisionId]);
+    }
+  }
+
+  if (lookup.size === 0) {
+    Object.entries(fallbackNames).forEach(([divisionId, name]) => {
+      lookup.set(Number(divisionId), name);
+    });
+  }
+
+  return lookup;
+}
+
+function buildScheduleFromLeagueData({ users, rosters, league }) {
+  const userById = new Map((Array.isArray(users) ? users : []).map((user) => [user.user_id, user]));
+  const divisionMap = new Map();
+  const divisionNameLookup = getDivisionNameLookup(league);
+
+  const teams = (Array.isArray(rosters) ? rosters : []).map((roster) => {
+    const rosterId = Number(roster?.roster_id);
+    const divisionId = Number(roster?.settings?.division);
+    const owner = userById.get(roster?.owner_id);
+    const teamName = owner?.display_name || owner?.team_name || owner?.username || `Team ${rosterId}`;
+
+    if (!divisionMap.has(divisionId)) divisionMap.set(divisionId, []);
+
+    const team = {
+      rosterId,
+      teamName,
+      ownerId: roster?.owner_id,
+      divisionId,
+      divisionName: divisionNameLookup.get(divisionId) || `Division ${divisionId}`,
+    };
+    divisionMap.get(divisionId).push(team);
+    return team;
+  });
+
+  if (teams.length !== 12) {
+    throw new Error(`Expected 12 teams, found ${teams.length}.`);
+  }
+
+  const divisionIds = Array.from(divisionMap.keys()).filter((id) => Number.isFinite(id) && id > 0).sort((a, b) => a - b);
+  if (divisionIds.length !== 3) {
+    throw new Error(`Expected 3 divisions, found ${divisionIds.length}.`);
+  }
+
+  const divisionGroups = divisionIds.map((id) => divisionMap.get(id) || []);
+  for (const group of divisionGroups) {
+    if (group.length !== 4) {
+      throw new Error('Each division must contain exactly 4 teams to build this schedule.');
+    }
+  }
+
+  const byRosterId = new Map(teams.map((team) => [Number(team.rosterId), team]));
+
+  const allCrossDivisionEdges = [];
+  for (let i = 0; i < teams.length; i += 1) {
+    for (let j = i + 1; j < teams.length; j += 1) {
+      if (Number(teams[i].divisionId) === Number(teams[j].divisionId)) continue;
+      allCrossDivisionEdges.push(edgeKey(teams[i].rosterId, teams[j].rosterId));
+    }
+  }
+
+  const weeklyCrossDivisionMatchings = buildWeeklyCrossDivisionMatchings(teams);
+  const selectedCrossDivisionWeeks = findEdgeCoverWithWeeklyMatchups(weeklyCrossDivisionMatchings, allCrossDivisionEdges);
+  if (!selectedCrossDivisionWeeks || selectedCrossDivisionWeeks.length !== 8) {
+    throw new Error('Unable to generate a valid inter-division schedule. Please try again.');
+  }
+
+  const randomizedCrossDivisionWeeks = shuffleArray(selectedCrossDivisionWeeks);
+  const earlyDivisionalWeeks = buildDivisionalWeeks(divisionGroups);
+
+  const weekMap = new Map();
+
+  function addWeek(weekNumber, pairs, type) {
+    const matchups = pairs.map(([leftId, rightId]) => {
+      const left = byRosterId.get(Number(leftId));
+      const right = byRosterId.get(Number(rightId));
+      if (!left || !right) {
+        throw new Error('Invalid matchup generated.');
+      }
+      return {
+        teamA: {
+          rosterId: left.rosterId,
+          teamName: left.teamName,
+          divisionId: left.divisionId,
+          divisionName: left.divisionName,
+        },
+        teamB: {
+          rosterId: right.rosterId,
+          teamName: right.teamName,
+          divisionId: right.divisionId,
+          divisionName: right.divisionName,
+        },
+        type,
+      };
+    });
+
+    weekMap.set(weekNumber, { week: weekNumber, matchups });
+  }
+
+  for (let weekOffset = 0; weekOffset < 3; weekOffset += 1) {
+    addWeek(weekOffset + 1, earlyDivisionalWeeks[weekOffset], 'divisional');
+  }
+
+  for (let weekOffset = 0; weekOffset < 8; weekOffset += 1) {
+    addWeek(weekOffset + 4, randomizedCrossDivisionWeeks[weekOffset].pairs, 'inter-division');
+  }
+
+  addWeek(12, earlyDivisionalWeeks[2], 'divisional');
+  addWeek(13, earlyDivisionalWeeks[1], 'divisional');
+  addWeek(14, earlyDivisionalWeeks[0], 'divisional');
+
+  return {
+    leagueId: league?.league_id || null,
+    season: league?.season || null,
+    generatedAt: new Date().toISOString(),
+    weeks: Array.from(weekMap.values()).sort((a, b) => a.week - b.week),
+  };
+}
+
+function escapeCsvCell(value) {
+  const stringValue = String(value ?? '');
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+}
+
+function toScheduleCsv(scheduleResult) {
+  const header = [
+    'week',
+    'matchup_number',
+    'matchup_type',
+    'team_a_name',
+    'team_a_roster_id',
+    'team_a_division',
+    'team_b_name',
+    'team_b_roster_id',
+    'team_b_division',
+  ];
+
+  const rows = [header.join(',')];
+  const weeks = Array.isArray(scheduleResult?.weeks) ? scheduleResult.weeks : [];
+
+  weeks.forEach((weekEntry) => {
+    const matchups = Array.isArray(weekEntry?.matchups) ? weekEntry.matchups : [];
+    matchups.forEach((matchup, index) => {
+      const values = [
+        weekEntry.week,
+        index + 1,
+        matchup.type,
+        matchup.teamA?.teamName,
+        matchup.teamA?.rosterId,
+        matchup.teamA?.divisionName || matchup.teamA?.divisionId,
+        matchup.teamB?.teamName,
+        matchup.teamB?.rosterId,
+        matchup.teamB?.divisionName || matchup.teamB?.divisionId,
+      ];
+
+      rows.push(values.map(escapeCsvCell).join(','));
+    });
+  });
+
+  return rows.join('\n');
+}
+
 export default function AdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -63,6 +395,9 @@ export default function AdminPage() {
   const [contractAuditLoading, setContractAuditLoading] = useState(false);
   const [contractAuditError, setContractAuditError] = useState('');
   const [contractAuditData, setContractAuditData] = useState(null);
+  const [scheduleGenerating, setScheduleGenerating] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleResult, setScheduleResult] = useState(null);
   // No external URL needed anymore; we scrape internally
 
   useEffect(() => {
@@ -241,6 +576,52 @@ export default function AdminPage() {
         setProgressPollId(null);
       }
     }
+  }
+
+  async function handleGenerateSchedule() {
+    setScheduleGenerating(true);
+    setScheduleError('');
+
+    try {
+      const leagueId = await resolveBBBLeagueId();
+      const [usersRes, rostersRes, leagueRes] = await Promise.all([
+        fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`, { cache: 'no-store' }),
+        fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, { cache: 'no-store' }),
+        fetch(`https://api.sleeper.app/v1/league/${leagueId}`, { cache: 'no-store' }),
+      ]);
+
+      const [users, rosters, league] = await Promise.all([
+        usersRes.json(),
+        rostersRes.json(),
+        leagueRes.json(),
+      ]);
+
+      const generated = buildScheduleFromLeagueData({ users, rosters, league });
+      setScheduleResult(generated);
+    } catch (error) {
+      setScheduleResult(null);
+      setScheduleError(error?.message || 'Failed to generate schedule.');
+    } finally {
+      setScheduleGenerating(false);
+    }
+  }
+
+  function handleDownloadScheduleCsv() {
+    if (!scheduleResult?.weeks?.length) return;
+
+    const csv = toScheduleCsv(scheduleResult);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const season = scheduleResult?.season || new Date().getFullYear();
+    const filename = `bbb-league-schedule-${season}.csv`;
+
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
 
@@ -600,6 +981,59 @@ export default function AdminPage() {
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
             <h2 className="text-xl font-bold mb-2">League Settings</h2>
             <p className="text-white/70">Configure league settings (Coming Soon)</p>
+          </div>
+          <div className="bg-black/30 rounded-lg border border-white/10 p-6 md:col-span-2">
+            <h2 className="text-xl font-bold mb-2">Schedule Generator</h2>
+            <p className="text-white/70 mb-4">
+              Build a random regular-season schedule for the current BBB season. Weeks 1-3 and 12-14 are divisional mirrors, and Weeks 4-11 randomize inter-division matchups.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                onClick={handleGenerateSchedule}
+                disabled={scheduleGenerating}
+                className={`px-4 py-2 rounded-lg ${scheduleGenerating ? 'bg-white/20' : 'bg-[#FF4B1F] hover:bg-[#FF4B1F]/80'} text-white`}
+              >
+                {scheduleGenerating ? 'Generating…' : 'Generate Schedule'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadScheduleCsv}
+                disabled={!scheduleResult?.weeks?.length}
+                className={`px-4 py-2 rounded-lg ${scheduleResult?.weeks?.length ? 'bg-[#1FDDFF] hover:bg-[#1FDDFF]/80 text-black' : 'bg-white/20 text-white/60 cursor-not-allowed'}`}
+              >
+                Export CSV
+              </button>
+            </div>
+            {scheduleError && (
+              <div className="mb-3 text-sm text-red-400">{scheduleError}</div>
+            )}
+            {scheduleResult?.weeks?.length > 0 && (
+              <div className="bg-black/20 rounded border border-white/10 p-3">
+                <div className="text-sm text-white/70 mb-3">
+                  Season: {scheduleResult.season || 'Unknown'} | League ID: {scheduleResult.leagueId || 'Unknown'}
+                </div>
+                <div className="max-h-[32rem] overflow-auto space-y-3">
+                  {scheduleResult.weeks.map((weekEntry) => (
+                    <div key={weekEntry.week} className="bg-black/10 rounded border border-white/10 p-3">
+                      <div className="text-xs uppercase tracking-wide text-white/60 mb-2">Week {weekEntry.week}</div>
+                      <div className="space-y-1 text-sm">
+                        {weekEntry.matchups.map((matchup, index) => (
+                          <div key={`${weekEntry.week}-${index}`} className="flex flex-wrap items-center gap-2">
+                            <span className="text-white/80">{matchup.teamA.teamName}</span>
+                            <span className="text-white/50">vs</span>
+                            <span className="text-white/80">{matchup.teamB.teamName}</span>
+                            <span className={`text-xs ${matchup.type === 'divisional' ? 'text-yellow-300' : 'text-cyan-300'}`}>
+                              [{matchup.type}]
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className="bg-black/30 rounded-lg border border-white/10 p-6">
             <h2 className="text-xl font-bold mb-2">Contract Audit</h2>
