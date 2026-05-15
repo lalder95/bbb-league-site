@@ -2628,14 +2628,43 @@ export default function FreeAgentAuctionPage() {
           onClose={() => setShowCapModal(false)}
           maxWidth="max-w-3xl"
         >
-          <div className="overflow-x-auto rounded-[24px] border border-white/10 bg-black/20">
-            <table className="w-full min-w-[520px] border-collapse text-xs sm:min-w-[620px] sm:text-sm">
+          <div className="space-y-3 sm:hidden">
+            {capTeams
+              .slice()
+              .sort((a, b) => a.team.localeCompare(b.team))
+              .map((team, idx) => {
+                const isActiveUser = session?.user?.name === team.team;
+                const showSpend = !draft?.blind || isActiveUser;
+                return (
+                  <div key={team.team || idx} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <TeamIdentity username={team.team} avatarId={teamAvatars[team.team]} size={9} />
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <div className="uppercase tracking-[0.16em] text-white/45">Cap Space</div>
+                        <div className={cn('mt-1 text-sm font-semibold', getCapSpaceColor(team.curYear.remaining))}>
+                          {formatCapSpace(team.curYear.remaining)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="uppercase tracking-[0.16em] text-white/45">Spend</div>
+                        <div className="mt-1 text-sm font-semibold text-white/80">
+                          {showSpend ? formatCapSpace(team.spend || 0) : 'Hidden'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-[24px] border border-white/10 bg-black/20 sm:block">
+            <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-white/10 bg-white/5 text-left text-white/70">
-                  <th className="px-2.5 py-2 font-semibold sm:px-4 sm:py-3">Team</th>
-                  <th className="px-2.5 py-2 font-semibold sm:px-4 sm:py-3">Cap Space</th>
+                  <th className="px-4 py-3 font-semibold">Team</th>
+                  <th className="px-4 py-3 font-semibold">Cap Space</th>
                   {(!draft?.blind || capTeams.some(team => session?.user?.name === team.team)) && (
-                    <th className="px-2.5 py-2 font-semibold sm:px-4 sm:py-3">Spend</th>
+                    <th className="px-4 py-3 font-semibold">Spend</th>
                   )}
                 </tr>
               </thead>
@@ -2647,14 +2676,14 @@ export default function FreeAgentAuctionPage() {
                     const isActiveUser = session?.user?.name === team.team;
                     return (
                       <tr key={team.team || idx} className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
-                        <td className="px-2.5 py-2 sm:px-4 sm:py-3">
+                        <td className="px-4 py-3">
                           <TeamIdentity username={team.team} avatarId={teamAvatars[team.team]} size={11} />
                         </td>
-                        <td className="px-2.5 py-2 text-right sm:px-4 sm:py-3">
+                        <td className="px-4 py-3 text-right">
                           <span className={cn('text-sm font-semibold', getCapSpaceColor(team.curYear.remaining))}>{formatCapSpace(team.curYear.remaining)}</span>
                         </td>
                         {(!draft?.blind || isActiveUser) && (
-                          <td className="px-2.5 py-2 text-right text-white/75 sm:px-4 sm:py-3">{formatCapSpace(team.spend || 0)}</td>
+                          <td className="px-4 py-3 text-right text-white/75">{formatCapSpace(team.spend || 0)}</td>
                         )}
                       </tr>
                     );
@@ -2698,14 +2727,39 @@ export default function FreeAgentAuctionPage() {
                 </select>
               </div>
 
-              <div className="overflow-x-auto rounded-[24px] border border-white/10 bg-black/20">
-                <table className="w-full min-w-[560px] text-xs sm:text-sm">
+              <div className="space-y-2 sm:hidden">
+                {filteredBidLog.length > 0 ? (
+                  filteredBidLog.map((bid, idx) => {
+                    const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
+                    return (
+                      <div key={idx} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="text-sm font-semibold text-white">{player ? player.playerName : 'Unknown'}</div>
+                        <div className="mt-2">
+                          <TeamIdentity username={bid.username} avatarId={teamAvatars[bid.username]} size={8} />
+                        </div>
+                        <div className="mt-3 flex items-end justify-between gap-3">
+                          <div className="font-mono text-sm text-white/85">
+                            ${bid.salary} / {bid.years}y
+                            <div className="mt-1 text-xs text-sky-200">Score: {bid.contractPoints}</div>
+                          </div>
+                          <div className="text-xs text-white/50">{formatTimeAgo(bid.timestamp)}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-white/50">No bids match the current filters.</div>
+                )}
+              </div>
+
+              <div className="hidden overflow-x-auto rounded-[24px] border border-white/10 bg-black/20 sm:block">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-white/10 bg-white/5 text-left text-white/70">
-                      <th className="px-2.5 py-2 font-semibold sm:px-4 sm:py-3">Player</th>
-                      <th className="px-2.5 py-2 font-semibold sm:px-4 sm:py-3">Bidder</th>
-                      <th className="px-2.5 py-2 font-semibold sm:px-4 sm:py-3">Contract</th>
-                      <th className="px-2.5 py-2 font-semibold sm:px-4 sm:py-3">Time</th>
+                      <th className="px-4 py-3 font-semibold">Player</th>
+                      <th className="px-4 py-3 font-semibold">Bidder</th>
+                      <th className="px-4 py-3 font-semibold">Contract</th>
+                      <th className="px-4 py-3 font-semibold">Time</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2714,21 +2768,21 @@ export default function FreeAgentAuctionPage() {
                         const player = draft.players?.find(p => String(p.playerId) === String(bid.playerId));
                         return (
                           <tr key={idx} className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
-                            <td className="px-2.5 py-2 font-medium text-white sm:px-4 sm:py-3">{player ? player.playerName : 'Unknown'}</td>
-                            <td className="px-2.5 py-2 sm:px-4 sm:py-3">
+                            <td className="px-4 py-3 font-medium text-white">{player ? player.playerName : 'Unknown'}</td>
+                            <td className="px-4 py-3">
                               <TeamIdentity username={bid.username} avatarId={teamAvatars[bid.username]} size={8} />
                             </td>
-                            <td className="px-2.5 py-2 font-mono text-white/80 sm:px-4 sm:py-3">
+                            <td className="px-4 py-3 font-mono text-white/80">
                               ${bid.salary} / {bid.years}y
                               <div className="mt-1 text-xs text-sky-200">Score: {bid.contractPoints}</div>
                             </td>
-                            <td className="px-2.5 py-2 text-white/45 sm:px-4 sm:py-3">{formatTimeAgo(bid.timestamp)}</td>
+                            <td className="px-4 py-3 text-white/45">{formatTimeAgo(bid.timestamp)}</td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan={4} className="px-2.5 py-10 text-center text-white/50 sm:px-4">No bids match the current filters.</td>
+                        <td colSpan={4} className="px-4 py-10 text-center text-white/50">No bids match the current filters.</td>
                       </tr>
                     )}
                   </tbody>
