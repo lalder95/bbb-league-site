@@ -40,8 +40,31 @@ function PushNotificationManager() {
     if (supported) {
       setPermission(Notification.permission);
       navigator.serviceWorker.ready
-        .then((reg) => reg.pushManager.getSubscription())
-        .then((sub) => setHasSubscription(!!sub))
+        .then(async (reg) => {
+          const sub = await reg.pushManager.getSubscription();
+          if (!sub) return; // no local sub — show the button
+
+          // Verify the local subscription is also registered on the server.
+          // If the server has no record of it, re-POST it now (we already have permission).
+          try {
+            const res = await fetch('/api/notifications/subscribe');
+            if (res.ok) {
+              const { devices } = await res.json();
+              const knownOnServer = (devices || []).some((d) => d.endpoint === sub.endpoint);
+              if (!knownOnServer) {
+                // Re-register silently
+                await fetch('/api/notifications/subscribe', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(sub.toJSON()),
+                });
+              }
+            }
+          } catch {
+            // Network error — still show as enabled locally
+          }
+          setHasSubscription(true);
+        })
         .catch(() => {});
     }
   }, []);
