@@ -178,7 +178,7 @@ export async function PATCH(request) {
     const allUsers = await getAllUsers();
     const recipientIds = allUsers
       .map((u) => u.username)
-      .filter((u) => u && u !== actingUser);
+      .filter((u) => u);
 
     const playerLabel = assignment.playerName || 'a player';
     const teamLabel = assignment.assignedTeam || 'A team';

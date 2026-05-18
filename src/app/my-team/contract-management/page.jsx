@@ -1246,7 +1246,10 @@ export default function ContractManagementPage() {
                                     });
                                     const data = await res.json();
                                     if (!res.ok) throw new Error(data.error || 'Failed to save extension');
-                                    setFinalizeMsg('Extension finalized and saved!');
+                                    const _nr1 = data.notificationResult;
+                                    console.log('[ContractMgmt] extension notificationResult:', _nr1);
+                                    const _nc1 = _nr1?.recipientCount ?? 0;
+                                    setFinalizeMsg(`Extension finalized and saved! ${_nc1 > 0 ? `Notified ${_nc1} other user${_nc1 !== 1 ? 's' : ''}.` : '(No other registered users to notify.)'}`);
 
                                     const refreshRes = await fetch('/api/admin/contract_changes');
                                     const refreshData = await refreshRes.json();
@@ -1374,7 +1377,10 @@ export default function ContractManagementPage() {
                           });
                           const data = await res.json();
                           if (!res.ok) throw new Error(data.error || 'Failed to save extension');
-                          setFinalizeMsg('Extension finalized and saved!');
+                          const _nr2 = data.notificationResult;
+                          console.log('[ContractMgmt] extension notificationResult:', _nr2);
+                          const _nc2 = _nr2?.recipientCount ?? 0;
+                          setFinalizeMsg(`Extension finalized and saved! ${_nc2 > 0 ? `Notified ${_nc2} other user${_nc2 !== 1 ? 's' : ''}.` : '(No other registered users to notify.)'}`);
 
                           const refreshRes = await fetch('/api/admin/contract_changes');
                           const refreshData = await refreshRes.json();
@@ -1656,7 +1662,10 @@ export default function ContractManagementPage() {
                                     });
                                     const data = await res.json();
                                     if (!res.ok) throw new Error(data.error || 'Failed to save franchise tag');
-                                    setFinalizeMsg('Franchise tag applied and saved!');
+                                    const _nr3 = data.notificationResult;
+                                    console.log('[ContractMgmt] franchise notificationResult:', _nr3);
+                                    const _nc3 = _nr3?.recipientCount ?? 0;
+                                    setFinalizeMsg(`Franchise tag applied and saved! ${_nc3 > 0 ? `Notified ${_nc3} other user${_nc3 !== 1 ? 's' : ''}.` : '(No other registered users to notify.)'}`);
 
                                     const refreshRes = await fetch('/api/admin/contract_changes');
                                     const refreshData = await refreshRes.json();
@@ -1755,7 +1764,10 @@ export default function ContractManagementPage() {
                               });
                               const data = await res.json();
                               if (!res.ok) throw new Error(data.error || 'Failed to save franchise tag');
-                              setFinalizeMsg('Franchise tag applied and saved!');
+                              const _nr4 = data.notificationResult;
+                              console.log('[ContractMgmt] franchise notificationResult:', _nr4);
+                              const _nc4 = _nr4?.recipientCount ?? 0;
+                              setFinalizeMsg(`Franchise tag applied and saved! ${_nc4 > 0 ? `Notified ${_nc4} other user${_nc4 !== 1 ? 's' : ''}.` : '(No other registered users to notify.)'}`);
 
                               const refreshRes = await fetch('/api/admin/contract_changes');
                               const refreshData = await refreshRes.json();
@@ -1936,7 +1948,10 @@ export default function ContractManagementPage() {
                                     });
                                     const data = await res.json();
                                     if (!res.ok) throw new Error(data.error || 'Failed to save RFA tag');
-                                    setFinalizeMsg('RFA tag applied and saved!');
+                                    const _nr5 = data.notificationResult;
+                                    console.log('[ContractMgmt] RFA notificationResult:', _nr5);
+                                    const _nc5 = _nr5?.recipientCount ?? 0;
+                                    setFinalizeMsg(`RFA tag applied and saved! ${_nc5 > 0 ? `Notified ${_nc5} other user${_nc5 !== 1 ? 's' : ''}.` : '(No other registered users to notify.)'}`);
 
                                     const refreshRes = await fetch('/api/admin/contract_changes');
                                     const refreshData = await refreshRes.json();
@@ -2032,7 +2047,10 @@ export default function ContractManagementPage() {
                               });
                               const data = await res.json();
                               if (!res.ok) throw new Error(data.error || 'Failed to save RFA tag');
-                              setFinalizeMsg('RFA tag applied and saved!');
+                              const _nr6 = data.notificationResult;
+                              console.log('[ContractMgmt] RFA notificationResult:', _nr6);
+                              const _nc6 = _nr6?.recipientCount ?? 0;
+                              setFinalizeMsg(`RFA tag applied and saved! ${_nc6 > 0 ? `Notified ${_nc6} other user${_nc6 !== 1 ? 's' : ''}.` : '(No other registered users to notify.)'}`);
 
                               const refreshRes = await fetch('/api/admin/contract_changes');
                               const refreshData = await refreshRes.json();

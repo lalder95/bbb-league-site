@@ -33,11 +33,12 @@ export async function POST(request) {
     }
 
     // Fire notifications to all other league members
+    let notificationResult = { skipped: true };
     try {
       const allUsers = await getAllUsers();
       const recipientIds = allUsers
         .map((u) => u.username)
-        .filter((u) => u && u !== body.user);
+        .filter((u) => u);
 
       let title, message;
       if (body.change_type === 'franchise_tag') {
@@ -63,19 +64,24 @@ export async function POST(request) {
           : 'rfa_tag';
 
       if (recipientIds.length > 0) {
-        await createNotificationForMany(recipientIds, {
+        notificationResult = await createNotificationForMany(recipientIds, {
           title,
           message,
           link: '/my-team/contract-management',
           type: 'system',
           prefKey,
         });
+        notificationResult.recipientCount = recipientIds.length;
+        notificationResult.recipientIds = recipientIds;
+      } else {
+        notificationResult = { skipped: true, reason: 'no_recipients', totalUsers: allUsers.length, bodyUser: body.user };
       }
     } catch (notifErr) {
       console.error('contract_changes notification error:', notifErr);
+      notificationResult = { error: notifErr.message };
     }
 
-    return NextResponse.json({ success: true, change: result.change });
+    return NextResponse.json({ success: true, change: result.change, notificationResult });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

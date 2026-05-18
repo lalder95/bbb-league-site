@@ -363,6 +363,73 @@ function toScheduleCsv(scheduleResult) {
   return rows.join('\n');
 }
 
+function NotificationTestCard() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleRun = async () => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch('/api/admin/test-notification', { method: 'POST' });
+      const data = await res.json();
+      setResult(data);
+    } catch (err) {
+      setResult({ ok: false, error: err.message });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const success = result?.ok && result?.diag?.notificationResult?.success;
+  const diagError = result?.diag?.notificationError || result?.error;
+
+  return (
+    <div className="bg-black/30 rounded-lg border border-white/10 p-6">
+      <h2 className="text-xl font-bold mb-2">Notification Diagnostics</h2>
+      <p className="text-white/70 mb-4">
+        Sends a test notification to yourself and returns a full diagnostic report.
+      </p>
+      <button
+        type="button"
+        onClick={handleRun}
+        disabled={running}
+        className={`px-4 py-2 rounded-lg ${running ? 'bg-white/20' : 'bg-[#FF4B1F] hover:bg-[#FF4B1F]/80'} text-white`}
+      >
+        {running ? 'Running…' : 'Send Test Notification'}
+      </button>
+
+      {result && (
+        <div className="mt-4 space-y-2">
+          <div className={`text-sm font-semibold ${success ? 'text-green-400' : 'text-red-400'}`}>
+            {success ? '✓ Notification created successfully' : '✗ Notification failed'}
+          </div>
+
+          {result?.diag && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-white/70">
+              <span>Token username:</span><span className="text-white">{result.diag.tokenUsername ?? '—'}</span>
+              <span>MongoDB reachable:</span><span className={result.diag.allUsersCount !== null ? 'text-green-400' : 'text-red-400'}>{result.diag.allUsersCount !== null ? `Yes (${result.diag.allUsersCount} users)` : 'No'}</span>
+              <span>VAPID configured:</span><span className={result.diag.vapidConfigured ? 'text-green-400' : 'text-yellow-400'}>{result.diag.vapidConfigured ? 'Yes' : 'No (push disabled)'}</span>
+              <span>DB users found:</span><span className="text-white font-mono text-[10px] break-all">{(result.diag.allUsernames || []).join(', ') || '—'}</span>
+            </div>
+          )}
+
+          {diagError && (
+            <p className="text-xs text-red-400 mt-1">{diagError}</p>
+          )}
+
+          <details className="bg-black/20 rounded border border-white/10 p-2 mt-2">
+            <summary className="cursor-pointer text-xs text-white/60">Full JSON response</summary>
+            <pre className="mt-2 text-xs text-white/70 whitespace-pre-wrap overflow-auto max-h-64">
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -1064,6 +1131,7 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold mb-2">Content Management</h2>
             <p className="text-white/70">Manage website content (Coming Soon)</p>
           </div>
+          <NotificationTestCard />
         </div>
         
         {/* System Stats */}

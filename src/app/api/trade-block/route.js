@@ -190,7 +190,7 @@ export async function POST(request) {
       const allUsers = await getAllUsers();
       const recipientIds = allUsers
         .map((u) => u.username)
-        .filter((u) => u && u !== actingUsername);
+        .filter((u) => u);
 
       const assetLabel = doc.asset?.playerName
         ? doc.asset.playerName
