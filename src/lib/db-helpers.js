@@ -819,3 +819,192 @@ export async function autoWithdrawOffersForLostAssets(listingId, offererUsername
     return { success: false, error: error.message };
   }
 }
+
+// ─── Notifications ─────────────────────────────────────────────────────────
+
+async function getNotificationsCollection() {
+  const db = await getDatabase();
+  return db.collection('notifications');
+}
+
+export async function createNotificationRecord({ userId, title, message, link = null, type = 'system' }) {
+  try {
+    const col = await getNotificationsCollection();
+    const doc = {
+      userId,
+      title,
+      message,
+      link,
+      type,
+      read: false,
+      pushed: false,
+      createdAt: new Date(),
+    };
+    const result = await col.insertOne(doc);
+    return { success: true, notificationId: result.insertedId.toString() };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function markNotificationPushed(notificationId) {
+  try {
+    const col = await getNotificationsCollection();
+    await col.updateOne({ _id: new ObjectId(notificationId) }, { $set: { pushed: true } });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getNotificationsForUser(userId, { limit = 50 } = {}) {
+  try {
+    const col = await getNotificationsCollection();
+    const docs = await col
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+    return docs;
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function getUnreadNotificationCount(userId) {
+  try {
+    const col = await getNotificationsCollection();
+    return await col.countDocuments({ userId, read: false });
+  } catch (error) {
+    return 0;
+  }
+}
+
+export async function markNotificationRead(notificationId, userId) {
+  try {
+    const col = await getNotificationsCollection();
+    await col.updateOne(
+      { _id: new ObjectId(notificationId), userId },
+      { $set: { read: true } }
+    );
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function markAllNotificationsRead(userId) {
+  try {
+    const col = await getNotificationsCollection();
+    await col.updateMany({ userId, read: false }, { $set: { read: true } });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteNotification(notificationId, userId) {
+  try {
+    const col = await getNotificationsCollection();
+    await col.deleteOne({ _id: new ObjectId(notificationId), userId });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// ─── Push Subscriptions ────────────────────────────────────────────────────
+
+async function getPushSubscriptionsCollection() {
+  const db = await getDatabase();
+  return db.collection('pushSubscriptions');
+}
+
+export async function savePushSubscription(userId, subscription) {
+  try {
+    const col = await getPushSubscriptionsCollection();
+    await col.updateOne(
+      { userId, 'subscription.endpoint': subscription.endpoint },
+      { $set: { userId, subscription, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+      { upsert: true }
+    );
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function removePushSubscription(userId, endpoint) {
+  try {
+    const col = await getPushSubscriptionsCollection();
+    await col.deleteOne({ userId, 'subscription.endpoint': endpoint });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getPushSubscriptionsForUser(userId) {
+  try {
+    const col = await getPushSubscriptionsCollection();
+    const docs = await col.find({ userId }).toArray();
+    return docs.map(d => d.subscription);
+  } catch (error) {
+    return [];
+  }
+}
+
+// Returns lightweight device records for display: endpoint + timestamps (no keys).
+export async function getDevicesForUser(userId) {
+  try {
+    const col = await getPushSubscriptionsCollection();
+    const docs = await col.find({ userId }).sort({ createdAt: -1 }).toArray();
+    return docs.map(d => ({
+      endpoint: d.subscription?.endpoint || '',
+      createdAt: d.createdAt || null,
+      updatedAt: d.updatedAt || null,
+    }));
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function getAllPushSubscriptions() {
+  try {
+    const col = await getPushSubscriptionsCollection();
+    const docs = await col.find({}).toArray();
+    return docs.map(d => ({ userId: d.userId, subscription: d.subscription }));
+  } catch (error) {
+    return [];
+  }
+}
+
+// Notification preferences — stored on the users collection under notificationPreferences field.
+// Each key maps to a boolean; absent keys default to true (enabled).
+
+export async function getNotificationPreferences(username) {
+  try {
+    const users = await getUsersCollection();
+    const user = await users.findOne(
+      { username: { $regex: new RegExp('^' + username + '$', 'i') } },
+      { projection: { notificationPreferences: 1 } }
+    );
+    return user?.notificationPreferences ?? {};
+  } catch (error) {
+    return {};
+  }
+}
+
+export async function updateNotificationPreferences(username, preferences) {
+  try {
+    const users = await getUsersCollection();
+    const result = await users.updateOne(
+      { username: { $regex: new RegExp('^' + username + '$', 'i') } },
+      { $set: { notificationPreferences: preferences } }
+    );
+    if (result.matchedCount === 0) return { success: false, error: 'User not found' };
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}

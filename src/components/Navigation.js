@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Menu, X, ChevronDown, Search } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import PlayerProfileCard from '../app/my-team/components/PlayerProfileCard';
+import NotificationBell from './NotificationBell';
 
 // Dropdown component
 const NavDropdown = ({ title, links, isActive }) => {
@@ -402,9 +403,16 @@ export default function Navigation() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex items-center">
+        {/* Mobile header: bell (far-left) | logo (absolute center) | hamburger (far-right) */}
+        {/* Desktop header: logo (left) | nav (center) | auth (right) — unchanged layout */}
+        <div className="relative flex items-center justify-between h-16">
+          {/* Mobile: notification bell at far-left (hidden on md+) */}
+          <div className="md:hidden flex items-center">
+            {session && <NotificationBell />}
+          </div>
+
+          {/* Logo: absolute center on mobile, static on desktop */}
+          <div className="absolute left-1/2 -translate-x-1/2 md:static md:translate-x-0 md:left-auto flex items-center">
             <Link href="/" className="flex items-center group">
               <img src="/logo.png" alt="BBB League" className="h-10 w-10 transition-transform group-hover:rotate-6 group-hover:scale-110" />
               <span className="ml-3 text-xl font-bold text-white/80 group-hover:text-[#FF4B1F] transition-colors">BBB</span>
@@ -448,15 +456,24 @@ export default function Navigation() {
             </div>
           </div>
 
-          {/* Right side: Auth (desktop) */}
-          <div className="hidden md:flex items-center gap-4">
+          {/* Right side: Auth + Notifications (desktop) */}
+          <div className="hidden md:flex items-center gap-2">
+            {session && <NotificationBell />}
             {session ? (
-              <button
-                onClick={() => signOut({ callbackUrl: '/' })}
-                className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-transform hover:scale-105 shadow-md hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
-              >
-                Logout
-              </button>
+              <>
+                <Link
+                  href="/account"
+                  className="px-4 py-2 rounded-full text-white/70 text-sm hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                >
+                  My Account
+                </Link>
+                <button
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                  className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-transform hover:scale-105 shadow-md hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                >
+                  Logout
+                </button>
+              </>
             ) : (
               <Link href="/login" className="px-4 py-2 rounded-full bg-[#FF4B1F] text-white text-sm hover:bg-[#FF4B1F]/80 transition-transform hover:scale-105 shadow-md hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50">
                 Login
@@ -591,12 +608,21 @@ export default function Navigation() {
                   {/* Auth Links for Mobile */}
                   <div className="border-t border-white/10 pt-2 mt-2">
                     {session ? (
-                      <button
-                        onClick={() => signOut({ callbackUrl: '/' })}
-                        className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
-                      >
-                        Logout
-                      </button>
+                      <>
+                        <Link
+                          href="/account"
+                          className="block px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                          onClick={() => setIsMenuOpen(false)}
+                        >
+                          My Account
+                        </Link>
+                        <button
+                          onClick={() => signOut({ callbackUrl: '/' })}
+                          className="block w-full text-left px-3 py-2 rounded-md text-base text-white hover:bg-[#FF4B1F] hover:bg-opacity-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4B1F]/50"
+                        >
+                          Logout
+                        </button>
+                      </>
                     ) : (
                       <Link
                         href="/login"

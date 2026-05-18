@@ -745,6 +745,22 @@ export default function FreeAgentAuctionPage() {
 
       if (!patchRes.ok) throw new Error(await patchRes.text());
 
+      // Notify the outbid user (non-blind auctions only)
+      if (!latestDraft.blind && currentResult?.username && currentResult.username !== session?.user?.name) {
+        try {
+          await fetch('/api/notifications/auction-outbid', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              outbidUsername: currentResult.username,
+              playerName: selectedPlayer.playerName,
+            }),
+          });
+        } catch {
+          // Silently ignore — notification failure should not break bid submission
+        }
+      }
+
       setSuccess('Bid placed!');
       setBidSalary('');
       setBidYears('');

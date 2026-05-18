@@ -8,6 +8,7 @@ import {
   updateTradeBlockListing,
   getTradeBlockOffers,
 } from '@/lib/db-helpers';
+import { createNotification } from '@/utils/notificationUtils';
 
 export const runtime = 'nodejs';
 
@@ -162,6 +163,25 @@ export async function PATCH(request, { params }) {
       }
 
       await updateTradeBlockListing(id, listingUpdate);
+
+      // Notify the offerer their offer has been selected
+      try {
+        if (offer.offererUsername) {
+          const assetLabel = listing.asset?.playerName
+            ? listing.asset.playerName
+            : listing.asset?.pickLabel || listing.asset?.description || 'an asset';
+          await createNotification(offer.offererUsername, {
+            title: 'Trade Offer Selected',
+            message: `Your offer on ${listing.posterUsername}'s ${assetLabel} listing has been selected. Complete the trade!`,
+            link: '/trade-block',
+            type: 'system',
+            prefKey: 'trade_block_offer_selected',
+          });
+        }
+      } catch (notifErr) {
+        console.error('trade-block offer select notification error:', notifErr);
+      }
+
       return NextResponse.json({ success: true });
     }
 

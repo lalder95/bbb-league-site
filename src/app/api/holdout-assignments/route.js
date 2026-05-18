@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { getAllUsers } from '@/lib/db-helpers';
+import { createNotificationForMany } from '@/utils/notificationUtils';
 
 export const runtime = 'nodejs';
 
@@ -169,5 +171,34 @@ export async function PATCH(request) {
   );
 
   const saved = await db.collection('holdoutAssignments').findOne({ playerId: String(playerId) });
+
+  // Notify all users of the holdout decision
+  try {
+    const actingUser = session.user?.username || session.user?.name || null;
+    const allUsers = await getAllUsers();
+    const recipientIds = allUsers
+      .map((u) => u.username)
+      .filter((u) => u && u !== actingUser);
+
+    const playerLabel = assignment.playerName || 'a player';
+    const teamLabel = assignment.assignedTeam || 'A team';
+    const title = normalizedStatus === 'ACCEPTED' ? 'Holdout Terms Accepted' : 'Holdout Terms Declined';
+    const message = normalizedStatus === 'ACCEPTED'
+      ? `${teamLabel} has accepted holdout terms for ${playerLabel}.`
+      : `${teamLabel} has declined holdout terms for ${playerLabel}.`;
+
+    if (recipientIds.length > 0) {
+      await createNotificationForMany(recipientIds, {
+        title,
+        message,
+        link: '/my-team/contract-management',
+        type: 'system',
+        prefKey: 'holdout_decision',
+      });
+    }
+  } catch (notifErr) {
+    console.error('holdout-assignments notification error:', notifErr);
+  }
+
   return NextResponse.json({ success: true, assignment: saved });
 }

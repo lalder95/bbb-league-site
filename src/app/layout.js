@@ -2,6 +2,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import Navigation from '@/components/Navigation';
 import ConditionalNewsTicker from '@/components/ConditionalNewsTicker';
+import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 import { Providers } from './providers';
 import "./globals.css";
 
@@ -20,11 +21,19 @@ export const metadata = {
   description: "BBB Fantasy Football League",
 };
 
+export const viewport = {
+  themeColor: '#FF4B1F',
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+      </head>
   <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#001A2B] min-h-screen pt-16 md:pt-28 pb-16`}>
         <Providers>
+          <ServiceWorkerRegistration />
           <Navigation />
           {children}
           {/* Footer */}

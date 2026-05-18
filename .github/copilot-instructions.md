@@ -63,9 +63,39 @@ These notes make AI coding agents productive quickly in this Next.js 15 app (App
 - Data helpers: Reuse `src/utils/draftUtils.js` and `src/utils/sleeperUtils.js` for pick formatting, salary calculations, and Sleeper state lookups.
 - Images: Remote images must be whitelisted in `next.config.mjs` (`images.domains`). Cloudinary and Sleeper are already allowed.
 
+### Notification system
+- Server utility: `src/utils/notificationUtils.js`
+  - `createNotification(userId, { title, message, link?, type? })` — inserts a notification into MongoDB for a single user AND fires a Web Push to any saved subscriptions. `userId` = `session.user.username`.
+  - `createNotificationForMany(userIds[], options)` — batch version; returns `{ created, errors }`.
+  - Import from API routes / server-side code only (uses `web-push` which is Node-only).
+- MongoDB collections (in `bbb-league` db):
+  - `notifications` — per-user notification records. Schema: `{ userId, title, message, link, type, read, pushed, createdAt }`.
+  - `pushSubscriptions` — Web Push subscription objects per user. Schema: `{ userId, subscription: { endpoint, keys }, createdAt, updatedAt }`.
+- DB helpers in `src/lib/db-helpers.js`: `createNotificationRecord`, `getNotificationsForUser`, `markNotificationRead`, `markAllNotificationsRead`, `deleteNotification`, `savePushSubscription`, `removePushSubscription`, `getPushSubscriptionsForUser`, `getAllPushSubscriptions`.
+- API surface:
+  - `GET /api/notifications` — current user's notifications (newest first, limit 50).
+  - `PATCH /api/notifications/:id` — mark one as read. `DELETE` — dismiss one.
+  - `POST /api/notifications/mark-all-read` — mark all read.
+  - `GET /api/notifications/vapid-key` — public VAPID key (safe to expose).
+  - `POST/DELETE /api/notifications/subscribe` — save/remove a push subscription object.
+  - `POST /api/admin/notifications` — admin broadcast: `{ userIds: ['all'|'username',...], title, message, link? }`.
+- UI components:
+  - `src/components/NotificationBell.js` — bell icon with unread badge; polls `/api/notifications` every 60s; toggles `NotificationModal`.
+  - `src/components/NotificationModal.js` — slide-in panel from top-right; marks all read on open; individual dismiss and click-to-navigate.
+  - Rendered inside `Navigation.js`: desktop — left of Logout button; mobile — far-left of header, logo absolute-centered, hamburger far-right.
+- PWA / push infrastructure:
+  - `public/manifest.json` — PWA web app manifest (required for iOS 16.4+ push).
+  - `public/sw.js` — service worker; handles `push` + `notificationclick` events.
+  - `src/components/ServiceWorkerRegistration.js` — registers SW and subscribes the user on first visit (after permission grant). Rendered in `layout.js`.
+- Push setup (do once per environment):
+  1. Generate VAPID keys: `node -e "const wp=require('web-push'); const k=wp.generateVAPIDKeys(); console.log(JSON.stringify(k, null, 2))"`
+  2. Add to `.env.local` / Vercel: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_EMAIL` (e.g. `mailto:admin@example.com`).
+  3. Push is optional — if VAPID vars are absent, in-app notifications still work normally.
+
 ### Environment variables (required)
 - `MONGODB_URI` – MongoDB connection string (throws on missing).
 - `NEXTAUTH_SECRET` – NextAuth JWT secret.
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_EMAIL` – Web Push VAPID credentials (optional; push is skipped when absent).
 - `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` – for image index generation and `/api/cloudinary-images`.
 - `OPENAI_API_KEY` – for `assistant-gm-chat` API.
 

@@ -6,8 +6,10 @@ import {
   getTradeBlockListings,
   getTradeBlockOffersForListings,
   getTradeBlockSettings,
+  getAllUsers,
 } from '@/lib/db-helpers';
 import { randomUUID } from 'crypto';
+import { createNotificationForMany } from '@/utils/notificationUtils';
 
 export const runtime = 'nodejs';
 
@@ -181,6 +183,30 @@ export async function POST(request) {
     const result = await createTradeBlockListing(doc);
     if (!result?.success) {
       return NextResponse.json({ error: result?.error || 'Failed to create listing' }, { status: 500 });
+    }
+
+    // Notify all other users of the new trade block listing
+    try {
+      const allUsers = await getAllUsers();
+      const recipientIds = allUsers
+        .map((u) => u.username)
+        .filter((u) => u && u !== actingUsername);
+
+      const assetLabel = doc.asset?.playerName
+        ? doc.asset.playerName
+        : doc.asset?.pickLabel || doc.asset?.description || 'an asset';
+
+      if (recipientIds.length > 0) {
+        await createNotificationForMany(recipientIds, {
+          title: 'New Trade Block Listing',
+          message: `${actingUsername} has posted ${assetLabel} on the trade block.`,
+          link: '/trade-block',
+          type: 'system',
+          prefKey: 'trade_block_listing',
+        });
+      }
+    } catch (notifErr) {
+      console.error('trade-block listing notification error:', notifErr);
     }
 
     return NextResponse.json({ success: true, listingId }, { status: 201 });
