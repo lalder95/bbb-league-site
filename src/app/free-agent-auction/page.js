@@ -754,6 +754,10 @@ export default function FreeAgentAuctionPage() {
             body: JSON.stringify({
               outbidUsername: currentResult.username,
               playerName: selectedPlayer.playerName,
+              previousSalary: currentResult.salary,
+              previousYears: currentResult.years,
+              newSalary: salary,
+              newYears: years,
             }),
           });
         } catch {

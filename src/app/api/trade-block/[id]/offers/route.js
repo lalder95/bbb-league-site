@@ -8,6 +8,7 @@ import {
   updateTradeBlockListing,
 } from '@/lib/db-helpers';
 import { randomUUID } from 'crypto';
+import { createNotification } from '@/utils/notificationUtils';
 
 export const runtime = 'nodejs';
 
@@ -219,6 +220,27 @@ export async function POST(request, { params }) {
     // Update listing status to offers_received if currently open
     if (listing.status === 'open') {
       await updateTradeBlockListing(id, { status: 'offers_received' });
+    }
+
+    // Notify the listing owner of the new offer (skip if offering to yourself)
+    if (listing.posterUsername && listing.posterUsername !== actingUsername) {
+      try {
+        const listedAssetLabel = listing.asset?.playerName
+          ? listing.asset.playerName
+          : listing.asset?.pickLabel || listing.asset?.description || 'your listing';
+        const offerAssetLabel = assets.length === 1
+          ? (assets[0].playerName || assets[0].pickLabel || 'an asset')
+          : `${assets.length} assets`;
+        await createNotification(listing.posterUsername, {
+          title: 'New Trade Block Offer',
+          message: `${actingUsername} made an offer on ${listedAssetLabel} (offering ${offerAssetLabel}).`,
+          link: '/trade-block',
+          type: 'system',
+          prefKey: 'trade_block_listing',
+        });
+      } catch {
+        // Silently ignore — notification failure should not block the offer
+      }
     }
 
     return NextResponse.json({ success: true, offerId }, { status: 201 });

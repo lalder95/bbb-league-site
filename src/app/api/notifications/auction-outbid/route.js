@@ -13,7 +13,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { outbidUsername, playerName } = body;
+    const { outbidUsername, playerName, previousSalary, previousYears, newSalary, newYears } = body;
 
     if (!outbidUsername || !playerName) {
       return NextResponse.json({ error: 'outbidUsername and playerName are required' }, { status: 400 });
@@ -24,9 +24,19 @@ export async function POST(request) {
       return NextResponse.json({ success: true });
     }
 
+    const prevBidStr = previousSalary != null && previousYears != null
+      ? `$${previousSalary}/${previousYears}yr`
+      : null;
+    const newBidStr = newSalary != null && newYears != null
+      ? `$${newSalary}/${newYears}yr`
+      : null;
+    const bidDetail = prevBidStr && newBidStr
+      ? ` Your bid: ${prevBidStr}. New high bid: ${newBidStr}.`
+      : '';
+
     await createNotification(outbidUsername, {
       title: 'Outbid in FA Auction',
-      message: `You've been outbid on ${playerName} by ${session.user.name}.`,
+      message: `You've been outbid on ${playerName} by ${session.user.name}.${bidDetail}`,
       link: '/free-agent-auction',
       type: 'system',
       prefKey: 'auction_outbid',
