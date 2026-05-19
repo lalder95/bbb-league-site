@@ -426,10 +426,10 @@ async function getRuleChangesCollection() {
   return db.collection('ruleChanges');
 }
 
-export async function addRuleChange({ description, effectiveYear, createdBy }) {
+export async function addRuleChange({ title, description, effectiveYear, createdBy }) {
   try {
-    if (!description || !effectiveYear) {
-      return { success: false, error: 'description and effectiveYear are required' };
+    if (!title || !description || !effectiveYear) {
+      return { success: false, error: 'title, description and effectiveYear are required' };
     }
     const year = parseInt(effectiveYear, 10);
     if (!Number.isFinite(year)) {
@@ -437,6 +437,7 @@ export async function addRuleChange({ description, effectiveYear, createdBy }) {
     }
     const col = await getRuleChangesCollection();
     const doc = {
+      title: String(title),
       description: String(description),
       effectiveYear: year,
       createdAt: new Date(),
@@ -459,12 +460,13 @@ export async function getAllRuleChanges() {
   }
 }
 
-export async function updateRuleChange(id, { description, effectiveYear }) {
+export async function updateRuleChange(id, { title, description, effectiveYear }) {
   try {
     if (!id) return { success: false, error: 'id is required' };
     const _id = typeof id === 'string' ? new ObjectId(id) : id;
     const col = await getRuleChangesCollection();
     const update = {};
+    if (title !== undefined) update.title = String(title);
     if (description !== undefined) update.description = String(description);
     if (effectiveYear !== undefined) {
       const year = parseInt(effectiveYear, 10);

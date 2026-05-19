@@ -45,9 +45,10 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { description, effectiveYear } = body || {};
+    const { title, description, effectiveYear } = body || {};
 
     const result = await addRuleChange({
+      title,
       description,
       effectiveYear,
       createdBy: session?.user?.id || null,

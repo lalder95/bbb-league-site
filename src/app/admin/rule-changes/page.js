@@ -16,6 +16,7 @@ export default function AdminRuleChangesPage() {
 
   const currentYear = new Date().getFullYear();
 
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [effectiveYear, setEffectiveYear] = useState(String(currentYear + 1));
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +25,7 @@ export default function AdminRuleChangesPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
-  const [editValues, setEditValues] = useState({ description: '', effectiveYear: '' });
+  const [editValues, setEditValues] = useState({ title: '', description: '', effectiveYear: '' });
   const [savingEdit, setSavingEdit] = useState(false);
 
   async function loadAll() {
@@ -49,13 +50,13 @@ export default function AdminRuleChangesPage() {
     setSuccess('');
     try {
       if (!description || !effectiveYear) {
-        setError('Description and effective year are required');
+        setError('Title, description and effective year are required');
         return;
       }
       const res = await fetch('/api/admin/rule-changes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description, effectiveYear: parseInt(effectiveYear, 10) }),
+        body: JSON.stringify({ title, description, effectiveYear: parseInt(effectiveYear, 10) }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -63,6 +64,7 @@ export default function AdminRuleChangesPage() {
         return;
       }
       setSuccess('Rule change added');
+      setTitle('');
       setDescription('');
       setEffectiveYear(String(currentYear + 1));
       if (data.ruleChange) {
@@ -79,7 +81,7 @@ export default function AdminRuleChangesPage() {
 
   function startEdit(item) {
     setEditingId(item._id);
-    setEditValues({ description: item.description, effectiveYear: String(item.effectiveYear) });
+    setEditValues({ title: item.title || '', description: item.description, effectiveYear: String(item.effectiveYear) });
   }
 
   function cancelEdit() {
@@ -94,6 +96,7 @@ export default function AdminRuleChangesPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          title: editValues.title,
           description: editValues.description,
           effectiveYear: parseInt(editValues.effectiveYear, 10),
         }),
@@ -105,7 +108,7 @@ export default function AdminRuleChangesPage() {
       }
       setItems(prev =>
         prev
-          .map(i => i._id === id ? { ...i, ...editValues, effectiveYear: parseInt(editValues.effectiveYear, 10) } : i)
+          .map(i => i._id === id ? { ...i, title: editValues.title, description: editValues.description, effectiveYear: parseInt(editValues.effectiveYear, 10) } : i)
           .sort((a, b) => a.effectiveYear - b.effectiveYear)
       );
       cancelEdit();
@@ -151,6 +154,18 @@ export default function AdminRuleChangesPage() {
 
           {error && <div className="text-red-400 text-sm">{error}</div>}
           {success && <div className="text-green-400 text-sm">{success}</div>}
+
+          <div>
+            <label className="block text-sm text-white/70 mb-1">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full bg-black/40 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-[#FF4B1F]/60"
+              placeholder="Short title for the rule change..."
+              required
+            />
+          </div>
 
           <div>
             <label className="block text-sm text-white/70 mb-1">Description</label>
@@ -199,6 +214,13 @@ export default function AdminRuleChangesPage() {
                 <div key={item._id} className="border border-white/10 rounded-lg p-4">
                   {editingId === item._id ? (
                     <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={editValues.title}
+                        onChange={e => setEditValues(v => ({ ...v, title: e.target.value }))}
+                        className="w-full bg-black/40 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-[#FF4B1F]/60"
+                        placeholder="Title..."
+                      />
                       <textarea
                         value={editValues.description}
                         onChange={e => setEditValues(v => ({ ...v, description: e.target.value }))}
@@ -235,6 +257,7 @@ export default function AdminRuleChangesPage() {
                         <span className="inline-block text-xs font-bold text-[#FF4B1F] bg-[#FF4B1F]/10 border border-[#FF4B1F]/30 rounded px-2 py-0.5 mb-2">
                           {item.effectiveYear} Season
                         </span>
+                        {item.title && <p className="font-semibold text-white mb-1">{item.title}</p>}
                         <p className="text-white/90">{item.description}</p>
                       </div>
                       <div className="flex gap-2 shrink-0">

@@ -20,9 +20,9 @@ export async function PATCH(request, { params }) {
 
     const { id } = params || {};
     const body = await request.json();
-    const { description, effectiveYear } = body || {};
+    const { title, description, effectiveYear } = body || {};
 
-    const result = await updateRuleChange(id, { description, effectiveYear });
+    const result = await updateRuleChange(id, { title, description, effectiveYear });
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     }
