@@ -73,6 +73,8 @@ export async function PATCH(request, { params }) {
   if (typeof body.blind === 'boolean') updateFields.blind = body.blind;
   if (typeof body.lastBidFloorEnabled === 'boolean') updateFields.lastBidFloorEnabled = body.lastBidFloorEnabled;
   if (typeof body.lastBidFloorHours === 'number') updateFields.lastBidFloorHours = body.lastBidFloorHours;
+  if (typeof body.minBidIncreaseType === 'string' && ['flat', 'percentage'].includes(body.minBidIncreaseType)) updateFields.minBidIncreaseType = body.minBidIncreaseType;
+  if (typeof body.minBidIncreaseValue === 'number' && body.minBidIncreaseValue >= 0) updateFields.minBidIncreaseValue = body.minBidIncreaseValue;
   if (typeof body.autoAddDropped === 'boolean') updateFields.autoAddDropped = body.autoAddDropped;
   if (typeof body.sleeperLeagueId === 'string') updateFields.sleeperLeagueId = body.sleeperLeagueId.trim();
 

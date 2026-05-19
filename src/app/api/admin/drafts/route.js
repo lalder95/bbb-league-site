@@ -47,6 +47,8 @@ const draftSchema = new mongoose.Schema({
   blind: { type: Boolean, default: false },
   lastBidFloorEnabled: { type: Boolean, default: true },
   lastBidFloorHours: { type: Number, default: 24 },
+  minBidIncreaseType: { type: String, default: 'flat' },
+  minBidIncreaseValue: { type: Number, default: 0 },
   autoAddDropped: { type: Boolean, default: false },
   sleeperLeagueId: { type: String, default: '' }
 });
@@ -108,6 +110,8 @@ export async function POST(request) {
       blind: typeof body.blind === 'boolean' ? body.blind : false,
       lastBidFloorEnabled: typeof body.lastBidFloorEnabled === 'boolean' ? body.lastBidFloorEnabled : true,
       lastBidFloorHours: typeof body.lastBidFloorHours === 'number' ? body.lastBidFloorHours : 24,
+      minBidIncreaseType: typeof body.minBidIncreaseType === 'string' && ['flat', 'percentage'].includes(body.minBidIncreaseType) ? body.minBidIncreaseType : 'flat',
+      minBidIncreaseValue: typeof body.minBidIncreaseValue === 'number' && body.minBidIncreaseValue >= 0 ? body.minBidIncreaseValue : 0,
       autoAddDropped: typeof body.autoAddDropped === 'boolean' ? body.autoAddDropped : false,
       sleeperLeagueId: typeof body.sleeperLeagueId === 'string' ? body.sleeperLeagueId.trim() : ''
     };

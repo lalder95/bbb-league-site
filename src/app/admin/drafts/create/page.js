@@ -65,6 +65,8 @@ export default function CreateDraftPage() {
   const [blind, setBlind] = useState(false);
   const [lastBidFloorEnabled, setLastBidFloorEnabled] = useState(true);
   const [lastBidFloorHours, setLastBidFloorHours] = useState('24');
+  const [minBidIncreaseType, setMinBidIncreaseType] = useState('flat');
+  const [minBidIncreaseValue, setMinBidIncreaseValue] = useState('0');
   const [autoAddDropped, setAutoAddDropped] = useState(false);
   const [sleeperLeagueId, setSleeperLeagueId] = useState('');
   const [sleeperLeagueName, setSleeperLeagueName] = useState('');
@@ -333,6 +335,8 @@ export default function CreateDraftPage() {
           blind,
           lastBidFloorEnabled,
           lastBidFloorHours: Number(lastBidFloorHours) || 24,
+          minBidIncreaseType,
+          minBidIncreaseValue: Number(minBidIncreaseValue) || 0,
           autoAddDropped,
           sleeperLeagueId: sleeperLeagueId.trim()
         })
@@ -655,6 +659,29 @@ export default function CreateDraftPage() {
                   />
                 </div>
               )}
+              <div className="mt-2 space-y-2">
+                <label className="block text-sm text-white/80 font-medium">Minimum bid increase threshold</label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={minBidIncreaseType}
+                    onChange={e => setMinBidIncreaseType(e.target.value)}
+                    className="p-1 rounded bg-[#0A2233] border border-white/10 text-white text-sm"
+                  >
+                    <option value="flat">Flat contract points</option>
+                    <option value="percentage">% of current score</option>
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    step={minBidIncreaseType === 'percentage' ? 0.1 : 0.1}
+                    value={minBidIncreaseValue}
+                    onChange={e => setMinBidIncreaseValue(e.target.value)}
+                    className="w-24 p-1 rounded bg-white/10 border border-white/10 text-white"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-white/50">{minBidIncreaseType === 'flat' ? 'pts above current' : '% above current'} (0 = strictly greater)</span>
+                </div>
+              </div>
             </div>
           )}
           <div className="space-y-2 border border-white/10 rounded p-3 bg-white/5">

@@ -385,6 +385,8 @@ export default function FreeAgentAuctionPage() {
   const [adminToolEndDate, setAdminToolEndDate] = useState('');
   const [adminToolLastBidFloorEnabled, setAdminToolLastBidFloorEnabled] = useState(true);
   const [adminToolLastBidFloorHours, setAdminToolLastBidFloorHours] = useState('24');
+  const [adminToolMinBidIncreaseType, setAdminToolMinBidIncreaseType] = useState('flat');
+  const [adminToolMinBidIncreaseValue, setAdminToolMinBidIncreaseValue] = useState('0');
   const [profileCardPlayerId, setProfileCardPlayerId] = useState(null);
   const [ktcLiveMap, setKtcLiveMap] = useState({});
   const [isMobile, setIsMobile] = useState(false);
@@ -662,10 +664,30 @@ export default function FreeAgentAuctionPage() {
 
     try {
       // Only enforce "must be higher than current high bid" if NOT blind
-      if (!draft?.blind && contractPoints <= currentHighScore) {
-        setError('Contract Score must be higher than the current high bid.');
-        setPlacingBid(false);
-        return;
+      if (!draft?.blind) {
+        const increaseType = draft?.minBidIncreaseType ?? 'flat';
+        const increaseValue = Number(draft?.minBidIncreaseValue ?? 0);
+        let requiredMin;
+        if (increaseValue > 0 && increaseType === 'percentage') {
+          requiredMin = Math.round((currentHighScore + currentHighScore * (increaseValue / 100)) * 10) / 10;
+        } else {
+          requiredMin = Math.round((currentHighScore + increaseValue) * 10) / 10;
+        }
+        const passes = increaseValue > 0
+          ? contractPoints >= requiredMin
+          : contractPoints > currentHighScore;
+        if (!passes) {
+          if (increaseValue > 0) {
+            const label = increaseType === 'percentage'
+              ? `${increaseValue}% above current (min score: ${requiredMin})`
+              : `${increaseValue} pts above current (min score: ${requiredMin})`;
+            setError(`Your bid must be at least ${label}. Current high score: ${currentHighScore}.`);
+          } else {
+            setError('Contract Score must be higher than the current high bid.');
+          }
+          setPlacingBid(false);
+          return;
+        }
       }
 
       if (draft?.blind) {
@@ -1017,6 +1039,8 @@ export default function FreeAgentAuctionPage() {
     setAdminToolEndDate(formatDraftDateTimeInput(draft.endDate, draftTimeZone));
     setAdminToolLastBidFloorEnabled(draft.lastBidFloorEnabled ?? true);
     setAdminToolLastBidFloorHours(String(draft.lastBidFloorHours ?? 24));
+    setAdminToolMinBidIncreaseType(draft.minBidIncreaseType ?? 'flat');
+    setAdminToolMinBidIncreaseValue(String(draft.minBidIncreaseValue ?? 0));
   }, [showAdminToolsModal, draft]);
 
   const contractedPlayerIdSet = React.useMemo(
@@ -1190,6 +1214,46 @@ export default function FreeAgentAuctionPage() {
       setSuccess('Bid floor settings updated.');
     } catch (err) {
       setAdminToolError(err.message || 'Failed to update bid floor settings.');
+    } finally {
+      setAdminToolSaving(false);
+    }
+  };
+
+  const handleAdminUpdateMinBidIncrease = async () => {
+    if (!draft?._id) return;
+
+    const increaseValue = Number(adminToolMinBidIncreaseValue);
+    if (!Number.isFinite(increaseValue) || increaseValue < 0) {
+      setAdminToolError('Please enter a valid minimum bid increase (0 or greater).');
+      return;
+    }
+    if (!['flat', 'percentage'].includes(adminToolMinBidIncreaseType)) {
+      setAdminToolError('Please select a valid increase type.');
+      return;
+    }
+
+    setAdminToolSaving(true);
+    setAdminToolError('');
+
+    try {
+      const patchRes = await fetch(`/api/admin/drafts/${draft._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          minBidIncreaseType: adminToolMinBidIncreaseType,
+          minBidIncreaseValue: increaseValue
+        })
+      });
+
+      if (!patchRes.ok) {
+        throw new Error(await patchRes.text());
+      }
+
+      const updatedDraft = await patchRes.json();
+      setDraft(updatedDraft);
+      setSuccess('Minimum bid increase settings updated.');
+    } catch (err) {
+      setAdminToolError(err.message || 'Failed to update minimum bid increase settings.');
     } finally {
       setAdminToolSaving(false);
     }
@@ -2898,6 +2962,50 @@ export default function FreeAgentAuctionPage() {
                   )}
                   <div className="text-xs text-white/45">
                     Current: {draft?.lastBidFloorEnabled ?? true ? `Enabled — ${draft?.lastBidFloorHours ?? 24}h floor` : 'Disabled'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Bid settings</div>
+                    <h3 className="mt-2 text-lg font-semibold">Minimum bid increase</h3>
+                    <p className="mt-1 text-sm text-white/55">Minimum amount each new bid must exceed the current high score (non-blind only).</p>
+                  </div>
+                  <SurfaceButton tone="blue" onClick={handleAdminUpdateMinBidIncrease} disabled={adminToolSaving}>
+                    {adminToolSaving ? 'Saving…' : 'Save threshold'}
+                  </SurfaceButton>
+                </div>
+                <div className="mt-5 space-y-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50 whitespace-nowrap">Type</label>
+                    <select
+                      value={adminToolMinBidIncreaseType}
+                      onChange={(e) => setAdminToolMinBidIncreaseType(e.target.value)}
+                      className="rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                    >
+                      <option value="flat">Flat contract points</option>
+                      <option value="percentage">% of current score</option>
+                    </select>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50 whitespace-nowrap">Value</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={adminToolMinBidIncreaseValue}
+                      onChange={(e) => setAdminToolMinBidIncreaseValue(e.target.value)}
+                      className="w-28 rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                    />
+                    <span className="text-xs text-white/45">{adminToolMinBidIncreaseType === 'flat' ? 'pts above current' : '% above current'} · 0 = strictly greater</span>
+                  </div>
+                  <div className="text-xs text-white/45">
+                    Current:{' '}
+                    {(draft?.minBidIncreaseValue ?? 0) === 0
+                      ? 'Strictly greater (no threshold set)'
+                      : draft?.minBidIncreaseType === 'percentage'
+                      ? `${draft.minBidIncreaseValue}% above current score`
+                      : `${draft.minBidIncreaseValue} pts above current score`}
                   </div>
                 </div>
               </div>
