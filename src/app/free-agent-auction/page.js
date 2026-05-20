@@ -387,6 +387,7 @@ export default function FreeAgentAuctionPage() {
   const [adminToolLastBidFloorHours, setAdminToolLastBidFloorHours] = useState('24');
   const [adminToolMinBidIncreaseType, setAdminToolMinBidIncreaseType] = useState('flat');
   const [adminToolMinBidIncreaseValue, setAdminToolMinBidIncreaseValue] = useState('0');
+  const [adminToolContractFilter, setAdminToolContractFilter] = useState('ALL');
   const [profileCardPlayerId, setProfileCardPlayerId] = useState(null);
   const [ktcLiveMap, setKtcLiveMap] = useState({});
   const [isMobile, setIsMobile] = useState(false);
@@ -1058,9 +1059,11 @@ export default function FreeAgentAuctionPage() {
     return adminToolPlayers.filter(player => {
       const matchesSearch = !normalizedSearch || player.playerName.toLowerCase().includes(normalizedSearch);
       const matchesPosition = adminToolPosition === 'ALL' || player.position === adminToolPosition;
-      return matchesSearch && matchesPosition && !draftPlayerIdSet.has(String(player.playerId));
+      const isContracted = contractedPlayerIdSet.has(String(player.playerId));
+      const matchesContract = adminToolContractFilter === 'ALL' || (adminToolContractFilter === 'CONTRACTED' ? isContracted : !isContracted);
+      return matchesSearch && matchesPosition && matchesContract && !draftPlayerIdSet.has(String(player.playerId));
     });
-  }, [adminToolPlayers, adminToolSearch, adminToolPosition, draftPlayerIdSet]);
+  }, [adminToolPlayers, adminToolSearch, adminToolPosition, adminToolContractFilter, contractedPlayerIdSet, draftPlayerIdSet]);
 
   const updateDraftPlayers = async (nextPlayers, nextResults = draft?.results || [], nextBidLog = draft?.bidLog || []) => {
     if (!draft?._id) return;
@@ -3092,7 +3095,7 @@ export default function FreeAgentAuctionPage() {
                   <h3 className="mt-2 text-lg font-semibold">{filteredAdminToolPlayers.length} available</h3>
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
                 <input
                   type="text"
                   value={adminToolSearch}
@@ -3109,6 +3112,15 @@ export default function FreeAgentAuctionPage() {
                   {['QB', 'RB', 'WR', 'TE'].map(position => (
                     <option key={position} value={position}>{position}</option>
                   ))}
+                </select>
+                <select
+                  value={adminToolContractFilter}
+                  onChange={(e) => setAdminToolContractFilter(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                >
+                  <option value="ALL">All Contract Status</option>
+                  <option value="CONTRACTED">Contracted</option>
+                  <option value="FREE_AGENT">Free Agents Only</option>
                 </select>
               </div>
               <div className="mt-4 max-h-[620px] space-y-2 overflow-y-auto pr-1">
