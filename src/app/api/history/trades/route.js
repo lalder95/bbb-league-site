@@ -1,3 +1,5 @@
+import userSleeperIds from '@/data/user-sleeper-ids.json';
+
 // API Route: /api/history/trades
 // Returns trade history for a given BBB league season (aggregated across all BBB leagues that match naming convention)
 // Query params:
@@ -6,6 +8,10 @@
 // This performs multiple Sleeper API calls (users, rosters, weekly transactions) and filters for type==='trade'.
 // To avoid huge payloads, we only iterate weeks until an empty transactions response is observed twice consecutively.
 // NOTE: Sleeper transaction endpoint requires a week number; trades can occur in any week including playoffs.
+
+const LOCAL_USERNAME_BY_SLEEPER_ID = new Map(
+  (Array.isArray(userSleeperIds) ? userSleeperIds : []).map((entry) => [String(entry.sleeperId || ''), String(entry.username || '').trim()]).filter(([sleeperId, username]) => sleeperId && username)
+);
 
 export async function GET(request) {
   try {
@@ -38,6 +44,8 @@ export async function GET(request) {
 
     // Cache of rookie draft info by season (across any BBB league for that season)
   const draftInfoCache = new Map(); // key: `${baseLeagueId}|${season}` -> { league_id, rosterToSlot: Map<roster_id, slot>, picksLookup: Map<'slot|round', pick> }
+    const leagueIdentityCache = new Map();
+    const rosterIdentityCache = new Map();
 
     // Helper: fetch rookie (linear) draft info for a given season, cache by season
     // Helper: fetch a league meta record
@@ -94,6 +102,84 @@ export async function GET(request) {
         }
       } catch {}
       return baseLeagueId; // ultimate fallback
+    }
+
+    function getLocalUsername(ownerId) {
+      if (!ownerId) return null;
+      return LOCAL_USERNAME_BY_SLEEPER_ID.get(String(ownerId)) || null;
+    }
+
+    function getBestOwnerName(ownerId, userMap) {
+      const normalizedOwnerId = String(ownerId || '').trim();
+      if (!normalizedOwnerId) return null;
+      const owner = userMap?.get(normalizedOwnerId) || null;
+      return owner?.display_name || owner?.metadata?.team_name || owner?.username || getLocalUsername(normalizedOwnerId) || null;
+    }
+
+    function getRosterCandidateOwnerIds(roster) {
+      if (!roster) return [];
+      const ownerIds = [roster.owner_id];
+      if (Array.isArray(roster.co_owners)) ownerIds.push(...roster.co_owners);
+      return [...new Set(ownerIds.map((value) => String(value || '').trim()).filter(Boolean))];
+    }
+
+    async function getLeagueIdentityContext(leagueId) {
+      if (!leagueId) return null;
+      const cacheKey = String(leagueId);
+      if (leagueIdentityCache.has(cacheKey)) return leagueIdentityCache.get(cacheKey);
+
+      const [meta, usersRes, rostersRes] = await Promise.all([
+        getLeagueMeta(leagueId),
+        fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`, { next: { revalidate: revalidateSeconds } }),
+        fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, { next: { revalidate: revalidateSeconds } })
+      ]);
+
+      if (!usersRes.ok || !rostersRes.ok) {
+        leagueIdentityCache.set(cacheKey, null);
+        return null;
+      }
+
+      const [users, rosters] = await Promise.all([usersRes.json(), rostersRes.json()]);
+      const context = {
+        leagueId: cacheKey,
+        meta,
+        userMap: new Map((Array.isArray(users) ? users : []).map((user) => [String(user.user_id), user])),
+        rosterMap: new Map((Array.isArray(rosters) ? rosters : []).map((roster) => [Number(roster.roster_id), roster])),
+      };
+
+      leagueIdentityCache.set(cacheKey, context);
+      return context;
+    }
+
+    async function resolveRosterIdentity(leagueId, rosterId) {
+      const normalizedLeagueId = String(leagueId || '').trim();
+      const normalizedRosterId = Number(rosterId);
+      const cacheKey = `${normalizedLeagueId}|${normalizedRosterId}`;
+      if (rosterIdentityCache.has(cacheKey)) return rosterIdentityCache.get(cacheKey);
+
+      let currentLeagueId = normalizedLeagueId;
+      let depth = 0;
+      while (currentLeagueId && depth < 10) {
+        const context = await getLeagueIdentityContext(currentLeagueId);
+        if (!context) break;
+
+        const roster = context.rosterMap.get(normalizedRosterId);
+        for (const candidateOwnerId of getRosterCandidateOwnerIds(roster)) {
+          const ownerName = getBestOwnerName(candidateOwnerId, context.userMap);
+          if (ownerName) {
+            const resolved = { owner_id: candidateOwnerId, owner_name: ownerName };
+            rosterIdentityCache.set(cacheKey, resolved);
+            return resolved;
+          }
+        }
+
+        currentLeagueId = String(context.meta?.previous_league_id || '').trim();
+        depth += 1;
+      }
+
+      const fallback = { owner_id: null, owner_name: null };
+      rosterIdentityCache.set(cacheKey, fallback);
+      return fallback;
     }
 
     async function ensureRookieDraftInfoForSeasonAndLeague(seasonStr, baseLeagueId) {
@@ -191,6 +277,12 @@ export async function GET(request) {
       const rosters = await rostersRes.json();
       const userMap = new Map(users.map(u => [u.user_id, u]));
       const rosterOwnerMap = new Map(rosters.map(r => [r.roster_id, r.owner_id]));
+      leagueIdentityCache.set(String(league.league_id), {
+        leagueId: String(league.league_id),
+        meta: league,
+        userMap,
+        rosterMap: new Map(rosters.map((roster) => [Number(roster.roster_id), roster])),
+      });
 
       // Rookie draft enrichment (to show the actual drafted player on traded picks)
       // Fetch all drafts for this league and build a lookup for linear drafts by season
@@ -278,15 +370,16 @@ export async function GET(request) {
           }));
 
           // Build team list including any roster referenced only by picks
-          const tradeTeams = Array.from(rosterSet).map(rid => {
-            const ownerId = rosterOwnerMap.get(rid);
+          const tradeTeams = await Promise.all(Array.from(rosterSet).map(async (rid) => {
+            const resolvedIdentity = await resolveRosterIdentity(league.league_id, rid);
+            const ownerId = resolvedIdentity.owner_id || rosterOwnerMap.get(rid);
             const owner = ownerMapLookup(ownerId, userMap);
             return {
               roster_id: rid,
               owner_id: ownerId || null,
-              owner_name: owner?.display_name || ownerId || 'Unknown'
+              owner_name: resolvedIdentity.owner_name || owner?.display_name || getLocalUsername(ownerId) || ownerId || `Roster ${rid}`
             };
-          });
+          }));
 
           // Ensure rookie draft info for any seasons referenced by these picks (supports cross-year picks)
           const pickSeasons = new Set(picks.map(p => String(p.season)));
@@ -296,14 +389,18 @@ export async function GET(request) {
           }
 
           // Normalize pick direction using Sleeper semantics
-          const formattedPicks = picks.map(p => {
+          const formattedPicks = await Promise.all(picks.map(async (p) => {
             const toRosterId = p.owner_id; // new owner roster id
             const fromRosterId = p.previous_owner_id; // previous owner roster id
             const slotRosterId = p.roster_id; // the draft slot's original team
 
-            const toOwnerUserId = rosterOwnerMap.get(toRosterId);
-            const fromOwnerUserId = rosterOwnerMap.get(fromRosterId);
-            const slotOwnerUserId = rosterOwnerMap.get(slotRosterId);
+            const toIdentity = await resolveRosterIdentity(league.league_id, toRosterId);
+            const fromIdentity = await resolveRosterIdentity(league.league_id, fromRosterId);
+            const slotIdentity = await resolveRosterIdentity(league.league_id, slotRosterId);
+
+            const toOwnerUserId = toIdentity.owner_id || rosterOwnerMap.get(toRosterId);
+            const fromOwnerUserId = fromIdentity.owner_id || rosterOwnerMap.get(fromRosterId);
+            const slotOwnerUserId = slotIdentity.owner_id || rosterOwnerMap.get(slotRosterId);
 
             const toOwner = ownerMapLookup(toOwnerUserId, userMap);
             const fromOwner = ownerMapLookup(fromOwnerUserId, userMap);
@@ -359,24 +456,24 @@ export async function GET(request) {
               // For backward-compatibility, keep 'roster_id' as the NEW owner roster id ("to")
               roster_id: toRosterId,
               owner_id: toOwnerUserId || null,
-              owner_name: toOwner?.display_name || toOwnerUserId || 'Unknown',
+              owner_name: toIdentity.owner_name || toOwner?.display_name || getLocalUsername(toOwnerUserId) || toOwnerUserId || `Roster ${toRosterId}`,
               // Keep 'previous_owner_id' as the FROM roster id
               previous_owner_id: fromRosterId || null,
-              previous_owner_name: fromOwner?.display_name || fromOwnerUserId || fromRosterId || 'Unknown',
+              previous_owner_name: fromIdentity.owner_name || fromOwner?.display_name || getLocalUsername(fromOwnerUserId) || fromOwnerUserId || `Roster ${fromRosterId}`,
               // Provide explicit fields for clarity
               to_roster_id: toRosterId,
               to_owner_id: toOwnerUserId || null,
-              to_owner_name: toOwner?.display_name || toOwnerUserId || 'Unknown',
+              to_owner_name: toIdentity.owner_name || toOwner?.display_name || getLocalUsername(toOwnerUserId) || toOwnerUserId || `Roster ${toRosterId}`,
               from_roster_id: fromRosterId || null,
               from_owner_id: fromOwnerUserId || null,
-              from_owner_name: fromOwner?.display_name || fromOwnerUserId || 'Unknown',
+              from_owner_name: fromIdentity.owner_name || fromOwner?.display_name || getLocalUsername(fromOwnerUserId) || fromOwnerUserId || `Roster ${fromRosterId}`,
               slot_roster_id: slotRosterId || null,
               slot_owner_id: slotOwnerUserId || null,
-              slot_owner_name: slotOwner?.display_name || slotOwnerUserId || 'Unknown',
+              slot_owner_name: slotIdentity.owner_name || slotOwner?.display_name || getLocalUsername(slotOwnerUserId) || slotOwnerUserId || `Roster ${slotRosterId}`,
               drafted_player: drafted,
               match_debug: matchDebug
             };
-          });
+          }));
 
           allTrades.push({
             trade_id: trade.transaction_id,
