@@ -1351,8 +1351,100 @@ export default function TradeHistoryPage() {
           ) : teamSummaries.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-white/70 mb-6">No trades found in this range.</div>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm overflow-x-auto mb-6">
-              <table className="w-full text-sm">
+            <>
+              {/* Mobile summary cards (no horizontal scrolling) */}
+              <div className="md:hidden mb-6 space-y-3">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-white/50 mb-2">Sort Teams</div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={summarySortBy}
+                      onChange={(e) => setSummarySortBy(e.target.value)}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]/40"
+                    >
+                      <option value="ownerName">Team</option>
+                      <option value="tradeCount">Trades</option>
+                      <option value="playersIn">Players In</option>
+                      <option value="playersOut">Players Out</option>
+                      <option value="picksIn">Picks In</option>
+                      <option value="picksOut">Picks Out</option>
+                      <option value="ktcIn">KTC In</option>
+                      <option value="ktcOut">KTC Out</option>
+                      <option value="netKtc">Net KTC</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setSummarySortDir((d) => d === 'desc' ? 'asc' : 'desc')}
+                      className="px-3 py-2 rounded-lg border border-white/10 bg-black/40 text-sm text-white/80"
+                    >
+                      {summarySortDir === 'desc' ? 'Desc' : 'Asc'}
+                    </button>
+                  </div>
+                </div>
+
+                {teamSummaries.map(ts => {
+                  const isExpanded = expandedSummaryTeam === ts.ownerId;
+                  const netColor = ts.netKtc > 0 ? 'text-emerald-300' : ts.netKtc < 0 ? 'text-rose-300' : 'text-white/60';
+                  return (
+                    <div key={`mobile-${ts.ownerId}`} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-3">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSummaryTeam(isExpanded ? null : ts.ownerId)}
+                        className="w-full flex items-center justify-between"
+                      >
+                        <span className="inline-flex items-center gap-2 text-left">
+                          <span className="grid place-items-center h-6 w-6 rounded-full bg-white/10 text-[10px] text-white/70 flex-shrink-0">{String(ts.ownerName).slice(0, 1)}</span>
+                          <span className="font-semibold text-white">{ts.ownerName}</span>
+                        </span>
+                        <span className={`text-white/50 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>›</span>
+                      </button>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5"><span className="text-white/50">Trades</span><div className="text-white">{ts.tradeCount}</div></div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5"><span className="text-white/50">Net KTC</span><div className={`font-semibold ${netColor}`}>{formatKtcSigned(ts.netKtc)}</div></div>
+                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5"><span className="text-emerald-200/80">Players In</span><div className="text-emerald-300">{ts.playersIn}</div></div>
+                        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1.5"><span className="text-rose-200/80">Players Out</span><div className="text-rose-300">{ts.playersOut}</div></div>
+                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5"><span className="text-emerald-200/80">Picks In</span><div className="text-emerald-300">{ts.picksIn}</div></div>
+                        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1.5"><span className="text-rose-200/80">Picks Out</span><div className="text-rose-300">{ts.picksOut}</div></div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5"><span className="text-white/50">KTC In</span><div className="text-white/80">{Math.round(ts.ktcIn).toLocaleString()}</div></div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5"><span className="text-white/50">KTC Out</span><div className="text-white/80">{Math.round(ts.ktcOut).toLocaleString()}</div></div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                          <div className="text-[11px] uppercase tracking-wide text-white/50">Trade List</div>
+                          {ts.trades.sort((a, b) => {
+                            if (a.season !== b.season) return b.season - a.season;
+                            return b.week - a.week;
+                          }).map((trade) => {
+                            const counterparties = trade.teams.filter(tm => tm.owner_id !== ts.ownerId).map(tm => tm.owner_name).join(', ');
+                            return (
+                              <div key={`mobile-tx-${ts.ownerId}-${trade.trade_id}`} className="rounded-lg border border-white/10 bg-black/30 p-2.5">
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <div className="text-xs text-white/80">Season {trade.season} · Week {trade.week}</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSummaryTradeId(trade.trade_id)}
+                                    disabled={!contractAssets.length}
+                                    className={`px-2 py-1 rounded text-[11px] border transition-colors ${contractAssets.length ? 'bg-white/5 border-white/15 text-white/70 hover:border-white/40 hover:bg-white/10' : 'bg-white/5 border-white/10 text-white/40 cursor-not-allowed'}`}
+                                  >
+                                    Summary
+                                  </button>
+                                </div>
+                                {counterparties && <div className="text-[11px] text-white/50">vs {counterparties}</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop summary table */}
+              <div className="hidden md:block rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm mb-6">
+                <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-[11px] uppercase tracking-wide text-white/50">
                     {[
@@ -1582,8 +1674,9 @@ export default function TradeHistoryPage() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+            </>
           )}
         </>)}
       </div>
