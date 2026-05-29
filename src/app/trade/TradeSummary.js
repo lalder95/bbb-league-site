@@ -335,26 +335,45 @@ const TradeSummary = ({
         key: 'ktc',
         label: 'Net Change (KTC)',
         type: 'integer',
-        getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0),
+        getValue: (team) => {
+          const received = buildReceivedFor(team);
+          const sent = buildOutgoingFor(team);
+          const incoming = received.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
+          const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
+          return incoming - outgoing;
+        },
       },
       {
         key: 'bv',
         label: 'Net Change (BV)',
         type: 'integer',
-        getValue: (players) => players.reduce((sum, player) => sum + getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0),
+        getValue: (team) => {
+          const received = buildReceivedFor(team);
+          const sent = buildOutgoingFor(team);
+          const incoming = received.reduce((sum, player) => sum + getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
+          const outgoing = sent.reduce((sum, player) => sum + getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
+          return incoming - outgoing;
+        },
       },
       {
         key: 'cap',
         label: 'Net Change (Cap)',
         type: 'currency',
-        getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
+        getValue: (team) => {
+          const received = buildReceivedFor(team);
+          const sent = buildOutgoingFor(team);
+          const incoming = received.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
+          const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
+          return incoming - outgoing;
+        },
       },
       {
         key: 'age',
         label: 'Average Age Incoming',
         type: 'age',
-        getValue: (players) => {
-          const ageEligiblePlayers = players.filter((player) => Number.isFinite(parseFloat(player.age)) && parseFloat(player.age) > 0);
+        getValue: (team) => {
+          const received = buildReceivedFor(team);
+          const ageEligiblePlayers = received.filter((player) => Number.isFinite(parseFloat(player.age)) && parseFloat(player.age) > 0);
           if (!ageEligiblePlayers.length) return 0;
           const totalAge = ageEligiblePlayers.reduce((sum, player) => sum + (parseFloat(player.age) || 0), 0);
           return totalAge / ageEligiblePlayers.length;
@@ -364,8 +383,7 @@ const TradeSummary = ({
 
     return metricConfigs.map((metric) => {
       const baseEntries = teams.map((team, index) => {
-        const incoming = buildReceivedFor(team);
-        const value = metric.getValue(incoming);
+        const value = metric.getValue(team);
         return {
           team,
           value,

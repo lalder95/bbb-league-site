@@ -140,33 +140,73 @@ const formatCompactMetric = (value, type) => {
 };
 
 const getIncomingMetricConfig = ({ metricKey, ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, currentSeason }) => {
+  // Helper functions to get received and sent assets for a team
+  const buildReceivedFor = (teamName, participants) => {
+    const teams = participants.map(pp => pp.team).filter(Boolean);
+    const unique = [...new Set(teams)];
+    const isTwoTeam = unique.length === 2;
+    const received = [];
+    participants.forEach(p => {
+      p.selectedPlayers.forEach(sp => {
+        let dest = sp.toTeam;
+        if (!dest && isTwoTeam && p.team) {
+          dest = unique.find(t => t !== p.team);
+        }
+        if (dest === teamName) received.push(sp);
+      });
+    });
+    return received;
+  };
+  const buildOutgoingFor = (teamName, participants) => {
+    const p = participants.find(pp => pp.team === teamName);
+    return p ? p.selectedPlayers : [];
+  };
   const configs = {
     ktc: {
       key: 'ktc',
       label: 'Net Change (KTC)',
       type: 'integer',
-      getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0),
+      getValue: (team, participants) => {
+        const received = buildReceivedFor(team, participants);
+        const sent = buildOutgoingFor(team, participants);
+        const incoming = received.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
+        const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
+        return incoming - outgoing;
+      },
     },
     bv: {
       key: 'bv',
       label: 'Net Change (BV)',
       type: 'integer',
-      getValue: (players) => players.reduce((sum, player) => sum + (getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) || 0), 0),
+      getValue: (team, participants) => {
+        const received = buildReceivedFor(team, participants);
+        const sent = buildOutgoingFor(team, participants);
+        const incoming = received.reduce((sum, player) => sum + (getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) || 0), 0);
+        const outgoing = sent.reduce((sum, player) => sum + (getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) || 0), 0);
+        return incoming - outgoing;
+      },
     },
     cap: {
       key: 'cap',
       label: 'Net Change (Cap)',
       type: 'currency',
-      getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
+      getValue: (team, participants) => {
+        const received = buildReceivedFor(team, participants);
+        const sent = buildOutgoingFor(team, participants);
+        const incoming = received.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
+        const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
+        return incoming - outgoing;
+      },
     },
     age: {
       key: 'age',
       label: 'Average Age Incoming',
       type: 'age',
-      getValue: (players) => {
-        if (!players.length) return 0;
-        const totalAge = players.reduce((sum, player) => sum + getAssetAgeForAverage(player, currentSeason), 0);
-        return totalAge / players.length;
+      getValue: (team, participants) => {
+        const received = buildReceivedFor(team, participants);
+        if (!received.length) return 0;
+        const totalAge = received.reduce((sum, player) => sum + getAssetAgeForAverage(player, currentSeason), 0);
+        return totalAge / received.length;
       },
     },
   };
