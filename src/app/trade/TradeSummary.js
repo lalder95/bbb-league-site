@@ -70,7 +70,9 @@ function SummaryIncomingBars({ metricSections }) {
         <div key={section.key} className="space-y-2">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div className="text-sm font-semibold text-white">{section.label}</div>
-            <div className="text-xs text-white/55">Total: {section.totalFormatted}</div>
+            <div className="text-xs text-white/55">
+              {section.key === 'age' ? 'Total:' : 'Net Change:'} {section.totalFormatted}
+            </div>
           </div>
 
           <div className="overflow-hidden rounded-full border border-white/10 bg-black/30">
@@ -331,19 +333,19 @@ const TradeSummary = ({
     const metricConfigs = [
       {
         key: 'ktc',
-        label: 'Total KTC Incoming',
+        label: 'Net Change (KTC)',
         type: 'integer',
         getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0),
       },
       {
         key: 'bv',
-        label: 'Total BV Incoming',
+        label: 'Net Change (BV)',
         type: 'integer',
         getValue: (players) => players.reduce((sum, player) => sum + getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0),
       },
       {
         key: 'cap',
-        label: 'Total Cap Incoming',
+        label: 'Net Change (Cap)',
         type: 'currency',
         getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
       },

@@ -143,19 +143,19 @@ const getIncomingMetricConfig = ({ metricKey, ktcPerDollar, usePositionRatios, p
   const configs = {
     ktc: {
       key: 'ktc',
-      label: 'Total KTC Incoming',
+      label: 'Net Change (KTC)',
       type: 'integer',
       getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0),
     },
     bv: {
       key: 'bv',
-      label: 'Total BV Incoming',
+      label: 'Net Change (BV)',
       type: 'integer',
       getValue: (players) => players.reduce((sum, player) => sum + (getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) || 0), 0),
     },
     cap: {
       key: 'cap',
-      label: 'Total Cap Incoming',
+      label: 'Net Change (Cap)',
       type: 'currency',
       getValue: (players) => players.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0),
     },
