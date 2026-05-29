@@ -1538,10 +1538,10 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
     positionRatios,
     avgKtcByPosition,
     currentSeason,
+    participants,
   });
   const incomingBarEntries = uniqueActiveTeams.map((team, index) => {
-    const incomingPlayers = teamToIncoming[team] || [];
-    const value = incomingMetricConfig.getValue(incomingPlayers);
+    const value = incomingMetricConfig.getValue(team);
     return {
       team,
       value,
