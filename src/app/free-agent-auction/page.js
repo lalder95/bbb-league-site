@@ -232,10 +232,7 @@ function formatCapSpace(value) {
 }
 
 function getCapSpaceColor(value) {
-  if (value >= 100) return 'text-green-400';
-  if (value >= 75) return 'text-yellow-400';
-  if (value >= 50) return 'text-[#FF4B1F]';
-  return 'text-red-500';
+  return value < 0 ? 'text-red-500' : 'text-white';
 }
 
 // Helper to check if current user is in draft users
@@ -337,6 +334,7 @@ function normalizeDraftPlayer(player, fallbackStartDelay = 0) {
 const DEFAULT_SORT_CONFIG = { key: 'countdown', direction: 'asc' };
 const AUCTION_SORT_PREFERENCE_KEY = 'bbb-free-agent-auction-sort';
 const VALID_SORT_KEYS = new Set(['countdown', 'playerName', 'position', 'ktc', 'lastBid', 'highBid', 'highBidder']);
+const ADMIN_POSITION_ORDER = ['QB', 'RB', 'WR', 'TE'];
 
 function sanitizeSortConfig(value) {
   const key = VALID_SORT_KEYS.has(value?.key) ? value.key : DEFAULT_SORT_CONFIG.key;
@@ -364,10 +362,14 @@ export default function FreeAgentAuctionPage() {
   const [selectedPlayerImageSrc, setSelectedPlayerImageSrc] = useState('');
   const [sortConfig, setSortConfig] = useState(DEFAULT_SORT_CONFIG);
   const [filterPosition, setFilterPosition] = useState('ALL');
+  const [boardStatusFilter, setBoardStatusFilter] = useState('ALL');
   const [searchName, setSearchName] = useState('');
   const [leadingOnly, setLeadingOnly] = useState(false);
   const [showBoardFiltersModal, setShowBoardFiltersModal] = useState(false);
   const [showCapModal, setShowCapModal] = useState(false);
+  const [capCompleteOnly, setCapCompleteOnly] = useState(false);
+  const [showCapTeamPlayersModal, setShowCapTeamPlayersModal] = useState(false);
+  const [selectedCapTeam, setSelectedCapTeam] = useState(null);
   const [bidLogSearch, setBidLogSearch] = useState('');
   const [bidLogBidder, setBidLogBidder] = useState('ALL');
   const [showBidLogModal, setShowBidLogModal] = useState(false);
@@ -995,17 +997,14 @@ export default function FreeAgentAuctionPage() {
           }
         });
 
-        const allowedPositions = ['QB', 'WR', 'RB', 'TE'];
         const seen = new Set();
         const mergedPlayers = (Array.isArray(playersData) ? playersData : [])
-          .filter(player => allowedPositions.includes(player.position))
           .map(player => ({
             playerId: Number(player.playerId),
             playerName: player.playerName,
             position: player.position,
             ktc: ktcMap[player.playerId] || ''
           }))
-          .filter(player => Number(player.ktc) > 0)
           .filter(player => {
             if (seen.has(String(player.playerId))) return false;
             seen.add(String(player.playerId));
@@ -1054,11 +1053,28 @@ export default function FreeAgentAuctionPage() {
     [draft?.players]
   );
 
+  const adminToolAvailablePositions = React.useMemo(() => {
+    const positions = Array.from(
+      new Set(
+        adminToolPlayers
+          .map(player => String(player.position || '').toUpperCase())
+          .filter(Boolean)
+      )
+    );
+
+    const orderedPrimary = ADMIN_POSITION_ORDER.filter(position => positions.includes(position));
+    const orderedSecondary = positions
+      .filter(position => !ADMIN_POSITION_ORDER.includes(position))
+      .sort((a, b) => a.localeCompare(b));
+
+    return [...orderedPrimary, ...orderedSecondary];
+  }, [adminToolPlayers]);
+
   const filteredAdminToolPlayers = React.useMemo(() => {
     const normalizedSearch = adminToolSearch.trim().toLowerCase();
     return adminToolPlayers.filter(player => {
       const matchesSearch = !normalizedSearch || player.playerName.toLowerCase().includes(normalizedSearch);
-      const matchesPosition = adminToolPosition === 'ALL' || player.position === adminToolPosition;
+      const matchesPosition = adminToolPosition === 'ALL' || String(player.position || '').toUpperCase() === adminToolPosition;
       const isContracted = contractedPlayerIdSet.has(String(player.playerId));
       const matchesContract = adminToolContractFilter === 'ALL' || (adminToolContractFilter === 'CONTRACTED' ? isContracted : !isContracted);
       return matchesSearch && matchesPosition && matchesContract && !draftPlayerIdSet.has(String(player.playerId));
@@ -1319,14 +1335,19 @@ export default function FreeAgentAuctionPage() {
     return draft.players.filter(p => {
       let positionMatch = filterPosition === 'ALL' || p.position === filterPosition;
       let nameMatch = !searchName || p.playerName.toLowerCase().includes(searchName.toLowerCase());
+      const playerGroup = buildPlayerView(p).group;
+      const statusMatch = boardStatusFilter === 'ALL'
+        || (boardStatusFilter === 'COMPLETE'
+          ? playerGroup === 'Ended'
+          : playerGroup === boardStatusFilter.charAt(0) + boardStatusFilter.slice(1).toLowerCase());
       let leadingMatch = true;
       if (leadingOnly) {
         const result = (draft.results || []).find(r => String(r.playerId) === String(p.playerId));
         leadingMatch = Boolean(result && currentUsername && result.username === currentUsername);
       }
-      return positionMatch && nameMatch && leadingMatch;
+      return positionMatch && nameMatch && leadingMatch && statusMatch;
     });
-  }, [draft?.players, draft?.results, draft?.startDate, draft?.nomDuration, filterPosition, searchName, leadingOnly, session?.user?.name]);
+  }, [draft?.players, draft?.results, draft?.startDate, draft?.nomDuration, filterPosition, searchName, leadingOnly, boardStatusFilter, session?.user?.name]);
 
   const sortedPlayers = React.useMemo(() => {
     const playersCopy = [...filteredPlayers];
@@ -1416,10 +1437,98 @@ export default function FreeAgentAuctionPage() {
     return groups;
   }, [sortedPlayers, draft?.startDate, draft?.endDate, draft?.nomDuration, draft?.results, draft?.bidLog, draft?.blind]);
 
+  const endedPlayerIdSet = React.useMemo(
+    () => new Set((groupedPlayers.Ended || []).map(player => String(player.playerId))),
+    [groupedPlayers.Ended]
+  );
+
+  const capTeamsWithStats = React.useMemo(() => {
+    const results = draft?.results || [];
+
+    return capTeams
+      .map(team => {
+        const currentCapSpace = Number(team.curYear.remaining.toFixed(1));
+        const currentSpend = Number(team.spend || 0);
+        const highBidCount = results.filter(result => String(result.username || '') === String(team.team || '')).length;
+        const completeHighBidCount = results.filter(
+          result => String(result.username || '') === String(team.team || '') && endedPlayerIdSet.has(String(result.playerId))
+        ).length;
+        const completeSpend = results
+          .filter(result => String(result.username || '') === String(team.team || '') && endedPlayerIdSet.has(String(result.playerId)))
+          .reduce((sum, result) => sum + Number(result.salary || 0), 0);
+
+        return {
+          ...team,
+          currentCapSpace,
+          currentSpend,
+          highBidCount,
+          completeHighBidCount,
+          completeSpend: Number(completeSpend.toFixed(1)),
+          capRemaining: Number((currentCapSpace - currentSpend).toFixed(1)),
+          completeCapRemaining: Number((currentCapSpace - completeSpend).toFixed(1)),
+        };
+      })
+      .sort((a, b) => a.team.localeCompare(b.team));
+  }, [capTeams, draft?.results, endedPlayerIdSet]);
+
+  const visibleCapTeams = React.useMemo(
+    () => capTeamsWithStats.filter(team => !capCompleteOnly || team.completeHighBidCount > 0),
+    [capTeamsWithStats, capCompleteOnly]
+  );
+
+  const selectedCapTeamPlayers = React.useMemo(() => {
+    if (!selectedCapTeam || !draft?.results) return [];
+
+    const teamResults = draft.results.filter(result => String(result.username || '') === String(selectedCapTeam.team || ''));
+    const filteredResults = capCompleteOnly
+      ? teamResults.filter(result => endedPlayerIdSet.has(String(result.playerId)))
+      : teamResults;
+
+    const playerById = new Map((draft?.players || []).map(player => [String(player.playerId), player]));
+
+    return filteredResults
+      .map(result => {
+        const player = playerById.get(String(result.playerId)) || null;
+        return {
+          ...result,
+          playerName: player?.playerName || `Player ${result.playerId}`,
+          position: player?.position || '-',
+          isEnded: endedPlayerIdSet.has(String(result.playerId)),
+        };
+      })
+      .sort((a, b) => a.playerName.localeCompare(b.playerName));
+  }, [capCompleteOnly, draft?.players, draft?.results, endedPlayerIdSet, selectedCapTeam]);
+
+  const getCapRowMetrics = (team) => {
+    if (!capCompleteOnly) {
+      return {
+        currentSpend: team.currentSpend,
+        currentPlayersHighBid: team.highBidCount,
+        capRemaining: team.capRemaining,
+      };
+    }
+
+    return {
+      currentSpend: team.completeSpend,
+      currentPlayersHighBid: team.completeHighBidCount,
+      capRemaining: team.completeCapRemaining,
+    };
+  };
+
   const visiblePlayers = React.useMemo(
     () => ['Active', 'Upcoming', 'Ended'].flatMap(group => groupedPlayers[group] || []),
     [groupedPlayers]
   );
+
+  const openCapTeamPlayers = (team) => {
+    setSelectedCapTeam(team);
+    setShowCapTeamPlayersModal(true);
+  };
+
+  const closeCapTeamPlayers = () => {
+    setShowCapTeamPlayersModal(false);
+    setSelectedCapTeam(null);
+  };
 
   const resetPlayerBid = async (playerId) => {
     const updatedResults = draft.results.filter(r => r.playerId !== playerId);
@@ -2061,9 +2170,6 @@ export default function FreeAgentAuctionPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="group relative flex flex-col items-center gap-1">
-                    <span className="pointer-events-none absolute -top-7 z-20 rounded-md border border-white/10 bg-[#020817] px-2 py-1 text-[10px] font-medium text-white/85 opacity-0 shadow-lg shadow-black/30 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                      {leadingOnly ? 'Show all players' : 'Show only players you lead'}
-                    </span>
                     <button
                       type="button"
                       onClick={() => setLeadingOnly(v => !v)}
@@ -2086,9 +2192,6 @@ export default function FreeAgentAuctionPage() {
                     <span className={cn('text-[9px] font-semibold uppercase tracking-wider', leadingOnly ? 'text-sky-200/80' : 'text-white/40')}>Winning</span>
                   </div>
                   <div className="group relative flex flex-col items-center gap-1">
-                    <span className="pointer-events-none absolute -top-7 z-20 rounded-md border border-white/10 bg-[#020817] px-2 py-1 text-[10px] font-medium text-white/85 opacity-0 shadow-lg shadow-black/30 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                      Open filter and sort options
-                    </span>
                     <button
                       type="button"
                       onClick={() => setShowBoardFiltersModal(true)}
@@ -2646,6 +2749,21 @@ export default function FreeAgentAuctionPage() {
             </div>
 
             <div>
+              <label htmlFor="boardFilterStatus" className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">Auction state</label>
+              <select
+                id="boardFilterStatus"
+                value={boardStatusFilter}
+                onChange={e => setBoardStatusFilter(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+              >
+                <option value="ALL">All states</option>
+                <option value="ACTIVE">Active</option>
+                <option value="UPCOMING">Upcoming</option>
+                <option value="COMPLETE">Complete</option>
+              </select>
+            </div>
+
+            <div>
               <label htmlFor="boardFilterSort" className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">Sort by</label>
               <select
                 id="boardFilterSort"
@@ -2694,6 +2812,7 @@ export default function FreeAgentAuctionPage() {
                 onClick={() => {
                   setSearchName('');
                   setFilterPosition('ALL');
+                  setBoardStatusFilter('ALL');
                   setLeadingOnly(false);
                   setSortConfig(DEFAULT_SORT_CONFIG);
                 }}
@@ -2715,27 +2834,58 @@ export default function FreeAgentAuctionPage() {
           onClose={() => setShowCapModal(false)}
           maxWidth="max-w-3xl"
         >
+          <div className="mb-4 flex flex-col gap-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <label className="flex items-center gap-3 text-sm text-white/75">
+              <input
+                type="checkbox"
+                checked={capCompleteOnly}
+                onChange={(e) => setCapCompleteOnly(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-black/30 text-[#FF4B1F] focus:ring-[#FF4B1F]/30"
+              />
+              Complete Only
+            </label>
+            <div className="text-xs uppercase tracking-[0.2em] text-white/45">
+              {visibleCapTeams.length} of {capTeamsWithStats.length} teams shown
+            </div>
+          </div>
+
           <div className="space-y-3 sm:hidden">
-            {capTeams
-              .slice()
-              .sort((a, b) => a.team.localeCompare(b.team))
+            {visibleCapTeams
               .map((team, idx) => {
                 const isActiveUser = session?.user?.name === team.team;
                 const showSpend = !draft?.blind || isActiveUser;
+                const rowMetrics = getCapRowMetrics(team);
                 return (
                   <div key={team.team || idx} className="rounded-2xl border border-white/10 bg-black/20 p-3">
                     <TeamIdentity username={team.team} avatarId={teamAvatars[team.team]} size={9} />
-                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                       <div>
-                        <div className="uppercase tracking-[0.16em] text-white/45">Cap Space</div>
-                        <div className={cn('mt-1 text-sm font-semibold', getCapSpaceColor(team.curYear.remaining))}>
-                          {formatCapSpace(team.curYear.remaining)}
+                        <div className="uppercase tracking-[0.16em] text-white/45">Current Cap Space</div>
+                        <div className={cn('mt-1 text-sm font-semibold', getCapSpaceColor(team.currentCapSpace))}>
+                          {formatCapSpace(team.currentCapSpace)}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="uppercase tracking-[0.16em] text-white/45">Spend</div>
+                      <div>
+                        <div className="uppercase tracking-[0.16em] text-white/45">Current Spend</div>
                         <div className="mt-1 text-sm font-semibold text-white/80">
-                          {showSpend ? formatCapSpace(team.spend || 0) : 'Hidden'}
+                          {showSpend ? formatCapSpace(rowMetrics.currentSpend || 0) : 'Hidden'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-[0.16em] text-white/45">Current Players High Bid</div>
+                        <button
+                          type="button"
+                          onClick={() => openCapTeamPlayers(team)}
+                          className="mt-1 inline-flex items-center text-sm font-semibold text-white/80 transition hover:text-white hover:underline hover:decoration-dotted"
+                          title={`View ${team.team}'s players included in this count`}
+                        >
+                          <span>{rowMetrics.currentPlayersHighBid}</span>
+                        </button>
+                      </div>
+                      <div className="text-right">
+                        <div className="uppercase tracking-[0.16em] text-white/45">Cap Remaining</div>
+                        <div className={cn('mt-1 text-sm font-semibold', getCapSpaceColor(rowMetrics.capRemaining))}>
+                          {formatCapSpace(rowMetrics.capRemaining)}
                         </div>
                       </div>
                     </div>
@@ -2749,34 +2899,92 @@ export default function FreeAgentAuctionPage() {
               <thead>
                 <tr className="border-b border-white/10 bg-white/5 text-left text-white/70">
                   <th className="px-4 py-3 font-semibold">Team</th>
-                  <th className="px-4 py-3 font-semibold">Cap Space</th>
-                  {(!draft?.blind || capTeams.some(team => session?.user?.name === team.team)) && (
-                    <th className="px-4 py-3 font-semibold">Spend</th>
-                  )}
+                  <th className="px-4 py-3 font-semibold">Current Cap Space</th>
+                  <th className="px-4 py-3 font-semibold">Current Spend</th>
+                  <th className="px-4 py-3 font-semibold">Current Players High Bid</th>
+                  <th className="px-4 py-3 font-semibold">Cap Remaining</th>
                 </tr>
               </thead>
               <tbody>
-                {capTeams
-                  .slice()
-                  .sort((a, b) => a.team.localeCompare(b.team))
+                {visibleCapTeams
                   .map((team, idx) => {
                     const isActiveUser = session?.user?.name === team.team;
+                    const rowMetrics = getCapRowMetrics(team);
                     return (
                       <tr key={team.team || idx} className="border-b border-white/5 last:border-0 hover:bg-white/[0.03]">
                         <td className="px-4 py-3">
                           <TeamIdentity username={team.team} avatarId={teamAvatars[team.team]} size={11} />
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span className={cn('text-sm font-semibold', getCapSpaceColor(team.curYear.remaining))}>{formatCapSpace(team.curYear.remaining)}</span>
+                          <span className={cn('text-sm font-semibold', getCapSpaceColor(team.currentCapSpace))}>{formatCapSpace(team.currentCapSpace)}</span>
                         </td>
-                        {(!draft?.blind || isActiveUser) && (
-                          <td className="px-4 py-3 text-right text-white/75">{formatCapSpace(team.spend || 0)}</td>
-                        )}
+                        <td className="px-4 py-3 text-right text-white/75">{!draft?.blind || isActiveUser ? formatCapSpace(rowMetrics.currentSpend || 0) : 'Hidden'}</td>
+                        <td className="px-4 py-3 text-right text-white/75">
+                          <button
+                            type="button"
+                            onClick={() => openCapTeamPlayers(team)}
+                            className="inline-flex items-center transition hover:text-white hover:underline hover:decoration-dotted"
+                            title={`View ${team.team}'s players included in this count`}
+                          >
+                            <span>{rowMetrics.currentPlayersHighBid}</span>
+                          </button>
+                        </td>
+                        <td className={cn('px-4 py-3 text-right font-semibold', getCapSpaceColor(rowMetrics.capRemaining))}>
+                          {formatCapSpace(rowMetrics.capRemaining)}
+                        </td>
                       </tr>
                     );
                   })}
               </tbody>
             </table>
+          </div>
+        </ModalShell>
+      )}
+
+      {showCapTeamPlayersModal && selectedCapTeam && (
+        <ModalShell
+          title={`${selectedCapTeam.team} players`}
+          subtitle={capCompleteOnly ? 'Showing completed players only because Complete Only is enabled.' : 'Showing all current high-bid players for this team.'}
+          onClose={closeCapTeamPlayers}
+          maxWidth="max-w-2xl"
+        >
+          <div className="space-y-3">
+            <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
+              {selectedCapTeamPlayers.length} player{selectedCapTeamPlayers.length === 1 ? '' : 's'} counted toward this team&apos;s high-bid total.
+            </div>
+
+            {selectedCapTeamPlayers.length > 0 ? (
+              <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+                {selectedCapTeamPlayers.map((result, idx) => (
+                  <div key={`${result.playerId}-${idx}`} className="flex flex-col gap-3 rounded-[22px] border border-white/10 bg-[#020817]/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="truncate text-base font-semibold text-white">{result.playerName}</div>
+                      <div className="mt-1 text-sm text-white/55">
+                        {result.position} · Player ID {result.playerId} · {result.isEnded ? 'Complete' : 'Active'}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-right text-sm text-white/70 sm:min-w-[260px]">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-white/40">Salary</div>
+                        <div className="mt-1 font-semibold text-white">${Number(result.salary || 0).toFixed(1)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-white/40">Years</div>
+                        <div className="mt-1 font-semibold text-white">{result.years ?? '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-white/40">Score</div>
+                        <div className="mt-1 font-semibold text-[#FFB800]">{result.contractPoints ?? '—'}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-10 text-center text-sm text-white/50">
+                No players are included in this team&apos;s high-bid total.
+              </div>
+            )}
           </div>
         </ModalShell>
       )}
@@ -3109,7 +3317,7 @@ export default function FreeAgentAuctionPage() {
                   className="w-full rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
                 >
                   <option value="ALL">All Positions</option>
-                  {['QB', 'RB', 'WR', 'TE'].map(position => (
+                  {adminToolAvailablePositions.map(position => (
                     <option key={position} value={position}>{position}</option>
                   ))}
                 </select>

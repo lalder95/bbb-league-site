@@ -2838,20 +2838,20 @@ function HomepagePhaseContent({ phase, payload, phaseLoading, phaseError, isMobi
                 <thead>
                   <tr className="border-b border-white/10 text-white/60">
                     <th className="py-2 text-left">Team</th>
-                    <th className="py-2 text-right">Spend</th>
-                    <th className="py-2 text-right">Remaining</th>
-                    <th className="py-2 text-right">Active</th>
-                    <th className="py-2 text-right">Dead</th>
+                    <th className="py-2 text-right">Current Cap Space</th>
+                    <th className="py-2 text-right">Current Spend</th>
+                    <th className="py-2 text-right">Current Players High Bid</th>
+                    <th className="py-2 text-right">Cap Remaining</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(payload?.freeAgencyCaps || []).map((entry) => (
                     <tr key={entry.team} className="border-b border-white/5 text-white/85">
                       <td className="py-2 pr-3 font-medium">{entry.team}</td>
-                      <td className="py-2 text-right text-amber-300">${entry.spend.toFixed(1)}</td>
-                      <td className="py-2 text-right font-semibold text-emerald-300">${entry.remainingCap.toFixed(1)}</td>
-                      <td className="py-2 text-right">${entry.activeCap.toFixed(1)}</td>
-                      <td className="py-2 text-right">${entry.deadCap.toFixed(1)}</td>
+                      <td className="py-2 text-right font-semibold text-emerald-300">${Number(entry.currentCapSpace ?? entry.remainingCap ?? 0).toFixed(1)}</td>
+                      <td className="py-2 text-right text-amber-300">${Number(entry.currentSpend ?? entry.spend ?? 0).toFixed(1)}</td>
+                      <td className="py-2 text-right text-white/75">{entry.currentPlayersHighBid ?? entry.highBidCount ?? 0}</td>
+                      <td className="py-2 text-right font-semibold text-sky-300">${Number(entry.capRemaining ?? ((entry.currentCapSpace ?? entry.remainingCap ?? 0) - (entry.currentSpend ?? entry.spend ?? 0))).toFixed(1)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2865,8 +2865,8 @@ function HomepagePhaseContent({ phase, payload, phaseLoading, phaseError, isMobi
       return (
         <div className="space-y-6">
           <PhaseCtaCard
-            title="Contract Extensions Close Before September 1"
-            body="Teams need to finalize extension decisions before the regular season opens. Review expiring base contracts and lock in the deals you want to keep."
+            title="Contract Extensions Must Be Completed Before September 1st"
+            body="Teams need to finalize extension decisions before September 1st. Review expiring base contracts and lock in the deals you want to keep."
             href="/my-team/contract-management"
             hrefLabel="Manage Extensions"
           />

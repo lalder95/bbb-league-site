@@ -422,20 +422,24 @@ function buildCapSummary({ contracts, fines, draft }) {
     Object.values(teamCaps).forEach((team) => {
       team.spend = draft.results
         .filter((result) => result.username === team.team)
-        .reduce((sum, result) => sum + toNumber(result.contractPoints), 0);
+        .reduce((sum, result) => sum + toNumber(result.salary), 0);
+
+      team.highBidCount = draft.results.filter((result) => result.username === team.team).length;
     });
   }
 
   return Object.values(teamCaps)
     .map((team) => ({
       team: team.team,
+      currentCapSpace: Number(team.curYear.remaining.toFixed(1)),
+      currentSpend: toNumber(team.spend),
+      currentPlayersHighBid: toNumber(team.highBidCount),
+      capRemaining: Number((team.curYear.remaining - toNumber(team.spend)).toFixed(1)),
       spend: toNumber(team.spend),
+      highBidCount: toNumber(team.highBidCount),
       remainingCap: Number(team.curYear.remaining.toFixed(1)),
-      activeCap: Number(team.curYear.active.toFixed(1)),
-      deadCap: Number(team.curYear.dead.toFixed(1)),
-      fines: Number(team.curYear.fines.toFixed(1)),
     }))
-    .sort((left, right) => right.remainingCap - left.remainingCap);
+    .sort((left, right) => String(left.team || '').localeCompare(String(right.team || '')));
 }
 
 async function getActiveAuctionSummary() {

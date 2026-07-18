@@ -20,11 +20,15 @@ import {
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import { useBudgetRatios } from '../../providers';
 import { getAssetBudgetValue } from '@/utils/draftPickTradeUtils';
 import {
+  Bar,
+  BarChart,
+  Cell,
   PolarAngleAxis,
   PolarGrid,
   PolarRadiusAxis,
@@ -32,6 +36,8 @@ import {
   RadarChart,
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
 
 // Add a small client-side cache with TTL for ESPN API responses
@@ -199,6 +205,13 @@ const TAB_CONFIG = [
     eyebrow: 'Scouting notes',
     description: 'Placeholder content for staff notes, roster strategy, and weekly observations.',
   },
+  {
+    id: 'projections',
+    label: 'Projections',
+    icon: TrendingUp,
+    eyebrow: 'Season outlook',
+    description: 'Projected fantasy performance for each remaining regular season week.',
+  },
 ];
 
 export default function PlayerProfileCard({
@@ -227,6 +240,9 @@ export default function PlayerProfileCard({
   const [nextGame, setNextGame] = useState(null);
   const [playerGameHistory, setPlayerGameHistory] = useState(null); // null=not fetched, []=no data
   const [gameHistoryLoading, setGameHistoryLoading] = useState(false);
+  const [playerProjections, setPlayerProjections] = useState(null); // null=not fetched, []=no data
+  const [projectionsLoading, setProjectionsLoading] = useState(false);
+  const [projectionsLastRefreshed, setProjectionsLastRefreshed] = useState(null);
   const [leagueScoringSettings, setLeagueScoringSettings] = useState(null); // null=not fetched
   const [chartView, setChartView] = useState('pts'); // 'pts' | 'usage' | 'yds' | 'tds'
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -863,6 +879,9 @@ export default function PlayerProfileCard({
   useEffect(() => {
     setPlayerGameHistory(null);
     setGameHistoryLoading(false);
+    setPlayerProjections(null);
+    setProjectionsLoading(false);
+    setProjectionsLastRefreshed(null);
     // Don't reset leagueScoringSettings — it's league-wide, not player-specific
   }, [contract?.playerName, contract?.nflTeam]);
 
@@ -928,6 +947,33 @@ export default function PlayerProfileCard({
       cancelled = true;
     };
   }, [expanded, activeTab, playerId, session?.user?.id, sessionStatus]);
+
+  // Projections fetch — runs when projections tab becomes active
+  useEffect(() => {
+    if (!expanded || activeTab !== 'projections') return;
+    if (!contract?.playerName) return;
+    if (playerProjections !== null) return; // already loaded for this player
+
+    let cancelled = false;
+    setProjectionsLoading(true);
+
+    const url = `/api/projections?playerName=${encodeURIComponent(contract.playerName)}&nflTeam=${encodeURIComponent(contract.nflTeam || '')}&position=${encodeURIComponent(contract.position || '')}`;
+
+    fetchCachedJson(url, 3_600_000)
+      .then(json => {
+        if (cancelled) return;
+        setPlayerProjections(json?.ok ? (json.weeks || []) : []);
+        if (json?.lastRefreshed) setProjectionsLastRefreshed(json.lastRefreshed);
+      })
+      .catch(() => {
+        if (!cancelled) setPlayerProjections([]);
+      })
+      .finally(() => {
+        if (!cancelled) setProjectionsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [expanded, activeTab, contract?.playerName, contract?.nflTeam, contract?.position, playerProjections]);
 
   const valueProfile = useMemo(() => {
     const positionKey = String(contract?.position || '').toUpperCase();
@@ -2124,6 +2170,152 @@ export default function PlayerProfileCard({
     );
   };
 
+  const renderProjectionsTab = () => {
+    const ss = leagueScoringSettings || {};
+    const recPts = Number(ss.rec) || 0;
+    const recPtsLabel = recPts >= 1 ? 'PPR' : recPts === 0.5 ? 'Half-PPR' : 'Standard';
+    const histPos = String(contract?.position || '').toUpperCase();
+
+    if (projectionsLoading) {
+      return (
+        <div className="flex min-h-full flex-col gap-4">
+          <div className="flex items-center justify-center py-8 text-white/40 text-sm">
+            Loading projections…
+          </div>
+        </div>
+      );
+    }
+
+    const hasData = Array.isArray(playerProjections) && playerProjections.some(w => w.projectedPts != null && w.projectedPts > 0);
+
+    if (!hasData) {
+      return (
+        <div className="flex min-h-full flex-col gap-4">
+          <div className="rounded-[1.25rem] border border-white/10 bg-black/20 px-4 py-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <p className="text-sm text-white/40">No projection data available for this player.</p>
+            <p className="mt-1 text-[0.7rem] text-white/25">Projections are only available during the regular season.</p>
+          </div>
+        </div>
+      );
+    }
+
+    const chartData = (playerProjections || []).map(w => ({
+      week: `Wk ${w.week}`,
+      pts: w.projectedPts != null ? Math.round(w.projectedPts * 10) / 10 : 0,
+    }));
+
+    const statColumns = (() => {
+      if (histPos === 'QB') return [
+        { key: 'passYd', label: 'Pass Yd' },
+        { key: 'passTD', label: 'Pass TD' },
+        { key: 'rushYd', label: 'Rush Yd' },
+      ];
+      if (histPos === 'RB') return [
+        { key: 'rushAtt', label: 'Att' },
+        { key: 'rushYd', label: 'Rush Yd' },
+        { key: 'rec', label: 'Rec' },
+        { key: 'recYd', label: 'Rec Yd' },
+      ];
+      return [
+        { key: 'targets', label: 'Tgt' },
+        { key: 'rec', label: 'Rec' },
+        { key: 'recYd', label: 'Rec Yd' },
+        { key: 'recTD', label: 'Rec TD' },
+      ];
+    })();
+
+    const relativeTime = (ts) => {
+      if (!ts) return 'Unknown';
+      const mins = Math.round((Date.now() - ts) / 60000);
+      if (mins < 2) return 'Just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.round(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return `${Math.round(hrs / 24)}d ago`;
+    };
+
+    return (
+      <div className="flex min-h-full flex-col gap-4">
+        {/* Scoring format + chart */}
+        <div className="rounded-[1.25rem] border border-white/10 bg-black/20 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-[0.65rem] font-bold uppercase tracking-[0.26em] text-white/50">
+              Projected pts · {recPtsLabel}
+            </p>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-white/40">
+              {recPtsLabel}
+            </span>
+          </div>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={chartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+              <XAxis dataKey="week" tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.4)' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.4)' }} axisLine={false} tickLine={false} />
+              <RechartsTooltip
+                contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
+                labelStyle={{ color: 'rgba(255,255,255,0.6)' }}
+                itemStyle={{ color: '#f35b2f' }}
+                formatter={(val) => [`${val} pts`, 'Projected']}
+              />
+              <Bar dataKey="pts" radius={[3, 3, 0, 0]}>
+                {chartData.map((entry, idx) => (
+                  <Cell key={idx} fill={entry.pts > 0 ? '#f35b2f' : 'rgba(255,255,255,0.1)'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Stats table */}
+        <div className="rounded-[1.25rem] border border-white/10 bg-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] overflow-hidden">
+          <table className="w-full text-[0.68rem]">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="px-3 py-2 text-left font-bold uppercase tracking-widest text-white/40">Wk</th>
+                <th className="px-2 py-2 text-right font-bold uppercase tracking-widest text-white/40">Pts</th>
+                {statColumns.map(col => (
+                  <th key={col.key} className="px-2 py-2 text-right font-bold uppercase tracking-widest text-white/40">{col.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(playerProjections || []).map((w, i) => (
+                <tr key={w.week} className={i % 2 === 0 ? 'bg-white/[0.02]' : ''}>
+                  <td className="px-3 py-1.5 text-white/60">{w.week}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold" style={{ color: w.projectedPts ? '#f35b2f' : 'rgba(255,255,255,0.25)' }}>
+                    {w.projectedPts != null ? Math.round(w.projectedPts * 10) / 10 : '—'}
+                  </td>
+                  {statColumns.map(col => (
+                    <td key={col.key} className="px-2 py-1.5 text-right text-white/50">
+                      {w[col.key] || '—'}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-1 text-[0.63rem] text-white/30">
+          <span>Last refreshed: {relativeTime(projectionsLastRefreshed)}</span>
+          <button
+            type="button"
+            onClick={() => {
+              // Clear client cache entry so next fetch is fresh
+              const url = `/api/projections?playerName=${encodeURIComponent(contract?.playerName || '')}&nflTeam=${encodeURIComponent(contract?.nflTeam || '')}&position=${encodeURIComponent(contract?.position || '')}`;
+              ESPN_CACHE.delete(url);
+              setPlayerProjections(null);
+              setProjectionsLoading(false);
+            }}
+            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[0.63rem] text-white/40 hover:bg-white/10 hover:text-white/60 transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderActiveTabPanel = () => {
     if (activeTab === 'contract') {
       return renderContractsTab();
@@ -2143,6 +2335,10 @@ export default function PlayerProfileCard({
 
     if (activeTab === 'notes') {
       return renderNotesTab();
+    }
+
+    if (activeTab === 'projections') {
+      return renderProjectionsTab();
     }
 
     return renderPlaceholderPanel();

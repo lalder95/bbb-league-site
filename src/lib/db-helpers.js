@@ -1003,8 +1003,53 @@ export async function updateNotificationPreferences(username, preferences) {
     const result = await users.updateOne(
       { username: { $regex: new RegExp('^' + username + '$', 'i') } },
       { $set: { notificationPreferences: preferences } }
+
     );
     if (result.matchedCount === 0) return { success: false, error: 'User not found' };
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// ─── ESPN Projection Cache ─────────────────────────────────────────────────
+
+async function getEspnProjectionCacheCollection() {
+  const db = await getDatabase();
+  const collection = db.collection('espnProjectionCache');
+  await collection.createIndex({ season: 1, week: 1 }, { unique: true });
+  return collection;
+}
+
+export async function getCachedWeekProjections(season, week) {
+  try {
+    const col = await getEspnProjectionCacheCollection();
+    const doc = await col.findOne({ season: Number(season), week: Number(week) });
+    if (!doc) return null;
+    if (doc.expiresAt < Date.now()) return null;
+    return doc;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function setCachedWeekProjections(season, week, players) {
+  try {
+    const now = Date.now();
+    const col = await getEspnProjectionCacheCollection();
+    await col.updateOne(
+      { season: Number(season), week: Number(week) },
+      {
+        $set: {
+          season: Number(season),
+          week: Number(week),
+          players,
+          fetchedAt: now,
+          expiresAt: now + 6 * 60 * 60 * 1000,
+        },
+      },
+      { upsert: true }
+    );
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
