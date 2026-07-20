@@ -337,11 +337,12 @@ const VALID_SORT_KEYS = new Set(['countdown', 'playerName', 'position', 'ktc', '
 const ADMIN_POSITION_ORDER = ['QB', 'RB', 'WR', 'TE'];
 
 function createEmptyFloorRule() {
-  return { startAt: '', endAt: '', hours: '24', enabled: true };
+  return { clientId: `floor-rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, startAt: '', endAt: '', hours: '24', enabled: true };
 }
 
 function normalizeFloorRule(rule, timeZone = 'America/Chicago') {
   return {
+    clientId: rule?.clientId || `floor-rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     startAt: rule?.startAt ? formatDraftDateTimeInput(rule.startAt, timeZone) : '',
     endAt: rule?.endAt ? formatDraftDateTimeInput(rule.endAt, timeZone) : '',
     hours: String(Number(rule?.hours ?? 24) || 24),
@@ -455,6 +456,7 @@ export default function FreeAgentAuctionPage() {
   const [showMobileBidModal, setShowMobileBidModal] = useState(false);
   const initialLoadDone = useRef(false);
   const sortPreferenceHydrated = useRef(false);
+  const adminToolHydratedDraftId = useRef(null);
   const { data: session, status } = useSession();
   const router = useRouter();
   const isAdmin = session?.user?.role === 'admin';
@@ -1091,7 +1093,13 @@ export default function FreeAgentAuctionPage() {
   }, [showAdminToolsModal, isAdmin]);
 
   useEffect(() => {
-    if (!showAdminToolsModal || !draft) return;
+    if (!showAdminToolsModal) {
+      adminToolHydratedDraftId.current = null;
+      return;
+    }
+
+    if (!draft?._id || adminToolHydratedDraftId.current === draft._id) return;
+
     const draftTimeZone = getDraftTimeZone(draft);
     setAdminToolStartDate(formatDraftDateTimeInput(draft.startDate, draftTimeZone));
     setAdminToolEndDate(formatDraftDateTimeInput(draft.endDate, draftTimeZone));
@@ -1100,7 +1108,8 @@ export default function FreeAgentAuctionPage() {
     setAdminToolLastBidFloorRules(Array.isArray(draft.lastBidFloorRules) && draft.lastBidFloorRules.length > 0 ? draft.lastBidFloorRules.map(rule => normalizeFloorRule(rule, draftTimeZone)) : []);
     setAdminToolMinBidIncreaseType(draft.minBidIncreaseType ?? 'flat');
     setAdminToolMinBidIncreaseValue(String(draft.minBidIncreaseValue ?? 0));
-  }, [showAdminToolsModal, draft]);
+    adminToolHydratedDraftId.current = draft._id;
+  }, [showAdminToolsModal, draft?._id]);
 
   const contractedPlayerIdSet = React.useMemo(
     () => new Set(Object.values(activeContractsByTeam).flatMap(playerSet => Array.from(playerSet || []))),
@@ -3239,7 +3248,7 @@ export default function FreeAgentAuctionPage() {
 
                   <div className="space-y-3">
                     {adminToolLastBidFloorRules.length > 0 ? adminToolLastBidFloorRules.map((rule, index) => (
-                      <div key={`${rule.startAt || 'start'}-${rule.endAt || 'end'}-${index}`} className="rounded-[22px] border border-white/10 bg-[#020817]/70 p-4">
+                      <div key={rule.clientId || index} className="rounded-[22px] border border-white/10 bg-[#020817]/70 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">Range {index + 1}</div>
                           <div className="flex items-center gap-2">
