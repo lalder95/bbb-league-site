@@ -336,6 +336,63 @@ const AUCTION_SORT_PREFERENCE_KEY = 'bbb-free-agent-auction-sort';
 const VALID_SORT_KEYS = new Set(['countdown', 'playerName', 'position', 'ktc', 'lastBid', 'highBid', 'highBidder']);
 const ADMIN_POSITION_ORDER = ['QB', 'RB', 'WR', 'TE'];
 
+function createEmptyFloorRule() {
+  return { startAt: '', endAt: '', hours: '24', enabled: true };
+}
+
+function normalizeFloorRule(rule, timeZone = 'America/Chicago') {
+  return {
+    startAt: rule?.startAt ? formatDraftDateTimeInput(rule.startAt, timeZone) : '',
+    endAt: rule?.endAt ? formatDraftDateTimeInput(rule.endAt, timeZone) : '',
+    hours: String(Number(rule?.hours ?? 24) || 24),
+    enabled: rule?.enabled !== false,
+  };
+}
+
+function floorRuleToPayload(rule) {
+  return {
+    startAt: rule?.startAt || '',
+    endAt: rule?.endAt || '',
+    hours: Number(rule?.hours),
+    enabled: rule?.enabled !== false,
+  };
+}
+
+function floorRulesOverlap(left, right) {
+  const leftStart = new Date(left.startAt);
+  const leftEnd = new Date(left.endAt);
+  const rightStart = new Date(right.startAt);
+  const rightEnd = new Date(right.endAt);
+
+  if ([leftStart, leftEnd, rightStart, rightEnd].some(date => Number.isNaN(date.getTime()))) {
+    return false;
+  }
+
+  return leftStart < rightEnd && rightStart < leftEnd;
+}
+
+function validateFloorRules(rules) {
+  const normalized = rules.map(floorRuleToPayload).filter(rule => rule.startAt && rule.endAt);
+  for (let index = 0; index < normalized.length; index += 1) {
+    const current = normalized[index];
+    const currentStart = new Date(current.startAt);
+    const currentEnd = new Date(current.endAt);
+    if (Number.isNaN(currentStart.getTime()) || Number.isNaN(currentEnd.getTime()) || currentEnd <= currentStart) {
+      return 'Each bid floor range must have a valid start and end time.';
+    }
+    if (!Number.isFinite(current.hours) || current.hours < 1) {
+      return 'Each bid floor range must have a valid duration.';
+    }
+    for (let otherIndex = index + 1; otherIndex < normalized.length; otherIndex += 1) {
+      if (floorRulesOverlap(current, normalized[otherIndex])) {
+        return 'Bid floor ranges cannot overlap.';
+      }
+    }
+  }
+
+  return '';
+}
+
 function sanitizeSortConfig(value) {
   const key = VALID_SORT_KEYS.has(value?.key) ? value.key : DEFAULT_SORT_CONFIG.key;
   const direction = value?.direction === 'desc' ? 'desc' : 'asc';
@@ -387,6 +444,7 @@ export default function FreeAgentAuctionPage() {
   const [adminToolEndDate, setAdminToolEndDate] = useState('');
   const [adminToolLastBidFloorEnabled, setAdminToolLastBidFloorEnabled] = useState(true);
   const [adminToolLastBidFloorHours, setAdminToolLastBidFloorHours] = useState('24');
+  const [adminToolLastBidFloorRules, setAdminToolLastBidFloorRules] = useState([]);
   const [adminToolMinBidIncreaseType, setAdminToolMinBidIncreaseType] = useState('flat');
   const [adminToolMinBidIncreaseValue, setAdminToolMinBidIncreaseValue] = useState('0');
   const [adminToolContractFilter, setAdminToolContractFilter] = useState('ALL');
@@ -449,7 +507,7 @@ export default function FreeAgentAuctionPage() {
         const result = draft.results?.find(r => r.playerId === p.playerId);
         const contractPoints = result ? Number(result.contractPoints) : 0;
         const playerStartTime = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
-          const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
+          const playerEndTime = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24, draft?.lastBidFloorRules ?? []);
         let group = 'Ended';
         if (now < playerStartTime) group = 'Upcoming';
         else if (now >= playerStartTime && now < playerEndTime) group = 'Active';
@@ -1039,6 +1097,7 @@ export default function FreeAgentAuctionPage() {
     setAdminToolEndDate(formatDraftDateTimeInput(draft.endDate, draftTimeZone));
     setAdminToolLastBidFloorEnabled(draft.lastBidFloorEnabled ?? true);
     setAdminToolLastBidFloorHours(String(draft.lastBidFloorHours ?? 24));
+    setAdminToolLastBidFloorRules(Array.isArray(draft.lastBidFloorRules) && draft.lastBidFloorRules.length > 0 ? draft.lastBidFloorRules.map(rule => normalizeFloorRule(rule, draftTimeZone)) : []);
     setAdminToolMinBidIncreaseType(draft.minBidIncreaseType ?? 'flat');
     setAdminToolMinBidIncreaseValue(String(draft.minBidIncreaseValue ?? 0));
   }, [showAdminToolsModal, draft]);
@@ -1211,6 +1270,12 @@ export default function FreeAgentAuctionPage() {
       return;
     }
 
+    const floorRulesError = validateFloorRules(adminToolLastBidFloorRules);
+    if (floorRulesError) {
+      setAdminToolError(floorRulesError);
+      return;
+    }
+
     setAdminToolSaving(true);
     setAdminToolError('');
 
@@ -1220,7 +1285,8 @@ export default function FreeAgentAuctionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lastBidFloorEnabled: adminToolLastBidFloorEnabled,
-          lastBidFloorHours: hours
+          lastBidFloorHours: hours,
+          lastBidFloorRules: adminToolLastBidFloorRules.map(floorRuleToPayload)
         })
       });
 
@@ -1372,8 +1438,8 @@ export default function FreeAgentAuctionPage() {
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
-        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
+        aValue = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24, draft?.lastBidFloorRules ?? []);
+        bValue = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24, draft?.lastBidFloorRules ?? []);
       }
       if (sortConfig.key === 'countdown') {
         const now = getCurrentTime();
@@ -1381,8 +1447,8 @@ export default function FreeAgentAuctionPage() {
         const bResult = draft.results?.find(r => r.playerId === b.playerId);
         const aContractPoints = aResult ? Number(aResult.contractPoints) : 0;
         const bContractPoints = bResult ? Number(bResult.contractPoints) : 0;
-        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
-        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
+        const aEnd = getPlayerEndTime(draft.startDate, a.startDelay, draft.nomDuration, aContractPoints, draft.bidLog, a.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24, draft?.lastBidFloorRules ?? []);
+        const bEnd = getPlayerEndTime(draft.startDate, b.startDelay, draft.nomDuration, bContractPoints, draft.bidLog, b.playerId, draft.blind, getDraftTimeZone(draft), draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24, draft?.lastBidFloorRules ?? []);
         aValue = aEnd - now;
         bValue = bEnd - now;
       }
@@ -1422,7 +1488,7 @@ export default function FreeAgentAuctionPage() {
       const result = draft.results?.find(r => r.playerId === p.playerId);
       const contractPoints = result ? Number(result.contractPoints) : 0;
       const start = getPlayerStartTime(draft.startDate, p.startDelay, draftTimeZone);
-      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24);
+      const end = getPlayerEndTime(draft.startDate, p.startDelay, draft.nomDuration, contractPoints, draft.bidLog, p.playerId, draft.blind, draftTimeZone, draft.endDate, draft?.lastBidFloorEnabled ?? true, draft?.lastBidFloorHours ?? 24, draft?.lastBidFloorRules ?? []);
 
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         groups.Ended.push(p);
@@ -1530,6 +1596,20 @@ export default function FreeAgentAuctionPage() {
     setSelectedCapTeam(null);
   };
 
+  const addFloorRule = () => {
+    setAdminToolLastBidFloorRules(prev => [...prev, createEmptyFloorRule()]);
+  };
+
+  const updateFloorRule = (index, field, value) => {
+    setAdminToolLastBidFloorRules(prev => prev.map((rule, currentIndex) => (
+      currentIndex === index ? { ...rule, [field]: value } : rule
+    )));
+  };
+
+  const removeFloorRule = (index) => {
+    setAdminToolLastBidFloorRules(prev => prev.filter((_, currentIndex) => currentIndex !== index));
+  };
+
   const resetPlayerBid = async (playerId) => {
     const updatedResults = draft.results.filter(r => r.playerId !== playerId);
     const updatedBidLog = (draft.bidLog || []).filter(b => b.playerId !== playerId);
@@ -1570,7 +1650,8 @@ export default function FreeAgentAuctionPage() {
       draftTimeZone,
       draft.endDate,
       draft?.lastBidFloorEnabled ?? true,
-      draft?.lastBidFloorHours ?? 24
+      draft?.lastBidFloorHours ?? 24,
+      draft?.lastBidFloorRules ?? []
     );
     const now = getCurrentTime();
 
@@ -3141,38 +3222,111 @@ export default function FreeAgentAuctionPage() {
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Bid floor settings</div>
-                    <h3 className="mt-2 text-lg font-semibold">Last-bid floor</h3>
-                    <p className="mt-1 text-sm text-white/55">Minimum time after any bid before a player can close (non-blind only).</p>
+                    <h3 className="mt-2 text-lg font-semibold">Last-bid floor windows</h3>
+                    <p className="mt-1 text-sm text-white/55">Each window applies its floor only when the most recent bid timestamp falls inside that date range.</p>
                   </div>
                   <SurfaceButton tone="blue" onClick={handleAdminUpdateBidFloor} disabled={adminToolSaving}>
                     {adminToolSaving ? 'Saving…' : 'Save floor'}
                   </SurfaceButton>
                 </div>
                 <div className="mt-5 space-y-4">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={adminToolLastBidFloorEnabled}
-                      onChange={(e) => setAdminToolLastBidFloorEnabled(e.target.checked)}
-                      className="form-checkbox rounded"
-                    />
-                    <span className="text-sm text-white/80">Enable last-bid floor</span>
-                  </label>
-                  {adminToolLastBidFloorEnabled && (
-                    <div className="flex items-center gap-3">
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50 whitespace-nowrap">Floor duration (hours)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={adminToolLastBidFloorHours}
-                        onChange={(e) => setAdminToolLastBidFloorHours(e.target.value)}
-                        className="w-28 rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
-                      />
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Configured windows</div>
+                    <SurfaceButton tone="ghost" className="px-3 py-2 text-xs" onClick={addFloorRule} disabled={adminToolSaving}>
+                      Add range
+                    </SurfaceButton>
+                  </div>
+
+                  <div className="space-y-3">
+                    {adminToolLastBidFloorRules.length > 0 ? adminToolLastBidFloorRules.map((rule, index) => (
+                      <div key={`${rule.startAt || 'start'}-${rule.endAt || 'end'}-${index}`} className="rounded-[22px] border border-white/10 bg-[#020817]/70 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">Range {index + 1}</div>
+                          <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-xs text-white/55">
+                              <input
+                                type="checkbox"
+                                checked={rule.enabled}
+                                onChange={(e) => updateFloorRule(index, 'enabled', e.target.checked)}
+                              />
+                              Enabled
+                            </label>
+                            <button type="button" onClick={() => removeFloorRule(index)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:bg-white/10">
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Start</label>
+                            <input
+                              type="datetime-local"
+                              value={rule.startAt}
+                              onChange={(e) => updateFloorRule(index, 'startAt', e.target.value)}
+                              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/50">End</label>
+                            <input
+                              type="datetime-local"
+                              value={rule.endAt}
+                              onChange={(e) => updateFloorRule(index, 'endAt', e.target.value)}
+                              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Floor hours</label>
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={rule.hours}
+                              onChange={(e) => updateFloorRule(index, 'hours', e.target.value)}
+                              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-[22px] border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/50">
+                        No custom windows configured yet. Add a range to override the legacy floor.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50">Legacy fallback</div>
+                        <div className="mt-1 text-sm text-white/55">Used only when no configured range matches the latest bid timestamp.</div>
+                      </div>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={adminToolLastBidFloorEnabled}
+                          onChange={(e) => setAdminToolLastBidFloorEnabled(e.target.checked)}
+                          className="form-checkbox rounded"
+                        />
+                        <span className="text-sm text-white/80">Enable</span>
+                      </label>
                     </div>
-                  )}
-                  <div className="text-xs text-white/45">
-                    Current: {draft?.lastBidFloorEnabled ?? true ? `Enabled — ${draft?.lastBidFloorHours ?? 24}h floor` : 'Disabled'}
+                    {adminToolLastBidFloorEnabled && (
+                      <div className="mt-4 flex items-center gap-3">
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50 whitespace-nowrap">Hours</label>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={adminToolLastBidFloorHours}
+                          onChange={(e) => setAdminToolLastBidFloorHours(e.target.value)}
+                          className="w-28 rounded-2xl border border-white/10 bg-[#020817]/70 px-4 py-3 text-white outline-none transition focus:border-[#FF4B1F]/40 focus:ring-2 focus:ring-[#FF4B1F]/20"
+                        />
+                      </div>
+                    )}
+                    <div className="mt-3 text-xs text-white/45">
+                      Current fallback: {draft?.lastBidFloorEnabled ?? true ? `Enabled — ${draft?.lastBidFloorHours ?? 24}h` : 'Disabled'}
+                    </div>
                   </div>
                 </div>
               </div>

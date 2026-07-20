@@ -152,7 +152,10 @@ export async function syncActiveFreeAgentAuctionFeed() {
       player?.playerId,
       Boolean(draft?.blind),
       draftTimeZone,
-      draft?.endDate
+      draft?.endDate,
+      draft?.lastBidFloorEnabled ?? true,
+      draft?.lastBidFloorHours ?? 24,
+      draft?.lastBidFloorRules ?? []
     );
 
     if (Number.isNaN(endTime.getTime()) || endTime > now) {

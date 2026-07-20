@@ -46,6 +46,12 @@ const draftSchema = new mongoose.Schema({
   blind: { type: Boolean, default: false },
   lastBidFloorEnabled: { type: Boolean, default: true },
   lastBidFloorHours: { type: Number, default: 24 },
+  lastBidFloorRules: [{
+    startAt: String,
+    endAt: String,
+    hours: Number,
+    enabled: { type: Boolean, default: true }
+  }],
   autoAddDropped: { type: Boolean, default: false },
   sleeperLeagueId: { type: String, default: '' },
   pendingDroppedPlayers: [playerSchema]
@@ -57,6 +63,44 @@ function roundToTenth(value, fallback = 0) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return fallback;
   return Math.round(numericValue * 10) / 10;
+}
+
+function normalizeFloorRules(rules) {
+  if (!Array.isArray(rules)) return [];
+
+  return rules
+    .map((rule) => ({
+      startAt: rule?.startAt ? String(rule.startAt) : '',
+      endAt: rule?.endAt ? String(rule.endAt) : '',
+      hours: Number(rule?.hours),
+      enabled: rule?.enabled !== false,
+    }))
+    .filter((rule) => rule.startAt && rule.endAt && Number.isFinite(rule.hours) && rule.hours >= 1);
+}
+
+function floorRulesOverlap(left, right) {
+  const leftStart = new Date(left.startAt);
+  const leftEnd = new Date(left.endAt);
+  const rightStart = new Date(right.startAt);
+  const rightEnd = new Date(right.endAt);
+
+  if ([leftStart, leftEnd, rightStart, rightEnd].some(date => Number.isNaN(date.getTime()))) {
+    return false;
+  }
+
+  return leftStart < rightEnd && rightStart < leftEnd;
+}
+
+function validateFloorRules(rules) {
+  for (let index = 0; index < rules.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < rules.length; otherIndex += 1) {
+      if (floorRulesOverlap(rules[index], rules[otherIndex])) {
+        return 'Bid floor ranges cannot overlap.';
+      }
+    }
+  }
+
+  return '';
 }
 
 export async function PATCH(request, { params }) {
@@ -73,6 +117,17 @@ export async function PATCH(request, { params }) {
   if (typeof body.blind === 'boolean') updateFields.blind = body.blind;
   if (typeof body.lastBidFloorEnabled === 'boolean') updateFields.lastBidFloorEnabled = body.lastBidFloorEnabled;
   if (typeof body.lastBidFloorHours === 'number') updateFields.lastBidFloorHours = body.lastBidFloorHours;
+  if (Array.isArray(body.lastBidFloorRules)) {
+    const floorRules = normalizeFloorRules(body.lastBidFloorRules);
+    const floorRulesError = validateFloorRules(floorRules);
+    if (floorRulesError) {
+      return new Response(JSON.stringify({ error: floorRulesError }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    updateFields.lastBidFloorRules = floorRules;
+  }
   if (typeof body.minBidIncreaseType === 'string' && ['flat', 'percentage'].includes(body.minBidIncreaseType)) updateFields.minBidIncreaseType = body.minBidIncreaseType;
   if (typeof body.minBidIncreaseValue === 'number' && body.minBidIncreaseValue >= 0) updateFields.minBidIncreaseValue = body.minBidIncreaseValue;
   if (typeof body.autoAddDropped === 'boolean') updateFields.autoAddDropped = body.autoAddDropped;

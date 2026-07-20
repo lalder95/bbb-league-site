@@ -51,6 +51,14 @@ const draftSchema = new mongoose.Schema({
     contractPoints: Number,
     timestamp: Date,
   }],
+  lastBidFloorEnabled: { type: Boolean, default: true },
+  lastBidFloorHours: { type: Number, default: 24 },
+  lastBidFloorRules: [{
+    startAt: String,
+    endAt: String,
+    hours: Number,
+    enabled: { type: Boolean, default: true }
+  }],
 }, { collection: 'drafts' });
 
 const Draft = mongoose.models.Draft || mongoose.model('Draft', draftSchema);

@@ -61,6 +61,12 @@ const draftSchema = new mongoose.Schema({
   blind: { type: Boolean, default: false },
   lastBidFloorEnabled: { type: Boolean, default: true },
   lastBidFloorHours: { type: Number, default: 24 },
+  lastBidFloorRules: [{
+    startAt: String,
+    endAt: String,
+    hours: Number,
+    enabled: { type: Boolean, default: true }
+  }],
   autoAddDropped: { type: Boolean, default: false },
   sleeperLeagueId: { type: String, default: '' },
   pendingDroppedPlayers: [playerSchema]

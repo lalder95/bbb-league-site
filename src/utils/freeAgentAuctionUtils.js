@@ -34,7 +34,8 @@ export function getPlayerEndTime(
   draftTimeZone = 'America/Chicago',
   draftEndDate = null,
   lastBidFloorEnabled = true,
-  lastBidFloorHours = 24
+  lastBidFloorHours = 24,
+  lastBidFloorRules = []
 ) {
   const start = getPlayerStartTime(draftStartDate, startDelay, draftTimeZone);
 
@@ -69,7 +70,42 @@ export function getPlayerEndTime(
 
   let minEnd = null;
   if (latestBidTime) {
-    minEnd = new Date(latestBidTime.getTime() + floorMs);
+    const normalizedRules = Array.isArray(lastBidFloorRules)
+      ? lastBidFloorRules
+          .map((rule) => {
+            const startAt = parseDraftDateTime(rule?.startAt, draftTimeZone);
+            const endAt = parseDraftDateTime(rule?.endAt, draftTimeZone);
+            const hours = Number(rule?.hours);
+
+            if (
+              Number.isNaN(startAt.getTime()) ||
+              Number.isNaN(endAt.getTime()) ||
+              endAt <= startAt ||
+              !Number.isFinite(hours) ||
+              hours < 0
+            ) {
+              return null;
+            }
+
+            return {
+              startAt,
+              endAt,
+              hours,
+              enabled: rule?.enabled !== false,
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+    const matchingRule = normalizedRules
+      .filter((rule) => rule.enabled && latestBidTime >= rule.startAt && latestBidTime < rule.endAt)
+      .sort((left, right) => right.startAt.getTime() - left.startAt.getTime())[0] || null;
+
+    if (matchingRule) {
+      minEnd = new Date(latestBidTime.getTime() + matchingRule.hours * 60 * 60 * 1000);
+    } else if (!normalizedRules.length) {
+      minEnd = new Date(latestBidTime.getTime() + floorMs);
+    }
   }
 
   if (minEnd && minEnd > calculatedEnd) {
