@@ -13,7 +13,8 @@ import { buildInitialParticipantsFromSharePayload, buildTradeSharePayload, creat
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
 const DEFAULT_POSITION_FILTER = 'ALL';
 const DEFAULT_SORT_OPTION = 'name-asc';
-const BV_TOOLTIP = 'Budget Value = KTC minus salary penalty, plus a position-based adjustment.';
+const YEAR_ONE_BV_TOOLTIP = 'Year 1 BV = KTC minus this year\'s salary penalty, plus a position-based adjustment.';
+const LONG_TERM_BV_TOOLTIP = 'Long-Term BV = KTC minus the full remaining contract salary penalty, plus a position-based adjustment.';
 const INCOMING_BAR_ROTATE_MS = 5000;
 const INCOMING_BAR_METRICS = [
   'ktc',
@@ -30,8 +31,8 @@ const TEAM_BAR_COLORS = [
   'from-red-500 to-rose-300',
 ];
 
-const getBudgetValue = (player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) => {
-  const value = getAssetBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition });
+const getBudgetValue = (player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, mode = 'year1' }) => {
+  const value = getAssetBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, mode });
   return Number.isNaN(value) ? null : value;
 };
 
@@ -166,38 +167,32 @@ const getIncomingMetricConfig = ({ metricKey, ktcPerDollar, usePositionRatios, p
   const configs = {
     ktc: {
       key: 'ktc',
-      label: 'Net Change (KTC)',
+      label: 'Total Incoming (KTC)',
       type: 'integer',
       getValue: (team) => {
         const received = buildReceivedFor(team, participants);
-        const sent = buildOutgoingFor(team, participants);
         const incoming = received.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
-        const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
-        return incoming - outgoing;
+        return incoming;
       },
     },
     bv: {
       key: 'bv',
-      label: 'Net Change (BV)',
+      label: 'Total Incoming (Year 1 BV)',
       type: 'integer',
       getValue: (team) => {
         const received = buildReceivedFor(team, participants);
-        const sent = buildOutgoingFor(team, participants);
         const incoming = received.reduce((sum, player) => sum + (getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) || 0), 0);
-        const outgoing = sent.reduce((sum, player) => sum + (getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) || 0), 0);
-        return incoming - outgoing;
+        return incoming;
       },
     },
     cap: {
       key: 'cap',
-      label: 'Net Change (Cap)',
+      label: 'Total Incoming (Cap)',
       type: 'currency',
       getValue: (team) => {
         const received = buildReceivedFor(team, participants);
-        const sent = buildOutgoingFor(team, participants);
         const incoming = received.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
-        const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
-        return incoming - outgoing;
+        return incoming;
       },
     },
     age: {
@@ -229,7 +224,7 @@ const getPlayerNameStyle = (name) => {
 function PlayerMetric({ label, value, accent = 'text-white', valueClassName = 'text-sm', valueStyle, tooltip }) {
   return (
     <div className="min-w-0 rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-center">
-      <div className="flex items-center justify-center gap-1 text-xs font-bold uppercase tracking-[0.08em] text-white/85">
+      <div className="flex min-h-[2.4rem] items-center justify-center gap-1 px-0.5 text-center text-[10px] font-bold uppercase leading-tight tracking-[0.06em] text-white/85 sm:text-xs">
         <span>{label}</span>
         {tooltip ? (
           <span
@@ -241,22 +236,125 @@ function PlayerMetric({ label, value, accent = 'text-white', valueClassName = 't
           </span>
         ) : null}
       </div>
-      <div className={`mt-1 break-words font-semibold leading-tight ${valueClassName} ${accent}`} style={valueStyle}>{value}</div>
+      <div className={`mt-1 whitespace-nowrap font-semibold leading-tight ${valueClassName} ${accent}`} style={valueStyle}>{value}</div>
+    </div>
+  );
+}
+
+function SelectedAssetMetaItem({ label, value, icon }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-2 py-2">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-sky-400/15 bg-sky-400/[0.08] text-sky-300 [&>svg]:h-4 [&>svg]:w-4">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-white/[0.42]">{label}</span>
+        <span className="mt-0.5 block truncate text-xs font-semibold leading-tight text-white/[0.88]">{value}</span>
+      </span>
+    </div>
+  );
+}
+
+function SelectedAssetFeatureCard({ label, value, tooltip, icon, subtitle, tone = 'cyan' }) {
+  const toneClasses = tone === 'amber'
+    ? {
+        border: 'border-amber-400/15',
+        glow: 'bg-amber-400/10',
+        icon: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+        label: 'text-amber-300',
+        accent: 'bg-amber-400',
+      }
+    : {
+        border: 'border-cyan-400/15',
+        glow: 'bg-cyan-400/10',
+        icon: 'border-cyan-400/20 bg-cyan-400/10 text-cyan-300',
+        label: 'text-cyan-300',
+        accent: 'bg-cyan-400',
+      };
+
+  return (
+    <div className={`relative min-w-0 overflow-hidden rounded-[18px] border ${toneClasses.border} bg-[#091522]/80 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]`}>
+      <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl ${toneClasses.glow}`} />
+      <div className={`absolute inset-y-3 left-0 w-1 rounded-r-full ${toneClasses.accent}`} />
+      <div className="relative flex items-center gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${toneClasses.icon} [&>svg]:h-5 [&>svg]:w-5`}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1">
+            <div className={`min-w-0 text-[9px] font-extrabold uppercase leading-tight tracking-[0.12em] ${toneClasses.label}`}>{label}</div>
+            {tooltip ? (
+              <span
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-[9px] font-bold text-white/60"
+                title={tooltip}
+                aria-label={tooltip}
+              >
+                ?
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-1 truncate text-[1.35rem] font-black leading-none tracking-[-0.03em] text-white sm:text-[1.55rem]">
+            {value}
+          </div>
+          {subtitle ? <div className="mt-1 truncate text-[10px] text-white/[0.42]">{subtitle}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectedAssetOverviewCard({ contractValue, ktcValue, isPick }) {
+  return (
+    <div className="overflow-hidden rounded-[18px] border border-white/[0.08] bg-[#091522]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+      <div className="grid grid-cols-2">
+        <div className="relative flex min-w-0 items-center gap-3 p-3">
+          <div className="pointer-events-none absolute -left-10 top-0 h-24 w-24 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+              <path d="M7 3.75h7l5 5V19.5A1.75 1.75 0 0 1 17.25 21H7A1.75 1.75 0 0 1 5.25 19.5v-14A1.75 1.75 0 0 1 7 3.75Z" />
+              <path d="M14 3.75V9h5" />
+              <path d="M8.5 13h7" />
+              <path d="M8.5 16.5h5" />
+            </svg>
+          </div>
+          <div className="relative min-w-0">
+            <div className="text-[9px] font-extrabold uppercase tracking-[0.13em] text-cyan-300">
+              {isPick ? 'Rookie Cap' : 'Contract'}
+            </div>
+            <div className="mt-1 break-words text-sm font-black leading-tight tracking-[-0.02em] text-white sm:text-base">{contractValue}</div>
+          </div>
+        </div>
+
+        <div className="relative flex min-w-0 items-center gap-3 border-l border-white/[0.07] p-3">
+          <div className="pointer-events-none absolute -right-10 top-0 h-24 w-24 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-blue-400/20 bg-blue-500/10 text-blue-300">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+              <path d="m12 4.5 7.5 7.5-7.5 7.5L4.5 12 12 4.5Z" />
+            </svg>
+          </div>
+          <div className="relative min-w-0">
+            <div className="text-[9px] font-extrabold uppercase tracking-[0.13em] text-blue-300">KTC</div>
+            <div className="mt-1 truncate text-base font-black leading-tight tracking-[-0.02em] text-white sm:text-lg">{ktcValue}</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 function PlayerMetrics({ player, ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, compact = false, showContract = true, showSecondaryMetrics = true }) {
   const isPick = isDraftPickAsset(player);
-  const budgetValue = getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition });
+  const year1BudgetValue = getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, mode: 'year1' });
+  const longTermBudgetValue = getBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, mode: 'long-term' });
   const ktcValue = parseFloat(player.ktcValue) || 0;
   const contractLabel = isPick
     ? `${formatSalary(player.pickSalary ?? player.year2 ?? 0)}`
     : `${player.contractType || '-'} · ${formatSalary(player.curYear)}`;
-  const compactGridClass = showContract ? 'grid-cols-2' : 'grid-cols-2';
+  const compactGridClass = 'grid-cols-2';
+  const summaryGridClass = showSecondaryMetrics ? 'grid-cols-2 gap-3 lg:grid-cols-4' : 'grid-cols-2 gap-3';
 
   return (
-    <div className={`grid gap-2 ${compact ? compactGridClass : 'grid-cols-2 lg:grid-cols-3'}`}>
+    <div className={`grid ${compact ? 'gap-2' : 'gap-3'} ${compact ? compactGridClass : summaryGridClass}`}>
       {showContract && (
         <PlayerMetric label={isPick ? 'Rookie Cap' : 'Contract'} value={contractLabel} accent="text-[#FFB199]" />
       )}
@@ -266,15 +364,20 @@ function PlayerMetrics({ player, ktcPerDollar, usePositionRatios, positionRatios
         valueClassName={compact ? 'text-xl' : 'text-base'}
         valueStyle={getValueHeatStyle(ktcValue, 0, 10000)}
       />
-      <div className={compact && showContract ? 'col-span-2' : ''}>
-        <PlayerMetric
-          label="BV"
-          value={budgetValue ?? '-'}
-          valueClassName={compact ? 'text-xl' : 'text-base'}
-          valueStyle={getValueHeatStyle(budgetValue, -2000, 6000)}
-          tooltip={BV_TOOLTIP}
-        />
-      </div>
+      <PlayerMetric
+        label="Year 1 BV"
+        value={year1BudgetValue ?? '-'}
+        valueClassName={compact ? 'text-xl' : 'text-base'}
+        valueStyle={getValueHeatStyle(year1BudgetValue, -2000, 6000)}
+        tooltip={YEAR_ONE_BV_TOOLTIP}
+      />
+      <PlayerMetric
+        label="Long-Term BV"
+        value={longTermBudgetValue ?? '-'}
+        valueClassName={compact ? 'text-xl' : 'text-base'}
+        valueStyle={getValueHeatStyle(longTermBudgetValue, -4000, 4000)}
+        tooltip={LONG_TERM_BV_TOOLTIP}
+      />
       {!compact && showSecondaryMetrics && (isPick ? (
         <>
           <PlayerMetric label="Bucket" value={player.pickBucketLabel || '-'} accent="text-sky-200" />
@@ -466,145 +569,280 @@ function TeamSection({
             </div>
 
             <div className="mb-4 mt-4">
-              <h3 className="text-sm font-bold mb-2 text-white/70">Selected Assets:</h3>
-              <div className="space-y-3 rounded-xl border border-[#FF4B1F]/40 bg-[#FF4B1F]/10 p-3 shadow-lg">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-white/[0.78]">Selected Assets</h3>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/[0.48]">
+                  {participant.selectedPlayers.length} selected
+                </span>
+              </div>
+
+              <div className="space-y-4">
                 {participant.selectedPlayers.length === 0 && (
-                  <div className="text-xs text-white/40 italic">No assets selected.</div>
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-4 py-8 text-center text-sm text-white/[0.38]">
+                    No assets selected.
+                  </div>
                 )}
+
                 <AnimatePresence>
-                  {participant.selectedPlayers.map((player, idx) => (
-                    <React.Fragment key={player.uniqueKey}>
-                      {idx > 0 && (
-                        <div className="w-full border-t border-white/10"></div>
-                      )}
+                  {participant.selectedPlayers.map((player) => {
+                    const isPick = isDraftPickAsset(player);
+                    const contractDisplayLabel = isPick
+                      ? formatSalary(player.pickSalary ?? player.year2 ?? 0)
+                      : `${player.contractType || '-'} · ${formatSalary(player.curYear)}`;
+                    const year1BudgetValue = getBudgetValue(player, {
+                      ktcPerDollar,
+                      usePositionRatios,
+                      positionRatios,
+                      avgKtcByPosition,
+                      mode: 'year1',
+                    });
+                    const longTermBudgetValue = getBudgetValue(player, {
+                      ktcPerDollar,
+                      usePositionRatios,
+                      positionRatios,
+                      avgKtcByPosition,
+                      mode: 'long-term',
+                    });
+                    const ktcDisplayValue = formatCompactMetric(player.ktcValue, 'integer');
+                    const yearOneDisplayValue = formatCompactMetric(year1BudgetValue, 'integer');
+                    const longTermDisplayValue = formatCompactMetric(longTermBudgetValue, 'integer');
+                    const positionLabel = isPick
+                      ? (getDisplayDraftSlot(player) || player.pickBucketLabel || 'PICK')
+                      : (player.position || '—');
+
+                    return (
                       <motion.div
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 30 }}
-                        transition={{ type: "spring", stiffness: 3000, damping: 20 }}
-                        className="rounded-xl border border-white/10 bg-black/35 p-3"
+                        key={player.uniqueKey}
+                        initial={{ opacity: 0, y: 14, scale: 0.99 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 14, scale: 0.99 }}
+                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                        className="relative overflow-hidden rounded-[24px] border border-[#27425b]/70 bg-[#06111c] shadow-[0_20px_52px_rgba(0,0,0,0.34)]"
                       >
-                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                          <div className="flex flex-1 items-start gap-3 min-w-0">
-                            {isDraftPickAsset(player) ? (
-                              <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-sky-500/20 via-indigo-500/15 to-violet-500/15 text-center">
-                                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-100">Pick</div>
-                                <div className="mt-1 text-2xl font-black leading-none text-white">R{player.round}</div>
-                                <div className="mt-1 text-[11px] font-semibold text-white/70">{player.pickBucketLabel}</div>
+                        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_12%,rgba(45,167,255,0.12),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(37,99,235,0.08),transparent_23%)]" />
+                        <div className="pointer-events-none absolute right-0 top-0 h-32 w-32 opacity-20 [background-image:radial-gradient(rgba(56,189,248,0.7)_1px,transparent_1px)] [background-size:12px_12px] [mask-image:linear-gradient(to_bottom_left,black,transparent_72%)]" />
+
+                        <div className="relative p-3 sm:p-4">
+                          <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+                            <div className="relative overflow-hidden rounded-[20px] border border-blue-400/30 bg-[#071525] p-1.5 shadow-[0_0_0_1px_rgba(45,167,255,0.08),0_14px_30px_rgba(0,0,0,0.35)]">
+                              <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-[linear-gradient(135deg,rgba(45,167,255,0.16),transparent_34%,transparent_68%,rgba(37,99,235,0.12))]" />
+                              <div className="relative flex min-h-[190px] items-center justify-center overflow-hidden rounded-[15px] border border-white/[0.08] bg-[radial-gradient(circle_at_top,rgba(45,167,255,0.18),rgba(5,13,22,0.4)_45%,rgba(2,7,12,0.92)_100%)] sm:min-h-[220px]">
+                                <span className="absolute left-2 top-2 z-10 max-w-[calc(100%-2.5rem)] truncate rounded-md border border-white/10 bg-[#07111d]/[0.85] px-1.5 py-1 text-[7px] font-extrabold uppercase tracking-[0.14em] text-sky-200 backdrop-blur-sm">
+                                  {isPick ? 'Draft Asset' : 'Player Asset'}
+                                </span>
+
+                                {isPick ? (
+                                  <div className="flex flex-col items-center justify-center px-2 text-center">
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-sky-300/20 bg-sky-400/10 text-3xl font-black text-white shadow-[0_0_35px_rgba(56,189,248,0.13)] sm:h-20 sm:w-20 sm:text-4xl">
+                                      R{player.round}
+                                    </div>
+                                    <div className="mt-3 text-xs font-semibold text-sky-100/[0.75]">{player.pickBucketLabel}</div>
+                                    <div className="mt-1 text-[10px] text-white/[0.42]">{player.season} Draft</div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <PlayerProfileCard
+                                      playerId={player.id}
+                                      imageExtension="png"
+                                      expanded={false}
+                                      avatarOnly
+                                      className="h-[8.25rem] w-[8.25rem] sm:h-[9.75rem] sm:w-[9.75rem]"
+                                      ktcPerDollar={ktcPerDollar}
+                                      usePositionRatios={usePositionRatios}
+                                      positionRatios={positionRatios}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPopupPlayer(player);
+                                      }}
+                                      className="absolute right-2 top-2 z-10 rounded-md border border-white/10 bg-black/[0.65] px-1.5 py-1 text-[8px] font-bold text-white/[0.76] backdrop-blur-sm transition-colors hover:bg-black/[0.85] hover:text-white"
+                                      aria-label={`Show details for ${player.playerName}`}
+                                    >
+                                      Info
+                                    </button>
+                                  </>
+                                )}
+
+                                <div className="absolute inset-x-2 bottom-2 flex overflow-hidden rounded-lg border border-white/10 bg-[#07111d]/90 shadow-lg backdrop-blur-sm">
+                                  <div className="min-w-[58px] flex-1 bg-blue-600/[0.85] px-2 py-2 text-center text-sm font-black text-white sm:text-base">
+                                    {positionLabel}
+                                  </div>
+                                </div>
                               </div>
-                            ) : (
-                              <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/40">
-                                <PlayerProfileCard
-                                  playerId={player.id}
-                                  imageExtension="png"
-                                  expanded={false}
-                                  avatarOnly
-                                  className="w-14 h-14"
-                                  ktcPerDollar={ktcPerDollar}
-                                  usePositionRatios={usePositionRatios}
-                                  positionRatios={positionRatios}
-                                />
-                                <button
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    setPopupPlayer(player);
-                                  }}
-                                  className="absolute right-1.5 top-1.5 z-10 rounded-full bg-black/60 px-2 py-0.5 text-xs font-semibold text-white hover:bg-black/80"
-                                  aria-label={`Show details for ${player.playerName}`}
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex min-w-0 items-start gap-2">
+                                <h4
+                                  className="min-w-0 flex-1 break-words text-[1.3rem] font-black leading-[1.02] tracking-[-0.035em] text-white sm:text-[1.55rem]"
+                                  title={player.playerName}
                                 >
-                                  Info
+                                  {player.playerName}
+                                </h4>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removePlayer(getAssetKey(player));
+                                  }}
+                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg border border-red-500/35 bg-red-500/[0.08] px-2 py-1.5 text-[10px] font-bold text-red-300 transition-all hover:border-red-400/55 hover:bg-red-500/15 hover:text-red-200"
+                                  aria-label={`Remove ${player.playerName}`}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5" aria-hidden="true">
+                                    <path d="M4.5 7.5h15" />
+                                    <path d="M9.5 10.5v6" />
+                                    <path d="M14.5 10.5v6" />
+                                    <path d="M6.75 7.5 7.5 18A1.5 1.5 0 0 0 9 19.5h6A1.5 1.5 0 0 0 16.5 18l.75-10.5" />
+                                    <path d="M9 7.5V5.25A1.5 1.5 0 0 1 10.5 3.75h3A1.5 1.5 0 0 1 15 5.25V7.5" />
+                                  </svg>
+                                  Remove
                                 </button>
                               </div>
-                            )}
 
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="truncate text-sm font-bold text-white sm:text-base">{player.playerName}</div>
-                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold border ${isDraftPickAsset(player) ? 'bg-sky-600/25 text-sky-100 border-sky-400/20' : 'bg-blue-600/25 text-blue-100 border-blue-400/20'}`}>
-                                  {isDraftPickAsset(player) ? (getDisplayDraftSlot(player) || player.pickBucketLabel || 'PICK') : (player.position || '—')}
+                              <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                                <span className={`rounded-lg border px-2 py-1 text-xs font-black ${isPick ? 'border-sky-400/20 bg-sky-500/15 text-sky-100' : 'border-blue-400/20 bg-blue-500/15 text-blue-100'}`}>
+                                  {positionLabel}
                                 </span>
-                                <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-white/80">
+                                <span className="inline-flex min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-white/[0.045] px-2 py-1 text-xs font-semibold text-white/[0.72]">
                                   {teamAvatars[player.team] ? (
                                     <img
                                       src={`https://sleepercdn.com/avatars/${teamAvatars[player.team]}`}
-                                      alt={player.team}
-                                      className="mr-1.5 h-4 w-4 rounded-full"
+                                      alt=""
+                                      className="mr-1.5 h-4 w-4 shrink-0 rounded-full"
                                     />
                                   ) : (
-                                    <span className="mr-1.5 inline-block h-4 w-4 rounded-full bg-white/10"></span>
+                                    <span className="mr-1.5 h-4 w-4 shrink-0 rounded-full border border-white/10 bg-white/10" />
                                   )}
-                                  {player.team}
+                                  <span className="truncate">{player.team}</span>
                                 </span>
                               </div>
 
-                              <div className="mt-1 text-xs text-white/55">
-                                {isDraftPickAsset(player)
-                                  ? `${player.season} draft • Original ${player.originalTeam || '-'} • Rookie $${Number(player.pickSalary || 0).toFixed(1)} • Final Year ${player.contractFinalYear || '-'}`
-                                  : `${player.nflTeam || 'No NFL Team'} • Final Year ${player.contractFinalYear || '-'} • Age ${player.age || '-'} • RFA ${getEligibilityText(player.rfaEligible)} • Tag ${getEligibilityText(player.franchiseTagEligible)}`}
-                              </div>
-
-                              <div className="mt-3">
-                                <PlayerMetrics
-                                  player={player}
-                                  ktcPerDollar={ktcPerDollar}
-                                  usePositionRatios={usePositionRatios}
-                                  positionRatios={positionRatios}
-                                  avgKtcByPosition={avgKtcByPosition}
-                                  showSecondaryMetrics={false}
+                              <div className="mt-3 grid grid-cols-2 gap-1.5">
+                                <SelectedAssetMetaItem
+                                  label="Final Year"
+                                  value={player.contractFinalYear || '-'}
+                                  icon={(
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                      <path d="M7 3.75h7l5 5V19.5A1.75 1.75 0 0 1 17.25 21H7A1.75 1.75 0 0 1 5.25 19.5v-14A1.75 1.75 0 0 1 7 3.75Z" />
+                                      <path d="M14 3.75V9h5" />
+                                    </svg>
+                                  )}
                                 />
+                                {!isPick && (
+                                  <SelectedAssetMetaItem
+                                    label="Age"
+                                    value={player.age || '-'}
+                                    icon={(
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                        <circle cx="12" cy="8" r="3.25" />
+                                        <path d="M5.5 19.5c.75-3.5 3-5.25 6.5-5.25s5.75 1.75 6.5 5.25" />
+                                      </svg>
+                                    )}
+                                  />
+                                )}
+                                {!isPick && (
+                                  <SelectedAssetMetaItem
+                                    label="RFA"
+                                    value={getEligibilityText(player.rfaEligible)}
+                                    icon={(
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                        <path d="M7 3.75h7l5 5V19.5A1.75 1.75 0 0 1 17.25 21H7A1.75 1.75 0 0 1 5.25 19.5v-14A1.75 1.75 0 0 1 7 3.75Z" />
+                                        <path d="M14 3.75V9h5M8.5 13h7M8.5 16.5h5" />
+                                      </svg>
+                                    )}
+                                  />
+                                )}
+                                {!isPick && (
+                                  <SelectedAssetMetaItem
+                                    label="Franchise Tag"
+                                    value={getEligibilityText(player.franchiseTagEligible)}
+                                    icon={(
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                        <path d="M4.5 12.5 11 6h6.5l2 2v6.5L13 21 4.5 12.5Z" />
+                                        <circle cx="15.5" cy="10" r="1" />
+                                      </svg>
+                                    )}
+                                  />
+                                )}
                               </div>
                             </div>
                           </div>
 
-                          <div className="flex flex-col gap-2 xl:w-[240px] xl:items-end">
-                            {!hideDestination && (
-                              <div className="w-full rounded-xl border border-white/10 bg-black/40 p-3 xl:max-w-[240px]">
-                                <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-white/45">Destination</div>
-                                <div className="text-xs text-white/60 mb-2">Choose the receiving team for this asset.</div>
-                                <select
-                                  className="w-full rounded-lg border border-white/10 bg-[#0a1929] px-2 py-2 text-sm text-white"
-                                  value={player.toTeam || ''}
-                                  onChange={(e) => updateDestination(getAssetKey(player), e.target.value)}
-                                >
-                                  <option value="">Select team</option>
-                                  {teamOptions
-                                    .filter(t => t !== participant.team)
-                                    .map((t) => (
-                                      <option key={t} value={t}>{t}</option>
-                                    ))}
-                                </select>
-                              </div>
-                            )}
-
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                removePlayer(getAssetKey(player));
-                              }}
-                              className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20"
-                            >
-                              Remove Asset
-                            </button>
+                          <div className="mt-3">
+                            <SelectedAssetOverviewCard
+                              contractValue={contractDisplayLabel}
+                              ktcValue={ktcDisplayValue}
+                              isPick={isPick}
+                            />
                           </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2.5">
+                            <SelectedAssetFeatureCard
+                              label="Year 1 BV"
+                              value={yearOneDisplayValue}
+                              tooltip={YEAR_ONE_BV_TOOLTIP}
+                              subtitle="Current-season value"
+                              tone="cyan"
+                              icon={(
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                  <path d="M4.5 16.5 9 12l3 3 7.5-7.5" />
+                                  <path d="M15.75 7.5h3.75v3.75" />
+                                  <path d="M5.25 19.5V15M10.5 19.5v-6M15.75 19.5v-3.75" />
+                                </svg>
+                              )}
+                            />
+                            <SelectedAssetFeatureCard
+                              label="Long-Term BV"
+                              value={longTermDisplayValue}
+                              tooltip={LONG_TERM_BV_TOOLTIP}
+                              subtitle="Full-contract value"
+                              tone="amber"
+                              icon={(
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                  <path d="M4.5 16.5 9 12l3 3 7.5-7.5" />
+                                  <path d="M15.75 7.5h3.75v3.75" />
+                                  <path d="M5.25 19.5V15M10.5 19.5v-6M15.75 19.5v-3.75" />
+                                </svg>
+                              )}
+                            />
+                          </div>
+
+                          {!hideDestination && (
+                            <div className="mt-3 flex flex-col gap-2 rounded-[16px] border border-white/[0.07] bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0">
+                                <div className="text-[8px] font-extrabold uppercase tracking-[0.15em] text-white/[0.38]">Destination</div>
+                                <div className="mt-0.5 truncate text-xs text-white/[0.58]">Receiving team for this asset</div>
+                              </div>
+                              <select
+                                className="w-full rounded-lg border border-white/10 bg-[#0a1929] px-3 py-2 text-xs font-semibold text-white outline-none transition-colors hover:border-white/20 focus:border-sky-400/35 sm:w-[190px]"
+                                value={player.toTeam || ''}
+                                onChange={(e) => updateDestination(getAssetKey(player), e.target.value)}
+                              >
+                                <option value="">Select team</option>
+                                {teamOptions
+                                  .filter((team) => team !== participant.team)
+                                  .map((team) => (
+                                    <option key={team} value={team}>{team}</option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
-                    </React.Fragment>
-                  ))}
+                    );
+                  })}
                 </AnimatePresence>
               </div>
             </div>
 
             {impact && (
-              <div className="mt-4 space-y-4">
-                <div>
-                  <h3 className="text-sm font-bold mb-2 text-white/70">Before Trade:</h3>
-                  <CapImpactDisplay impact={impact.before} currentSeason={participant.currentSeason} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold mb-2 text-white/70">After Trade:</h3>
-                  <CapImpactDisplay impact={impact.after} currentSeason={participant.currentSeason} />
-                </div>
-              </div>
+              <CapSpaceImpactSection
+                impact={impact}
+                currentSeason={participant.currentSeason}
+              />
             )}
           </>
         )}
@@ -660,18 +898,132 @@ function TeamSection({
   );
 }
 
-const CapImpactDisplay = ({ impact, currentSeason }) => (
-  <div className="grid grid-cols-4 gap-2 text-sm">
-    {Object.entries(impact).map(([year, value]) => (
-      <div key={year} className="text-center">
-        <div className="text-white/70">{getLeagueYearLabel(currentSeason, year)}</div>
-        <div className={getValidationColor(value?.remaining)}>
-          {formatSalary(value?.remaining)}
+const formatCapDelta = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '$-';
+  if (Math.abs(num) < 0.05) return '$0.0';
+  return `${num > 0 ? '+' : '-'}$${Math.abs(num).toFixed(1)}`;
+};
+
+const getCapDeltaColor = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || Math.abs(num) < 0.05) return 'text-white/40';
+  return num > 0 ? 'text-cyan-300' : 'text-rose-300';
+};
+
+function CapSpaceImpactSection({ impact, currentSeason }) {
+  const beforeImpact = impact?.before || {};
+  const afterImpact = impact?.after || {};
+  const yearKeys = ['curYear', 'year2', 'year3', 'year4'].filter(
+    (yearKey) => beforeImpact[yearKey] || afterImpact[yearKey]
+  );
+
+  const currentBefore = Number(beforeImpact?.curYear?.remaining);
+  const currentAfter = Number(afterImpact?.curYear?.remaining);
+  const currentDelta = Number.isFinite(currentBefore) && Number.isFinite(currentAfter)
+    ? currentAfter - currentBefore
+    : null;
+
+  const yearData = yearKeys.map((yearKey) => {
+    const before = Number(beforeImpact?.[yearKey]?.remaining);
+    const after = Number(afterImpact?.[yearKey]?.remaining);
+    return {
+      yearKey,
+      yearLabel: getLeagueYearLabel(currentSeason, yearKey),
+      before,
+      after,
+      delta: Number.isFinite(before) && Number.isFinite(after) ? after - before : null,
+    };
+  });
+
+  const tableGridStyle = {
+    gridTemplateColumns: `82px repeat(${Math.max(yearData.length, 1)}, minmax(96px, 1fr))`,
+  };
+  const tableMinWidth = 82 + (Math.max(yearData.length, 1) * 108);
+
+  return (
+    <section className="relative mt-4 overflow-hidden rounded-[22px] border border-[#27425b]/70 bg-[#06111c] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_14px_34px_rgba(0,0,0,0.18)] sm:p-4">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(34,211,238,0.10),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(37,99,235,0.08),transparent_24%)]" />
+      <div className="pointer-events-none absolute right-0 top-0 h-24 w-32 opacity-15 [background-image:radial-gradient(rgba(56,189,248,0.7)_1px,transparent_1px)] [background-size:12px_12px] [mask-image:linear-gradient(to_bottom_left,black,transparent_72%)]" />
+
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+              <path d="M4.5 7.25h15v10.5h-15z" />
+              <path d="M7.5 7.25V5.5h9v1.75" />
+              <path d="M15.25 12.5h4.25" />
+              <circle cx="15.25" cy="12.5" r="0.75" fill="currentColor" stroke="none" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <div className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-cyan-300">Cap Space Impact</div>
+            <div className="mt-0.5 text-xs text-white/[0.46]">Projected room before and after the trade</div>
+          </div>
+        </div>
+
+        {Number.isFinite(currentDelta) ? (
+          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-extrabold ${
+            currentDelta > 0.049
+              ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-300'
+              : currentDelta < -0.049
+                ? 'border-rose-400/20 bg-rose-400/10 text-rose-300'
+                : 'border-white/10 bg-white/[0.04] text-white/50'
+          }`}>
+            Year 1 {formatCapDelta(currentDelta)}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="relative mt-3 overflow-x-auto pb-1">
+        <div
+          className="overflow-hidden rounded-[18px] border border-white/[0.08] bg-[#091522]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+          style={{ minWidth: `${tableMinWidth}px` }}
+        >
+          <div className="grid items-center border-b border-white/[0.07] bg-white/[0.025]" style={tableGridStyle}>
+            <div className="px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-white/[0.34]">Year</div>
+            {yearData.map(({ yearKey, yearLabel }) => (
+              <div key={yearKey} className="border-l border-white/[0.06] px-2 py-2.5 text-center text-[10px] font-extrabold tracking-[0.1em] text-white/[0.58]">
+                {yearLabel}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid items-stretch border-b border-white/[0.07]" style={tableGridStyle}>
+            <div className="flex items-center gap-2 px-3 py-3 text-[9px] font-extrabold uppercase tracking-[0.12em] text-white/[0.40]">
+              <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+              Before
+            </div>
+            {yearData.map(({ yearKey, before }) => (
+              <div key={yearKey} className="flex min-w-0 items-center justify-center border-l border-white/[0.06] px-2 py-3">
+                <span className={`whitespace-nowrap text-sm font-bold tabular-nums ${getValidationColor(before)}`}>
+                  {formatSalary(before)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid items-stretch bg-cyan-400/[0.015]" style={tableGridStyle}>
+            <div className="flex items-center gap-2 px-3 py-3 text-[9px] font-extrabold uppercase tracking-[0.12em] text-cyan-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+              After
+            </div>
+            {yearData.map(({ yearKey, after, delta }) => (
+              <div key={yearKey} className="flex min-w-0 flex-col items-center justify-center border-l border-white/[0.06] px-2 py-2.5 text-center">
+                <span className={`whitespace-nowrap text-base font-black leading-none tracking-[-0.02em] tabular-nums ${getValidationColor(after)}`}>
+                  {formatSalary(after)}
+                </span>
+                <span className={`mt-1 whitespace-nowrap text-[9px] font-bold tabular-nums ${getCapDeltaColor(delta)}`}>
+                  {formatCapDelta(delta)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    ))}
-  </div>
-);
+    </section>
+  );
+}
 
 const formatSalary = (value) => {
   const num = Number(value);
@@ -1731,7 +2083,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
             <div className="overflow-hidden rounded-2xl border border-emerald-400/25 bg-[#05281d]/95 shadow-[0_18px_42px_rgba(0,0,0,0.35)] backdrop-blur">
               <div className="flex items-start gap-3 px-4 py-3.5">
                 <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-300/25 bg-emerald-500/15 text-emerald-100">
-                  <svg viewBox="0 0 20 20" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <path d="m4.5 10 3.5 3.5L15.5 6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
@@ -1859,7 +2211,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
               checked={usePositionRatios}
               onChange={(e) => setUsePositionRatios(e.target.checked)}
             />
-            Use position-specific ratios for Budget Value
+            Use position-specific ratios for Year 1 BV
           </label>
           {usePositionRatios && (
             <span className="text-[10px] text-white/60">Uses ratio by player position (e.g., QB/RB/WR/TE). Falls back to global ratio if position is missing.</span>
@@ -1916,7 +2268,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
               ))}
             </div>
             <div className="mt-3 text-xs text-white/60">
-              Formula: Ratio = (Σ Active KTC) / (Σ Active {getLeagueYearLabel(capDisplaySeason, 'curYear')} Salary). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).
+              Formula: Ratio = (Σ Active KTC) / (Σ Active {getLeagueYearLabel(capDisplaySeason, 'curYear')} Salary). Year 1 BV = KTC + Salary × (−Ratio) + AvgKTC(pos).
             </div>
           </div>
         )}

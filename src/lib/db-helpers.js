@@ -325,6 +325,55 @@ export async function updateContractManagementSettings({ contractYearOverride, u
   }
 }
 
+export async function getAssistantGMSettings() {
+  try {
+    const col = await getAppSettingsCollection();
+    const doc = await col.findOne({ key: 'assistantGM' });
+    return {
+      success: true,
+      settings: {
+        model: typeof doc?.model === 'string' && doc.model.trim() ? doc.model.trim() : 'gpt-4o',
+        updatedAt: doc?.updatedAt || null,
+        updatedBy: doc?.updatedBy || null,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateAssistantGMSettings({ model, updatedBy }) {
+  try {
+    const normalizedModel = typeof model === 'string' ? model.trim() : '';
+    if (!normalizedModel) {
+      return { success: false, error: 'model is required' };
+    }
+
+    const col = await getAppSettingsCollection();
+    const updateDoc = {
+      model: normalizedModel,
+      updatedAt: new Date(),
+      updatedBy: updatedBy || null,
+    };
+
+    await col.updateOne(
+      { key: 'assistantGM' },
+      {
+        $set: updateDoc,
+        $setOnInsert: { key: 'assistantGM', createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    return {
+      success: true,
+      settings: updateDoc,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 // Announcements helpers
 async function getAnnouncementsCollection() {
   const db = await getDatabase();

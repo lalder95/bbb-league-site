@@ -77,21 +77,84 @@ export const getDraftPickSalary = (round, bucket) => {
   return 0;
 };
 
-export const getDraftPickBudgetValue = (asset, { ktcPerDollar } = {}) => {
+const CONTRACT_YEAR_FIELDS = ['curYear', 'year2', 'year3', 'year4'];
+
+const POSITION_AGE_DECLINE_RULES = {
+  QB: { threshold: 34, declinePerYear: 0.08 },
+  RB: { threshold: 27, declinePerYear: 0.16 },
+  WR: { threshold: 30, declinePerYear: 0.10 },
+  TE: { threshold: 31, declinePerYear: 0.09 },
+  DEFAULT: { threshold: 29, declinePerYear: 0.11 },
+};
+
+const getPositionAgeDeclineRule = (position) => POSITION_AGE_DECLINE_RULES[(String(position || '').toUpperCase())] || POSITION_AGE_DECLINE_RULES.DEFAULT;
+
+const getContractSalaryTotal = (asset, mode = 'year1') => {
+  const yearFields = mode === 'long-term' ? CONTRACT_YEAR_FIELDS : ['curYear'];
+
+  return yearFields.reduce((sum, field) => sum + (Number(asset?.[field]) || 0), 0);
+};
+
+const getProjectedKtcForYear = (asset, yearIndex) => {
   const ktc = parseFloat(asset?.ktcValue) || 0;
-  const salary = Number(asset?.pickSalary ?? asset?.year2 ?? asset?.curYear) || 0;
+  const age = Number(asset?.age);
+  if (!Number.isFinite(age) || age <= 0) return ktc;
+
+  const position = asset?.position || 'DEFAULT';
+  const { threshold, declinePerYear } = getPositionAgeDeclineRule(position);
+  const projectedAge = age + yearIndex;
+  const yearsPastThreshold = Math.max(0, projectedAge - threshold);
+
+  if (yearsPastThreshold <= 0) return ktc;
+
+  const declineMultiplier = Math.max(0.35, 1 - (yearsPastThreshold * declinePerYear));
+  return Math.round(ktc * declineMultiplier);
+};
+
+const getLongTermBudgetValue = (asset, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition } = {}) => {
+  if (isDraftPickAsset(asset)) {
+    const draftPickYears = ['year2', 'year3', 'year4'];
+    return draftPickYears.reduce((sum, field, index) => {
+      const yearAsset = { ...asset, curYear: asset?.[field] ?? asset?.pickSalary ?? asset?.curYear };
+      return sum + getDraftPickBudgetValue(yearAsset, { ktcPerDollar, mode: 'year1' });
+    }, 0);
+  }
+
+  const globalRatio = typeof ktcPerDollar === 'number' ? ktcPerDollar : 0;
+  const posKey = (asset?.position || 'UNKNOWN').toUpperCase();
+  const posRatio = usePositionRatios ? positionRatios?.[posKey] : null;
+  const appliedRatio = (posRatio != null ? posRatio : globalRatio) || 0;
+  const avgAdd = avgKtcByPosition?.[posKey] || 0;
+
+  return CONTRACT_YEAR_FIELDS.reduce((sum, field, index) => {
+    const salary = Number(asset?.[field]) || 0;
+    if (!salary) return sum;
+    const projectedKtc = getProjectedKtcForYear(asset, index);
+    const yearValue = Math.round(projectedKtc + (salary * (-appliedRatio)) + avgAdd);
+    return sum + yearValue;
+  }, 0);
+};
+
+export const getDraftPickBudgetValue = (asset, { ktcPerDollar, mode = 'year1' } = {}) => {
+  const ktc = parseFloat(asset?.ktcValue) || 0;
+  const baseSalary = Number(asset?.pickSalary ?? asset?.year2 ?? asset?.curYear) || 0;
+  const salary = mode === 'long-term' ? getContractSalaryTotal(asset, mode) || baseSalary : baseSalary;
   const ratio = Number(ktcPerDollar) || 0;
   const value = Math.round(ktc - salary * ratio);
   return Number.isNaN(value) ? 0 : value;
 };
 
-export const getAssetBudgetValue = (asset, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition } = {}) => {
+export const getAssetBudgetValue = (asset, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, mode = 'year1' } = {}) => {
+  if (mode === 'long-term') {
+    return getLongTermBudgetValue(asset, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition });
+  }
+
   if (isDraftPickAsset(asset)) {
-    return getDraftPickBudgetValue(asset, { ktcPerDollar });
+    return getDraftPickBudgetValue(asset, { ktcPerDollar, mode });
   }
 
   const ktc = parseFloat(asset?.ktcValue) || 0;
-  const salary = parseFloat(asset?.curYear) || 0;
+  const salary = getContractSalaryTotal(asset, mode);
   const globalRatio = typeof ktcPerDollar === 'number' ? ktcPerDollar : 0;
   const posKey = (asset?.position || 'UNKNOWN').toUpperCase();
   const posRatio = usePositionRatios ? positionRatios?.[posKey] : null;

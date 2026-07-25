@@ -47,6 +47,11 @@ const getBudgetValue = (asset, { ktcPerDollar, usePositionRatios, positionRatios
   return Number.isNaN(value) ? null : value;
 };
 
+const getLongTermBudgetValue = (asset, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) => {
+  const value = getAssetBudgetValue(asset, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition, mode: 'long-term' });
+  return Number.isNaN(value) ? null : value;
+};
+
 const carouselLaneVariants = {
   hidden: { opacity: 0, y: 10 },
   visible: {
@@ -220,8 +225,12 @@ function PlayerCarouselCard({
           <div className="mt-1 text-base font-bold text-white">{Math.round(Number(player.ktcValue) || 0).toLocaleString()}</div>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
-          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">BV</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Year 1 BV</div>
           <div className="mt-1 text-base font-bold text-[#FFB199]">{budgetValue ?? '-'}</div>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Long-Term BV</div>
+          <div className="mt-1 text-base font-bold text-[#FFD7C9]">{getLongTermBudgetValue(player, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) ?? '-'}</div>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
           <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Cap</div>
@@ -250,6 +259,10 @@ function PlayerCarouselCard({
           <div className="flex items-center justify-between gap-3">
             <span className="text-white/55">{contractYearLabels.year4}</span>
             <span>{formatContractYearValue(player.year4)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-white/55">Final Year</span>
+            <span>{player.contractFinalYear || '-'}</span>
           </div>
         </div>
       </div>
@@ -304,8 +317,12 @@ function PickCarouselCard({ pick, selected, onToggle, ktcPerDollar, usePositionR
           <div className="mt-1 text-base font-bold text-white">{Math.round(Number(pick.ktcValue) || 0).toLocaleString()}</div>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
-          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">BV</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Year 1 BV</div>
           <div className="mt-1 text-base font-bold text-[#FFB199]">{budgetValue ?? '-'}</div>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Long-Term BV</div>
+          <div className="mt-1 text-base font-bold text-[#FFD7C9]">{getLongTermBudgetValue(pick, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition }) ?? '-'}</div>
         </div>
       </div>
 
@@ -539,7 +556,7 @@ export default function AssetPickerModal({
                 <option value="name-asc">Sort: Name (A-Z)</option>
                 <option value="cost-desc">Sort: Cost (High-Low)</option>
                 <option value="ktc-desc">Sort: KTC (High-Low)</option>
-                <option value="bv-desc">Sort: BV (High-Low)</option>
+                <option value="bv-desc">Sort: Year 1 BV (High-Low)</option>
               </select>
             </div>
           </div>
@@ -627,7 +644,8 @@ export default function AssetPickerModal({
                         <th className="px-3 py-3 font-semibold">Pos</th>
                         <th className="px-3 py-3 font-semibold">Age</th>
                         <th className="px-3 py-3 font-semibold">KTC</th>
-                        <th className="px-3 py-3 font-semibold">BV</th>
+                        <th className="px-3 py-3 font-semibold">Year 1 BV</th>
+                        <th className="px-3 py-3 font-semibold">Final Year</th>
                         <th className="px-3 py-3 font-semibold">Cap</th>
                         <th className="px-3 py-3 font-semibold">Type</th>
                         <th className="px-3 py-3 font-semibold text-right">Actions</th>
@@ -645,6 +663,7 @@ export default function AssetPickerModal({
                             <td className="px-3 py-3 text-white/75">{player.age || '-'}</td>
                             <td className="px-3 py-3 text-white/75">{Math.round(Number(player.ktcValue) || 0).toLocaleString()}</td>
                             <td className="px-3 py-3 text-white/75">{budgetValue ?? '-'}</td>
+                            <td className="px-3 py-3 text-white/75">{player.contractFinalYear || '-'}</td>
                             <td className="px-3 py-3 text-white/75">{formatSalary(player.curYear)}</td>
                             <td className="px-3 py-3 text-white/75">{player.contractType || '-'}</td>
                             <td className="px-3 py-3">
@@ -680,7 +699,8 @@ export default function AssetPickerModal({
                       <tr>
                         <th className="px-3 py-3 font-semibold">Pick</th>
                         <th className="px-3 py-3 font-semibold">KTC</th>
-                        <th className="px-3 py-3 font-semibold">BV</th>
+                        <th className="px-3 py-3 font-semibold">Year 1 BV</th>
+                        <th className="px-3 py-3 font-semibold">Long-Term BV</th>
                         <th className="px-3 py-3 font-semibold">Original Team</th>
                         <th className="px-3 py-3 font-semibold text-right">Action</th>
                       </tr>
@@ -688,6 +708,7 @@ export default function AssetPickerModal({
                     <tbody>
                       {pickAssets.map((pick) => {
                         const budgetValue = getBudgetValue(pick, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition });
+                        const longTermBudgetValue = getLongTermBudgetValue(pick, { ktcPerDollar, usePositionRatios, positionRatios, avgKtcByPosition });
                         const isSelected = selectedAssetKeys.has(getAssetKey(pick));
 
                         return (
@@ -695,6 +716,7 @@ export default function AssetPickerModal({
                             <td className="px-3 py-3 font-semibold text-white">{pick.playerName}</td>
                             <td className="px-3 py-3 text-white/75">{Math.round(Number(pick.ktcValue) || 0).toLocaleString()}</td>
                             <td className="px-3 py-3 text-white/75">{budgetValue ?? '-'}</td>
+                            <td className="px-3 py-3 text-white/75">{longTermBudgetValue ?? '-'}</td>
                             <td className="px-3 py-3 text-white/75">{pick.originalTeam || '-'}</td>
                             <td className="px-3 py-3">
                               <div className="flex justify-end">

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
+import { getAssistantGMSettings } from '@/lib/db-helpers';
 
 // Force Node.js runtime to ensure OpenAI SDK compatibility in production
 export const runtime = 'nodejs';
+
+const DEFAULT_ASSISTANT_GM_MODEL = 'gpt-4o';
 
 export async function POST(request) {
   try {
@@ -12,9 +15,13 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Server misconfiguration: OPENAI_API_KEY missing' }, { status: 500 });
     }
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const settingsResult = await getAssistantGMSettings();
+    const model = settingsResult?.success
+      ? settingsResult.settings?.model || DEFAULT_ASSISTANT_GM_MODEL
+      : DEFAULT_ASSISTANT_GM_MODEL;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model,
       messages,
       max_tokens: 600,
     });

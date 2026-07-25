@@ -3,6 +3,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import AdminToolModal from './components/AdminToolModal';
 import ContractAuditModal from './components/ContractAuditModal';
 import { expandDraftOrderPreview } from '@/utils/mockDraftOrderPreview';
 
@@ -465,6 +466,13 @@ export default function AdminPage() {
   const [scheduleGenerating, setScheduleGenerating] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleResult, setScheduleResult] = useState(null);
+  const [assistantGMModel, setAssistantGMModel] = useState('gpt-4o');
+  const [assistantGMSettingsLoading, setAssistantGMSettingsLoading] = useState(true);
+  const [assistantGMSettingsSaving, setAssistantGMSettingsSaving] = useState(false);
+  const [assistantGMSettingsError, setAssistantGMSettingsError] = useState('');
+  const [assistantGMSettingsSuccess, setAssistantGMSettingsSuccess] = useState('');
+  const [assistantGMSettingsMeta, setAssistantGMSettingsMeta] = useState(null);
+  const [activeTool, setActiveTool] = useState(null);
   // No external URL needed anymore; we scrape internally
 
   useEffect(() => {
@@ -533,6 +541,44 @@ export default function AdminPage() {
     }
     fetchMissing();
   }, []);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || session?.user?.role !== 'admin') return;
+
+    let cancelled = false;
+
+    async function loadAssistantGMSettings() {
+      try {
+        setAssistantGMSettingsLoading(true);
+        setAssistantGMSettingsError('');
+        const response = await fetch('/api/admin/assistant-gm-settings', { cache: 'no-store' });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load Assistant GM settings');
+        }
+
+        if (!cancelled) {
+          setAssistantGMModel(data?.settings?.model || 'gpt-4o');
+          setAssistantGMSettingsMeta(data?.settings || null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAssistantGMSettingsError(error.message || 'Failed to load Assistant GM settings');
+        }
+      } finally {
+        if (!cancelled) {
+          setAssistantGMSettingsLoading(false);
+        }
+      }
+    }
+
+    loadAssistantGMSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.role, status]);
 
   // Sorting logic
   const sortedImages = [...missingImages].sort((a, b) => {
@@ -670,6 +716,40 @@ export default function AdminPage() {
       setScheduleError(error?.message || 'Failed to generate schedule.');
     } finally {
       setScheduleGenerating(false);
+    }
+  }
+
+  async function handleSaveAssistantGMSettings() {
+    try {
+      const normalizedModel = assistantGMModel.trim();
+      if (!normalizedModel) {
+        setAssistantGMSettingsError('Model is required.');
+        setAssistantGMSettingsSuccess('');
+        return;
+      }
+
+      setAssistantGMSettingsSaving(true);
+      setAssistantGMSettingsError('');
+      setAssistantGMSettingsSuccess('');
+
+      const response = await fetch('/api/admin/assistant-gm-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: normalizedModel }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to save Assistant GM settings');
+      }
+
+      setAssistantGMModel(data?.settings?.model || normalizedModel);
+      setAssistantGMSettingsMeta(data?.settings || null);
+      setAssistantGMSettingsSuccess('Assistant GM model updated. New chats will use the new model.');
+    } catch (error) {
+      setAssistantGMSettingsError(error.message || 'Failed to save Assistant GM settings');
+    } finally {
+      setAssistantGMSettingsSaving(false);
     }
   }
 
@@ -849,367 +929,543 @@ export default function AdminPage() {
   }
 
   const groupedOrderPreview = groupOrderPreviewByRound(orderPreview);
+  const currentUserName = session?.user?.name || session?.user?.username || 'Unknown';
+  const overviewCards = [
+    { label: 'Current User', value: currentUserName, accent: 'text-white' },
+    { label: 'Role', value: session?.user?.role || 'Unknown', accent: 'text-[#FFB089]' },
+    { label: 'Contract Audit', value: contractAuditData ? `${contractAuditData.issueCount || 0} issues` : 'Not run', accent: contractAuditData?.issueCount > 0 ? 'text-yellow-300' : 'text-cyan-300' },
+    { label: 'Missing Images', value: loadingMissing ? 'Loading…' : `${sortedImages.length} players`, accent: sortedImages.length > 0 ? 'text-yellow-300' : 'text-green-300' },
+  ];
+  const adminLinks = [
+    {
+      href: '/admin/announcements',
+      title: 'Announcements',
+      description: 'Create and time homepage banners without digging through the dashboard.',
+      tag: 'Publishing',
+    },
+    {
+      href: '/admin/users',
+      title: 'User Management',
+      description: 'Manage accounts, permissions, and password resets from the dedicated workspace.',
+      tag: 'Access',
+    },
+    {
+      href: '/admin/drafts/create',
+      title: 'Create Draft',
+      description: 'Open the full draft builder when you need a new auction or rookie room.',
+      tag: 'Draft Ops',
+    },
+    {
+      href: '/admin/drafts',
+      title: 'Drafts Overview',
+      description: 'Review draft history, download JSON, and finalize active rooms.',
+      tag: 'Archive',
+    },
+    {
+      href: '/admin/rule-changes',
+      title: 'Rule Changes',
+      description: 'Maintain the upcoming rules feed shown on the league rules page.',
+      tag: 'League Policy',
+    },
+  ];
+  const popupTools = [
+    {
+      key: 'mock-draft',
+      title: 'Mock Draft Studio',
+      description: 'Generate, preview, approve, and publish the AI mock draft flow in one contained workspace.',
+      status: generating ? 'Running generator' : poolPreview || orderPreview ? 'Preview ready' : 'Idle',
+    },
+    {
+      key: 'schedule',
+      title: 'Schedule Lab',
+      description: 'Generate the regular-season schedule and export the result when the league structure is ready.',
+      status: scheduleGenerating ? 'Generating schedule' : scheduleResult?.weeks?.length ? `${scheduleResult.weeks.length} weeks loaded` : 'No schedule loaded',
+    },
+    {
+      key: 'contract-audit',
+      title: 'Contract Audit',
+      description: 'Run a focused audit for rostered players who do not have an active contract on their owning team.',
+      status: contractAuditLoading ? 'Loading audit' : contractAuditData ? `${contractAuditData.issueCount || 0} issues found` : 'Not run',
+    },
+    {
+      key: 'assistant-gm',
+      title: 'Assistant GM Model',
+      description: 'Adjust the admin-controlled model name without exposing the rest of the dashboard.',
+      status: assistantGMSettingsLoading ? 'Loading settings' : assistantGMSettingsMeta?.model || assistantGMModel,
+    },
+    {
+      key: 'notifications',
+      title: 'Notification Diagnostics',
+      description: 'Send a self-test push and inspect the full diagnostic payload in an isolated popup.',
+      status: 'Manual run',
+    },
+    {
+      key: 'images',
+      title: 'Missing Card Images',
+      description: 'Inspect active players without local card art and sort by team, salary, position, or KTC.',
+      status: loadingMissing ? 'Loading image index' : `${sortedImages.length} players flagged`,
+    },
+  ];
 
   return (
-    <main className="min-h-screen bg-[#001A2B] text-white p-6">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold text-[#FF4B1F] mb-8">Admin Dashboard</h1>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Link 
-            href="/admin/announcements" 
-            className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
-          >
-            <h2 className="text-xl font-bold mb-2">Announcements</h2>
-            <p className="text-white/70">Create banners for the home page</p>
-          </Link>
-          <Link 
-            href="/admin/users" 
-            className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
-          >
-            <h2 className="text-xl font-bold mb-2">User Management</h2>
-            <p className="text-white/70">Create, edit, and manage user accounts</p>
-          </Link>
-          <Link 
-            href="/admin/drafts/create"
-            className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
-          >
-            <h2 className="text-xl font-bold mb-2">Create Draft</h2>
-            <p className="text-white/70">Start a new draft and manage draft settings</p>
-          </Link>
-          <Link
-            href="/admin/drafts"
-            className="bg-black/30 rounded-lg border border-white/10 p-6 hover:bg-black/40 transition-colors"
-          >
-            <h2 className="text-xl font-bold mb-2">Drafts Overview</h2>
-            <p className="text-white/70">View and manage all drafts</p>
-          </Link>
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-            <h2 className="text-xl font-bold mb-2">AI Mock Draft Generator (Only works in localhost)</h2>
-            <p className="text-white/70 mb-4">Generate a multi-round AI mock draft and publish to the Mock Drafts tab.</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div>
-                <label className="block text-sm text-white/70 mb-1">Mock Draft Title</label>
-                <input
-                  className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm"
-                  value={draftTitle}
-                  onChange={e=>setDraftTitle(e.target.value)}
-                  placeholder="BBB 2026 AI Mock Draft"
-                />
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,75,31,0.14),transparent_28%),linear-gradient(180deg,#001A2B_0%,#02111d_100%)] px-4 py-6 text-white md:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <section className="overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+          <div className="grid gap-6 px-6 py-7 md:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)] md:px-8 md:py-8">
+            <div>
+              <div className="inline-flex rounded-full border border-[#FF4B1F]/30 bg-[#FF4B1F]/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#FFB089]">
+                BBB Admin
               </div>
-              <div>
-                <label className="block text-sm text-white/70 mb-1">Description</label>
-                <input
-                  className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm"
-                  value={draftDescription}
-                  onChange={e=>setDraftDescription(e.target.value)}
-                  placeholder="AI-generated mock with per-pick reasoning"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-white/70 mb-1">Rounds (1–7)</label>
-                <select
-                  className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm"
-                  value={rounds}
-                  onChange={e=>setRounds(Math.max(1, Math.min(7, Number(e.target.value) || 1)))}
+              <h1 className="mt-4 max-w-3xl text-3xl font-bold tracking-tight text-white md:text-5xl">
+                Keep navigation simple. Launch heavyweight admin work only when you need it.
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/70 md:text-base">
+                The landing page now acts as an operations console. Dedicated admin routes stay available for full workflows, while diagnostics and one-off utilities open in contained popups.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveTool('mock-draft')}
+                  className="rounded-full bg-[#FF4B1F] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#ff6a45]"
                 >
-                  {[1,2,3,4,5,6,7].map(r=> (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
+                  Open Mock Draft Studio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadContractAudit(false)}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+                >
+                  Run Contract Audit
+                </button>
               </div>
             </div>
-            <div className="mb-3 text-white/70 text-sm">
-              This will scrape the latest KTC rookie rankings and store the normalized player pool locally.
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {overviewCards.map((card) => (
+                <div key={card.label} className="rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-sm">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">{card.label}</div>
+                  <div className={`mt-3 text-xl font-bold ${card.accent}`}>{card.value}</div>
+                </div>
+              ))}
             </div>
-            {progressText && (
-              <div className="mb-3 text-white/80 text-sm">{progressText}</div>
-            )}
+          </div>
+        </section>
+
+        <section className="grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+          <div className="space-y-8">
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Core Navigation</h2>
+                  <p className="mt-1 text-sm text-white/60">Use full pages for workflows that deserve their own surface.</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {adminLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="group rounded-[26px] border border-white/10 bg-black/20 p-5 transition hover:-translate-y-0.5 hover:border-[#FF4B1F]/35 hover:bg-black/30"
+                  >
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#FFB089]">{link.tag}</div>
+                    <div className="mt-3 text-xl font-bold text-white">{link.title}</div>
+                    <p className="mt-2 text-sm leading-6 text-white/65">{link.description}</p>
+                    <div className="mt-5 text-sm font-semibold text-white/80 transition group-hover:text-[#FFB089]">Open workspace</div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-3">
+                <h2 className="text-2xl font-bold text-white">Popup Tools</h2>
+                <p className="mt-1 text-sm text-white/60">Diagnostics, previews, and low-frequency utilities stay off the main page until launched.</p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                {popupTools.map((tool) => (
+                  <button
+                    key={tool.key}
+                    type="button"
+                    onClick={() => tool.key === 'contract-audit' ? loadContractAudit(false) : setActiveTool(tool.key)}
+                    className="rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5 text-left transition hover:border-cyan-300/30 hover:bg-black/30"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-lg font-bold text-white">{tool.title}</div>
+                        <p className="mt-2 text-sm leading-6 text-white/65">{tool.description}</p>
+                      </div>
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/60">
+                        Popup
+                      </span>
+                    </div>
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold text-[#9fe8ff]">{tool.status}</span>
+                      <span className="text-sm font-semibold text-white/75">Launch</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <aside className="space-y-4">
+            <div className="rounded-[28px] border border-white/10 bg-black/25 p-5">
+              <div className="text-sm font-semibold uppercase tracking-[0.16em] text-white/45">At A Glance</div>
+              <div className="mt-4 space-y-3 text-sm text-white/70">
+                <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                  <div className="font-semibold text-white">Mock Draft Pipeline</div>
+                  <div className="mt-1">{progressText || 'No draft generation in progress.'}</div>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                  <div className="font-semibold text-white">Assistant GM Model</div>
+                  <div className="mt-1">{assistantGMSettingsLoading ? 'Loading…' : assistantGMSettingsMeta?.model || assistantGMModel}</div>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                  <div className="font-semibold text-white">Schedule Generator</div>
+                  <div className="mt-1">{scheduleResult?.weeks?.length ? `Season ${scheduleResult.season || 'Unknown'} schedule ready for export.` : 'No generated schedule saved in this session.'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-black/25 p-5">
+              <div className="text-sm font-semibold uppercase tracking-[0.16em] text-white/45">Operating Note</div>
+              <p className="mt-4 text-sm leading-6 text-white/68">
+                Full CRUD tools stay on their dedicated routes. This page is intentionally reduced to routing and popup launchers so admin tasks do not compete for the same vertical space.
+              </p>
+            </div>
+          </aside>
+        </section>
+      </div>
+
+      <AdminToolModal
+        isOpen={activeTool === 'mock-draft'}
+        onClose={() => setActiveTool(null)}
+        title="Mock Draft Studio"
+        description="Generate the rookie pool, preview the draft order, and publish the approved mock without cluttering the dashboard."
+        widthClass="max-w-6xl"
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm text-white/70">Mock Draft Title</label>
+              <input
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm"
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                placeholder="BBB 2026 AI Mock Draft"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-white/70">Description</label>
+              <input
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm"
+                value={draftDescription}
+                onChange={(e) => setDraftDescription(e.target.value)}
+                placeholder="AI-generated mock with per-pick reasoning"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-white/70">Rounds (1–7)</label>
+              <select
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm"
+                value={rounds}
+                onChange={(e) => setRounds(Math.max(1, Math.min(7, Number(e.target.value) || 1)))}
+              >
+                {[1, 2, 3, 4, 5, 6, 7].map((round) => (
+                  <option key={round} value={round}>{round}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/70">
+            This workflow scrapes the latest KTC rookie rankings, normalizes the player pool locally, and prepares a reviewable draft order before any publish step.
+          </div>
+
+          {progressText ? <div className="text-sm text-white/80">{progressText}</div> : null}
+
+          <div className="flex flex-wrap gap-3">
             <button
               onClick={handleGenerateMockDraft}
               disabled={generating}
-              className={`px-4 py-2 rounded-lg ${generating ? 'bg-white/20' : 'bg-[#FF4B1F] hover:bg-[#FF4B1F]/80'} text-white`}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${generating ? 'bg-white/20 text-white/60' : 'bg-[#FF4B1F] text-white hover:bg-[#FF4B1F]/80'}`}
             >
               {generating ? 'Generating…' : 'Generate Mock Draft'}
             </button>
-            {genError && (
-              <div className="mt-3 text-red-400 text-sm">{genError}</div>
-            )}
-            {(poolPreview || orderPreview) && (
-              <div className="mt-4 space-y-4">
-                {Array.isArray(poolPreview) && poolPreview.length > 0 && (
-                  <div className="bg-black/20 rounded border border-white/10 p-3">
-                    <div className="flex justify-between items-center">
-                      <h3 className="font-bold text-white">Player Pool Preview ({poolPreview.length})</h3>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={approvedPool} onChange={e=>setApprovedPool(e.target.checked)} />
-                        <span>Approve Player Pool</span>
-                      </label>
-                    </div>
-                    <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">
-                      {poolPreview.slice(0, 200).map((p, i) => (
-                        <div key={i} className="py-0.5 border-b border-white/5">
-                          {p.name} ({p.position}) rank {p.rank}
-                        </div>
-                      ))}
-                      {poolPreview.length > 200 && (
-                        <div className="text-white/50 mt-1">Showing first 200 players…</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {Array.isArray(orderPreview) && orderPreview.length > 0 && (
-                  <div className="bg-black/20 rounded border border-white/10 p-3">
-                    <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-2">
-                      <div>
-                        <h3 className="font-bold text-white">Draft Order Preview ({groupedOrderPreview.length} rounds)</h3>
-                        {genResult?.draftOrderDebug?.targetSeason && (
-                          <div className="text-white/70 text-xs mt-1">Draft Year: {genResult.draftOrderDebug.targetSeason}</div>
-                        )}
-                      </div>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={approvedOrder} onChange={e=>setApprovedOrder(e.target.checked)} />
-                        <span>Approve Draft Order</span>
-                      </label>
-                    </div>
-                    <div className="mt-2 max-h-[32rem] overflow-auto space-y-3 text-sm">
-                      {groupedOrderPreview.map(({ round, picks }) => (
-                        <div key={round}>
-                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">Round {round}</div>
-                          <div className="grid grid-cols-1 gap-2">
-                            {picks.map((o, i) => {
-                          // Support both picks and fallback data
-                          const rosterId = o.rosterId ?? o.roster_id;
-                          const originalRosterId = o.originalRosterId ?? o.original_roster_id;
-                          const isTraded = originalRosterId && rosterId && (Number(originalRosterId) !== Number(rosterId));
-                          // Try to show original owner name if available
-                          let originalOwnerName = o.originalOwnerName || o.original_owner_name || null;
-                          if (!originalOwnerName && genResult?.draftOrderDebug?.draft_order) {
-                            // Try to find the original owner name from the draft order debug array
-                            const orig = genResult.draftOrderDebug.draft_order.find(
-                              (d) => Number((d.rosterId ?? d.roster_id)) === Number(originalRosterId)
-                            );
-                            originalOwnerName = orig?.teamName || null;
-                          }
-                              return (
-                                <div key={`${round}-${i}`} className="bg-black/10 p-2 rounded border border-white/10">
-                                  <span className="text-[#FF4B1F] font-bold">{round}.{String(o.slot).padStart(2,'0')}</span>
-                                  <span className="ml-2 text-white/90">{o.teamName}</span>
-                                  <span className="ml-2 text-white/60 text-xs">(roster_id: {rosterId}, orig: {originalRosterId}{isTraded && originalOwnerName ? `, original: ${originalOwnerName}` : ''})</span>
-                                  {isTraded && (
-                                    <span className="ml-2 text-yellow-400 text-xs">[TRADED]</span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {genResult?.draftOrderDebug && (
-                      <details className="mt-3 bg-black/10 p-2 rounded border border-white/10">
-                        <summary className="cursor-pointer text-white/80 text-sm">Debug</summary>
-                        <div className="mt-2 text-xs text-white/70 whitespace-pre-wrap">
-                          {JSON.stringify(genResult.draftOrderDebug, null, 2)}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                )}
-                {(approvedPool && approvedOrder) && (
-                  <div>
-                    <button
-                      onClick={handleApproveAndRun}
-                      className="px-4 py-2 rounded-lg bg-[#1FDDFF] text-black hover:bg-[#1FDDFF]/80"
-                    >
-                      Run AI Mock Draft
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            {genResult && (
-              <div className="mt-3 text-sm text-white/80 space-y-2">
-                <div>Draft created: {genResult.draftId ? String(genResult.draftId) : 'Preview only (dry run)'}</div>
-                <details className="bg-black/20 p-3 rounded border border-white/10">
-                  <summary className="cursor-pointer">Debug Trace</summary>
-                  <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">
-                    {JSON.stringify(genResult.trace || [], null, 2)}
-                  </div>
-                </details>
-                <details className="bg-black/20 p-3 rounded border border-white/10">
-                  <summary className="cursor-pointer">Article Markdown</summary>
-                  <div className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">{genResult.article}</div>
-                </details>
-                <Link href="/draft" className="inline-block mt-1 text-[#FF4B1F] underline">View in Draft Center → Mock Draft tab</Link>
-              </div>
-            )}
-          </div>
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-            <h2 className="text-xl font-bold mb-2">League Settings</h2>
-            <p className="text-white/70">Configure league settings (Coming Soon)</p>
-          </div>
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6 md:col-span-2">
-            <h2 className="text-xl font-bold mb-2">Schedule Generator</h2>
-            <p className="text-white/70 mb-4">
-              Build a random regular-season schedule for the current BBB season. Weeks 1-3 and 12-14 are divisional mirrors, and Weeks 4-11 randomize inter-division matchups.
-            </p>
-            <div className="flex flex-wrap gap-2 mb-4">
+            {(approvedPool && approvedOrder) ? (
               <button
-                type="button"
-                onClick={handleGenerateSchedule}
-                disabled={scheduleGenerating}
-                className={`px-4 py-2 rounded-lg ${scheduleGenerating ? 'bg-white/20' : 'bg-[#FF4B1F] hover:bg-[#FF4B1F]/80'} text-white`}
+                onClick={handleApproveAndRun}
+                className="rounded-full bg-[#1FDDFF] px-4 py-2 text-sm font-semibold text-black hover:bg-[#1FDDFF]/80"
               >
-                {scheduleGenerating ? 'Generating…' : 'Generate Schedule'}
+                Run AI Mock Draft
               </button>
-              <button
-                type="button"
-                onClick={handleDownloadScheduleCsv}
-                disabled={!scheduleResult?.weeks?.length}
-                className={`px-4 py-2 rounded-lg ${scheduleResult?.weeks?.length ? 'bg-[#1FDDFF] hover:bg-[#1FDDFF]/80 text-black' : 'bg-white/20 text-white/60 cursor-not-allowed'}`}
-              >
-                Export CSV
-              </button>
-            </div>
-            {scheduleError && (
-              <div className="mb-3 text-sm text-red-400">{scheduleError}</div>
-            )}
-            {scheduleResult?.weeks?.length > 0 && (
-              <div className="bg-black/20 rounded border border-white/10 p-3">
-                <div className="text-sm text-white/70 mb-3">
-                  Season: {scheduleResult.season || 'Unknown'} | League ID: {scheduleResult.leagueId || 'Unknown'}
-                </div>
-                <div className="max-h-[32rem] overflow-auto space-y-3">
-                  {scheduleResult.weeks.map((weekEntry) => (
-                    <div key={weekEntry.week} className="bg-black/10 rounded border border-white/10 p-3">
-                      <div className="text-xs uppercase tracking-wide text-white/60 mb-2">Week {weekEntry.week}</div>
-                      <div className="space-y-1 text-sm">
-                        {weekEntry.matchups.map((matchup, index) => (
-                          <div key={`${weekEntry.week}-${index}`} className="flex flex-wrap items-center gap-2">
-                            <span className="text-white/80">{matchup.teamA.teamName}</span>
-                            <span className="text-white/50">vs</span>
-                            <span className="text-white/80">{matchup.teamB.teamName}</span>
-                            <span className={`text-xs ${matchup.type === 'divisional' ? 'text-yellow-300' : 'text-cyan-300'}`}>
-                              [{matchup.type}]
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            ) : null}
           </div>
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-            <h2 className="text-xl font-bold mb-2">Contract Audit</h2>
-            <p className="text-white/70 mb-4">
-              Find rostered players who do not have an active contract with their current owning team.
-            </p>
-            <button
-              type="button"
-              onClick={() => loadContractAudit(false)}
-              disabled={contractAuditLoading}
-              className={`px-4 py-2 rounded-lg ${contractAuditLoading ? 'bg-white/20' : 'bg-[#FF4B1F] hover:bg-[#FF4B1F]/80'} text-white`}
-            >
-              {contractAuditLoading && !contractAuditData ? 'Loading…' : 'Open Contract Audit'}
-            </button>
-            {contractAuditData?.issueCount > 0 && (
-              <div className="mt-3 text-sm text-yellow-300">
-                Last run found {contractAuditData.issueCount} issue{contractAuditData.issueCount === 1 ? '' : 's'}.
-              </div>
-            )}
-            {contractAuditData?.issueCount === 0 && contractAuditData && (
-              <div className="mt-3 text-sm text-green-300">Last run found no contract issues.</div>
-            )}
-            {contractAuditError && !isContractAuditOpen && (
-              <div className="mt-3 text-sm text-red-400">{contractAuditError}</div>
-            )}
-          </div>
-          <div className="bg-black/30 rounded-lg border border-white/10 p-6">
-            <h2 className="text-xl font-bold mb-2">Content Management</h2>
-            <p className="text-white/70">Manage website content (Coming Soon)</p>
-          </div>
-          <NotificationTestCard />
-        </div>
-        
-        {/* System Stats */}
-        <div className="mt-8 bg-black/30 rounded-lg border border-white/10 p-6">
-          <h2 className="text-xl font-bold mb-4">System Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-black/20 p-4 rounded">
-              <div className="text-sm text-white/70">Current User</div>
-              <div className="font-bold">{session?.user?.name || 'Unknown'}</div>
-            </div>
-            <div className="bg-black/20 p-4 rounded">
-              <div className="text-sm text-white/70">Role</div>
-              <div className="font-bold">{session?.user?.role || 'Unknown'}</div>
-            </div>
-            <div className="bg-black/20 p-4 rounded">
-              <div className="text-sm text-white/70">Environment</div>
-              <div className="font-bold">Development</div>
-            </div>
-            <div className="bg-black/20 p-4 rounded">
-              <div className="text-sm text-white/70">Server Time</div>
-              <div className="font-bold">{new Date().toLocaleString()}</div>
-            </div>
-          </div>
-        </div>
 
-        {/* Missing Images  Section */}
-        <div className="mt-8 bg-black/30 rounded-lg border border-white/10 p-6">
-          <h2 className="text-xl font-bold mb-4">Players Missing Card Images</h2>
-          {loadingMissing ? (
-            <div>Loading...</div>
-          ) : sortedImages.length === 0 ? (
-            <div className="text-green-400">All active players have images!</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/10">
-                    <th className="text-left py-2 px-3 cursor-pointer" onClick={() => handleSort("playerName")}>
-                      Player {sortConfig.key === "playerName" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-                    </th>
-                    <th className="text-left py-2 px-3 cursor-pointer" onClick={() => handleSort("team")}>
-                      Team {sortConfig.key === "team" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-                    </th>
-                    <th className="text-left py-2 px-3 cursor-pointer" onClick={() => handleSort("position")}>
-                      Position {sortConfig.key === "position" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-                    </th>
-                    <th className="text-left py-2 px-3 cursor-pointer" onClick={() => handleSort("salary")}>
-                      Salary {sortConfig.key === "salary" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-                    </th>
-                    <th className="text-left py-2 px-3 cursor-pointer" onClick={() => handleSort("ktc")}>
-                      KTC Score {sortConfig.key === "ktc" ? (sortConfig.direction === "asc" ? "▲" : "▼") : ""}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedImages.map((p, idx) => (
-                    <tr key={idx} className="border-b border-white/5 hover:bg-black/20">
-                      <td className="py-2 px-3">{p.playerName}</td>
-                      <td className="py-2 px-3">{p.team}</td>
-                      <td className="py-2 px-3">{p.position}</td>
-                      <td className="py-2 px-3">
-                        {p.salary !== "" && !isNaN(p.salary)
-                          ? `$${Number(p.salary).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`
-                          : "-"}
-                      </td>
-                      <td className="py-2 px-3">
-                        {p.ktc !== "" && !isNaN(p.ktc)
-                          ? Number(p.ktc).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                          : "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {genError ? <div className="text-sm text-red-400">{genError}</div> : null}
+
+          {(poolPreview || orderPreview) && (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              {Array.isArray(poolPreview) && poolPreview.length > 0 && (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-white">Player Pool Preview ({poolPreview.length})</h3>
+                    <label className="flex items-center gap-2 text-sm text-white/75">
+                      <input type="checkbox" checked={approvedPool} onChange={(e) => setApprovedPool(e.target.checked)} />
+                      <span>Approve Player Pool</span>
+                    </label>
+                  </div>
+                  <div className="mt-3 max-h-80 overflow-auto text-xs text-white/80">
+                    {poolPreview.slice(0, 200).map((player, index) => (
+                      <div key={index} className="border-b border-white/5 py-1">
+                        {player.name} ({player.position}) rank {player.rank}
+                      </div>
+                    ))}
+                    {poolPreview.length > 200 ? <div className="mt-2 text-white/45">Showing first 200 players…</div> : null}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(orderPreview) && orderPreview.length > 0 && (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="font-bold text-white">Draft Order Preview ({groupedOrderPreview.length} rounds)</h3>
+                      {genResult?.draftOrderDebug?.targetSeason ? (
+                        <div className="mt-1 text-xs text-white/60">Draft Year: {genResult.draftOrderDebug.targetSeason}</div>
+                      ) : null}
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-white/75">
+                      <input type="checkbox" checked={approvedOrder} onChange={(e) => setApprovedOrder(e.target.checked)} />
+                      <span>Approve Draft Order</span>
+                    </label>
+                  </div>
+
+                  <div className="max-h-[34rem] space-y-3 overflow-auto text-sm">
+                    {groupedOrderPreview.map(({ round, picks }) => (
+                      <div key={round}>
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">Round {round}</div>
+                        <div className="grid grid-cols-1 gap-2">
+                          {picks.map((pick, index) => {
+                            const rosterId = pick.rosterId ?? pick.roster_id;
+                            const originalRosterId = pick.originalRosterId ?? pick.original_roster_id;
+                            const isTraded = originalRosterId && rosterId && Number(originalRosterId) !== Number(rosterId);
+                            let originalOwnerName = pick.originalOwnerName || pick.original_owner_name || null;
+                            if (!originalOwnerName && genResult?.draftOrderDebug?.draft_order) {
+                              const originalPick = genResult.draftOrderDebug.draft_order.find(
+                                (entry) => Number(entry.rosterId ?? entry.roster_id) === Number(originalRosterId)
+                              );
+                              originalOwnerName = originalPick?.teamName || null;
+                            }
+
+                            return (
+                              <div key={`${round}-${index}`} className="rounded-xl border border-white/10 bg-black/10 p-2.5">
+                                <span className="font-bold text-[#FF4B1F]">{round}.{String(pick.slot).padStart(2, '0')}</span>
+                                <span className="ml-2 text-white/90">{pick.teamName}</span>
+                                <span className="ml-2 text-xs text-white/55">(roster_id: {rosterId}, orig: {originalRosterId}{isTraded && originalOwnerName ? `, original: ${originalOwnerName}` : ''})</span>
+                                {isTraded ? <span className="ml-2 text-xs text-yellow-400">[TRADED]</span> : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {genResult?.draftOrderDebug ? (
+                    <details className="mt-3 rounded-xl border border-white/10 bg-black/10 p-3">
+                      <summary className="cursor-pointer text-sm text-white/80">Debug</summary>
+                      <div className="mt-2 whitespace-pre-wrap text-xs text-white/65">
+                        {JSON.stringify(genResult.draftOrderDebug, null, 2)}
+                      </div>
+                    </details>
+                  ) : null}
+                </div>
+              )}
             </div>
           )}
+
+          {genResult ? (
+            <div className="space-y-2 text-sm text-white/80">
+              <div>Draft created: {genResult.draftId ? String(genResult.draftId) : 'Preview only (dry run)'}</div>
+              <details className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <summary className="cursor-pointer">Debug Trace</summary>
+                <div className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(genResult.trace || [], null, 2)}</div>
+              </details>
+              <details className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <summary className="cursor-pointer">Article Markdown</summary>
+                <div className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs">{genResult.article}</div>
+              </details>
+              <Link href="/draft" className="inline-block text-[#FFB089] underline">View in Draft Center → Mock Draft tab</Link>
+            </div>
+          ) : null}
         </div>
-      </div>
+      </AdminToolModal>
+
+      <AdminToolModal
+        isOpen={activeTool === 'assistant-gm'}
+        onClose={() => setActiveTool(null)}
+        title="Assistant GM Model"
+        description="Change the model name used by Assistant GM without editing code or scrolling through unrelated controls."
+        widthClass="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm text-white/70">Model name</label>
+            <input
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm"
+              value={assistantGMModel}
+              onChange={(e) => setAssistantGMModel(e.target.value)}
+              placeholder="gpt-4o"
+              disabled={assistantGMSettingsLoading || assistantGMSettingsSaving}
+            />
+          </div>
+          <div className="text-xs text-white/55">Example: gpt-4o, gpt-4.1, or another model your OpenAI account supports.</div>
+          {assistantGMSettingsMeta?.updatedAt ? (
+            <div className="text-xs text-white/55">
+              Last updated: {new Date(assistantGMSettingsMeta.updatedAt).toLocaleString()}
+              {assistantGMSettingsMeta?.updatedBy ? ` by ${assistantGMSettingsMeta.updatedBy}` : ''}
+            </div>
+          ) : null}
+          {assistantGMSettingsError ? <div className="text-sm text-red-400">{assistantGMSettingsError}</div> : null}
+          {assistantGMSettingsSuccess ? <div className="text-sm text-green-300">{assistantGMSettingsSuccess}</div> : null}
+          <button
+            type="button"
+            onClick={handleSaveAssistantGMSettings}
+            disabled={assistantGMSettingsLoading || assistantGMSettingsSaving}
+            className={`rounded-full px-4 py-2 text-sm font-semibold ${(assistantGMSettingsLoading || assistantGMSettingsSaving) ? 'bg-white/20 text-white/60' : 'bg-[#FF4B1F] text-white hover:bg-[#FF4B1F]/80'}`}
+          >
+            {assistantGMSettingsLoading ? 'Loading…' : assistantGMSettingsSaving ? 'Saving…' : 'Save Model'}
+          </button>
+        </div>
+      </AdminToolModal>
+
+      <AdminToolModal
+        isOpen={activeTool === 'schedule'}
+        onClose={() => setActiveTool(null)}
+        title="Schedule Lab"
+        description="Build a BBB regular-season schedule in a contained tool and export the result when it looks right."
+        widthClass="max-w-5xl"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-white/70">
+            Weeks 1-3 and 12-14 are divisional mirrors. Weeks 4-11 randomize inter-division matchups while preserving a valid edge cover.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleGenerateSchedule}
+              disabled={scheduleGenerating}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${scheduleGenerating ? 'bg-white/20 text-white/60' : 'bg-[#FF4B1F] text-white hover:bg-[#FF4B1F]/80'}`}
+            >
+              {scheduleGenerating ? 'Generating…' : 'Generate Schedule'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadScheduleCsv}
+              disabled={!scheduleResult?.weeks?.length}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${scheduleResult?.weeks?.length ? 'bg-[#1FDDFF] text-black hover:bg-[#1FDDFF]/80' : 'cursor-not-allowed bg-white/20 text-white/60'}`}
+            >
+              Export CSV
+            </button>
+          </div>
+
+          {scheduleError ? <div className="text-sm text-red-400">{scheduleError}</div> : null}
+
+          {scheduleResult?.weeks?.length ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="mb-3 text-sm text-white/70">Season: {scheduleResult.season || 'Unknown'} | League ID: {scheduleResult.leagueId || 'Unknown'}</div>
+              <div className="max-h-[34rem] space-y-3 overflow-auto">
+                {scheduleResult.weeks.map((weekEntry) => (
+                  <div key={weekEntry.week} className="rounded-xl border border-white/10 bg-black/10 p-3">
+                    <div className="mb-2 text-xs uppercase tracking-wide text-white/60">Week {weekEntry.week}</div>
+                    <div className="space-y-1 text-sm">
+                      {weekEntry.matchups.map((matchup, index) => (
+                        <div key={`${weekEntry.week}-${index}`} className="flex flex-wrap items-center gap-2">
+                          <span className="text-white/85">{matchup.teamA.teamName}</span>
+                          <span className="text-white/45">vs</span>
+                          <span className="text-white/85">{matchup.teamB.teamName}</span>
+                          <span className={`text-xs ${matchup.type === 'divisional' ? 'text-yellow-300' : 'text-cyan-300'}`}>[{matchup.type}]</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </AdminToolModal>
+
+      <AdminToolModal
+        isOpen={activeTool === 'notifications'}
+        onClose={() => setActiveTool(null)}
+        title="Notification Diagnostics"
+        description="Send yourself a test notification and inspect the resulting diagnostic payload."
+        widthClass="max-w-3xl"
+      >
+        <NotificationTestCard />
+      </AdminToolModal>
+
+      <AdminToolModal
+        isOpen={activeTool === 'images'}
+        onClose={() => setActiveTool(null)}
+        title="Players Missing Card Images"
+        description="Active players without a local card image remain here instead of living on the main admin page."
+        widthClass="max-w-6xl"
+      >
+        {loadingMissing ? (
+          <div>Loading...</div>
+        ) : sortedImages.length === 0 ? (
+          <div className="text-green-400">All active players have images!</div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/20">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10 bg-black/20">
+                  <th className="cursor-pointer px-3 py-3 text-left" onClick={() => handleSort('playerName')}>
+                    Player {sortConfig.key === 'playerName' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th className="cursor-pointer px-3 py-3 text-left" onClick={() => handleSort('team')}>
+                    Team {sortConfig.key === 'team' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th className="cursor-pointer px-3 py-3 text-left" onClick={() => handleSort('position')}>
+                    Position {sortConfig.key === 'position' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th className="cursor-pointer px-3 py-3 text-left" onClick={() => handleSort('salary')}>
+                    Salary {sortConfig.key === 'salary' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th className="cursor-pointer px-3 py-3 text-left" onClick={() => handleSort('ktc')}>
+                    KTC Score {sortConfig.key === 'ktc' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedImages.map((player, index) => (
+                  <tr key={index} className="border-b border-white/5 hover:bg-black/20">
+                    <td className="px-3 py-2.5">{player.playerName}</td>
+                    <td className="px-3 py-2.5">{player.team}</td>
+                    <td className="px-3 py-2.5">{player.position}</td>
+                    <td className="px-3 py-2.5">
+                      {player.salary !== '' && !isNaN(player.salary)
+                        ? `$${Number(player.salary).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`
+                        : '-'}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {player.ktc !== '' && !isNaN(player.ktc)
+                        ? Number(player.ktc).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                        : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminToolModal>
 
       <ContractAuditModal
         isOpen={isContractAuditOpen}

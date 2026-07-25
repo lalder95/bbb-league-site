@@ -2,19 +2,19 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import PlayerProfileCard from '../my-team/components/PlayerProfileCard';
 import { useBudgetRatios } from '../providers';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import Image from 'next/image';
 import AssistantGMChat from '../my-team/components/AssistantGMChat';
 import { useSession } from 'next-auth/react';
 import { describeTradeAsset, getAssetBudgetValue, getAssetKey, getDisplayDraftSlot, isDraftPickAsset } from '@/utils/draftPickTradeUtils';
 
-const SUMMARY_TEAM_BAR_COLORS = [
-  'from-emerald-500 to-emerald-300',
-  'from-blue-500 to-cyan-300',
-  'from-orange-500 to-amber-300',
-  'from-fuchsia-500 to-pink-300',
-  'from-violet-500 to-indigo-300',
-  'from-rose-500 to-red-300',
+const SUMMARY_TEAM_RADAR_COLORS = [
+  '#34d399',
+  '#38bdf8',
+  '#fb923c',
+  '#f472b6',
+  '#a78bfa',
+  '#f87171',
 ];
 
 const getBudgetValue = (player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }) => {
@@ -23,6 +23,17 @@ const getBudgetValue = (player, { salaryKtcRatio, positionRatios, usePositionRat
     positionRatios,
     usePositionRatios,
     avgKtcByPosition,
+  });
+  return Number.isNaN(v) ? 0 : v;
+};
+
+const getLongTermBudgetValue = (player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }) => {
+  const v = getAssetBudgetValue(player, {
+    ktcPerDollar: salaryKtcRatio,
+    positionRatios,
+    usePositionRatios,
+    avgKtcByPosition,
+    mode: 'long-term',
   });
   return Number.isNaN(v) ? 0 : v;
 };
@@ -47,15 +58,89 @@ const formatIncomingMetricValue = (value, type) => {
   return Math.round(num).toLocaleString();
 };
 
+const INCOMING_METRIC_INFO = {
+  ktc: 'Total KTC value of players incoming to this team.',
+  bv: 'Year 1 BV for players incoming this season.',
+  ltbv: 'Long-Term BV across the full remaining contract.',
+  cap: 'Net cap change = incoming cap minus outgoing cap. Lower is better.',
+  age: 'Average incoming player age. Younger is better on this chart.',
+};
+
+const SHORT_INCOMING_METRIC_LABELS = {
+  ktc: 'KTC',
+  bv: 'Y1 BV',
+  ltbv: 'LT BV',
+  cap: 'Net Cap',
+  age: 'Age',
+};
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const RADAR_VALUE_SCALES = {
+  ktc: { min: 0, max: 10000 },
+  bv: { min: 0, max: 8000 },
+  ltbv: { min: 0, max: 12000 },
+  cap: { min: -100, max: 100, invert: true },
+  age: { min: 21, max: 35, invert: true },
+};
+
+function MetricTick({ x, y, payload, textAnchor, index }) {
+  const metricKey = payload?.payload?.key || payload?.value?.toLowerCase?.();
+  const tooltip = metricKey ? INCOMING_METRIC_INFO[metricKey] : '';
+  const label = payload?.value || '';
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        fill="#ffffff"
+        fontSize="12"
+        fontWeight="600"
+        textAnchor={textAnchor}
+        dominantBaseline="central"
+        title={tooltip}
+      >
+        <title>{tooltip}</title>
+        {label}
+      </text>
+    </g>
+  );
+}
+
 function SummaryIncomingBars({ metricSections }) {
   const [showDetails, setShowDetails] = useState(false);
+  const radarTeams = useMemo(() => metricSections[0]?.entries || [], [metricSections]);
+  const teamCards = useMemo(() => {
+    if (!metricSections.length || !radarTeams.length) return [];
+
+    return radarTeams.map((teamEntry) => ({
+      team: teamEntry.team,
+      colorClass: teamEntry.colorClass,
+      data: metricSections.map((section) => {
+        const teamMetric = section.entries.find((entry) => entry.team === teamEntry.team) || section.entries[0];
+        const rawValue = Number(teamMetric?.value) || 0;
+        const scale = RADAR_VALUE_SCALES[section.key] || { min: 0, max: 100 };
+        const span = scale.max - scale.min || 1;
+        const normalized = scale.invert
+          ? ((scale.max - rawValue) / span) * 100
+          : ((rawValue - scale.min) / span) * 100;
+
+        return {
+          metric: SHORT_INCOMING_METRIC_LABELS[section.key] || section.label,
+          fullLabel: section.label,
+          key: section.key,
+          value: clamp(normalized, 0, 100),
+          rawValue: teamMetric?.formattedValue ?? '-',
+        };
+      }),
+    }));
+  }, [metricSections, radarTeams]);
 
   return (
     <div className="mb-4 space-y-4 rounded-lg border border-white/10 bg-black/20 p-3 md:p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-sm font-bold text-white">Incoming Comparison</div>
-          <div className="text-xs text-white/60">100% stacked bars showing each team's share of incoming value by metric.</div>
+          <div className="text-xs text-white/60">Each team gets its own five-point radar so the comparison stays readable.</div>
         </div>
         <button
           onClick={() => setShowDetails((prev) => !prev)}
@@ -66,48 +151,84 @@ function SummaryIncomingBars({ metricSections }) {
         </button>
       </div>
 
-      {metricSections.map((section) => (
-        <div key={section.key} className="space-y-2">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <div className="text-sm font-semibold text-white">{section.label}</div>
-            <div className="text-xs text-white/55">
-              {section.key === 'age' ? 'Total:' : 'Net Change:'} {section.totalFormatted}
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {teamCards.map((teamCard, index) => (
+          <div key={teamCard.team} className="rounded-2xl border border-white/10 bg-black/30 p-3 md:p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: SUMMARY_TEAM_RADAR_COLORS[index % SUMMARY_TEAM_RADAR_COLORS.length] }} />
+                <div className="truncate text-sm font-bold text-white">{teamCard.team}</div>
+              </div>
+              <div className="text-xs text-white/55">Five-point profile</div>
+            </div>
+
+            <div className="mt-3 h-80 md:h-96">
+              <div className="flex h-full w-full flex-col gap-2">
+                <div className="min-h-0 flex-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={teamCard.data} outerRadius="72%">
+                    <PolarGrid stroke="rgba(255,255,255,0.14)" />
+                    <PolarAngleAxis dataKey="metric" tick={(tickProps) => <MetricTick {...tickProps} />} />
+                    <PolarRadiusAxis angle={90} domain={[0, 'auto']} tick={false} axisLine={false} />
+                    <Radar
+                      name={teamCard.team}
+                      dataKey="value"
+                      stroke={SUMMARY_TEAM_RADAR_COLORS[index % SUMMARY_TEAM_RADAR_COLORS.length]}
+                      fill={SUMMARY_TEAM_RADAR_COLORS[index % SUMMARY_TEAM_RADAR_COLORS.length]}
+                      fillOpacity={0.16}
+                      strokeWidth={2.5}
+                      dot={{ r: 2.5 }}
+                    />
+                  </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  {teamCard.data.map((point) => (
+                    <div
+                      key={`${teamCard.team}-${point.metric}`}
+                      className="rounded-lg border border-white/10 bg-black/45 px-2.5 py-2 text-center"
+                      title={`${point.fullLabel}: ${point.rawValue}`}
+                    >
+                      <div className="truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-white/60">{point.metric}</div>
+                      <div className="mt-0.5 text-sm font-bold text-white">{point.rawValue}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/65">
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">Y1 BV = contract-adjusted value for this season.</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">LT BV = value across the full remaining contract.</span>
             </div>
           </div>
+        ))}
+      </div>
 
-          <div className="overflow-hidden rounded-full border border-white/10 bg-black/30">
-            <div className="flex min-h-10 w-full">
-              {section.entries.map((entry) => (
-                <div
-                  key={`${section.key}-${entry.team}`}
-                  className={`flex min-w-0 items-center justify-center bg-gradient-to-r ${entry.colorClass} px-2 text-center text-sm font-extrabold text-slate-950`}
-                  style={{ width: `${entry.percent}%` }}
-                  title={`${entry.team}: ${entry.formattedValue} (${entry.percent.toFixed(1)}%)`}
-                >
-                  <span className="truncate">{entry.team} · {entry.formattedValue}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {showDetails && (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              {section.entries.map((entry) => (
-                <div key={`${section.key}-legend-${entry.team}`} className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block h-3 w-3 rounded-full bg-gradient-to-r ${entry.colorClass}`}></span>
-                    <div className="truncate text-sm font-semibold text-white">{entry.team}</div>
+      {showDetails && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {metricSections.map((section) => (
+            <div key={`${section.key}-legend`} className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="truncate text-sm font-semibold text-white">{section.label}</div>
+                <div className="text-xs text-white/55">{section.totalFormatted}</div>
+              </div>
+              <div className="mt-2 space-y-1.5 text-xs">
+                {section.entries.map((entry, index) => (
+                  <div key={`${section.key}-${entry.team}`} className="flex items-center justify-between gap-3 rounded-md bg-white/5 px-2 py-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: SUMMARY_TEAM_RADAR_COLORS[index % SUMMARY_TEAM_RADAR_COLORS.length] }} />
+                      <span className="truncate text-white">{entry.team}</span>
+                    </div>
+                    <div className="font-semibold text-white/80">{entry.formattedValue}</div>
                   </div>
-                  <div className="mt-1 flex items-center justify-between gap-3">
-                    <div className="text-base font-bold text-white">{entry.formattedValue}</div>
-                    <div className="text-sm font-semibold text-white/70">{entry.percent.toFixed(1)}% share</div>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -333,38 +454,44 @@ const TradeSummary = ({
     const metricConfigs = [
       {
         key: 'ktc',
-        label: 'Net Change (KTC)',
+        label: 'Total Incoming (KTC)',
         type: 'integer',
         getValue: (team) => {
           const received = buildReceivedFor(team);
-          const sent = buildOutgoingFor(team);
           const incoming = received.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
-          const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.ktcValue) || 0), 0);
-          return incoming - outgoing;
+          return incoming;
         },
       },
       {
         key: 'bv',
-        label: 'Net Change (BV)',
+        label: 'Total Incoming (Year 1 BV)',
         type: 'integer',
         getValue: (team) => {
           const received = buildReceivedFor(team);
-          const sent = buildOutgoingFor(team);
           const incoming = received.reduce((sum, player) => sum + getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
-          const outgoing = sent.reduce((sum, player) => sum + getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
-          return incoming - outgoing;
+          return incoming;
+        },
+      },
+      {
+        key: 'ltbv',
+        label: 'Total Incoming (Long-Term BV)',
+        type: 'integer',
+        getValue: (team) => {
+          const received = buildReceivedFor(team);
+          const incoming = received.reduce((sum, player) => sum + getLongTermBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
+          return incoming;
         },
       },
       {
         key: 'cap',
-        label: 'Net Change (Cap)',
+        label: 'Net Cap Change',
         type: 'currency',
         getValue: (team) => {
           const received = buildReceivedFor(team);
-          const sent = buildOutgoingFor(team);
+          const outgoing = buildOutgoingFor(team);
           const incoming = received.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
-          const outgoing = sent.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
-          return incoming - outgoing;
+          const outgoingCap = outgoing.reduce((sum, player) => sum + (parseFloat(player.curYear) || 0), 0);
+          return incoming - outgoingCap;
         },
       },
       {
@@ -388,20 +515,51 @@ const TradeSummary = ({
           team,
           value,
           formattedValue: formatIncomingMetricValue(value, metric.type),
-          colorClass: SUMMARY_TEAM_BAR_COLORS[index % SUMMARY_TEAM_BAR_COLORS.length],
+          colorClass: SUMMARY_TEAM_RADAR_COLORS[index % SUMMARY_TEAM_RADAR_COLORS.length],
         };
       });
 
-      const total = baseEntries.reduce((sum, entry) => sum + (Number.isFinite(entry.value) ? Math.abs(entry.value) : 0), 0);
+      const net = baseEntries.reduce((sum, entry) => sum + (Number.isFinite(entry.value) ? entry.value : 0), 0);
+      const positiveTotal = baseEntries.reduce((sum, entry) => sum + (entry.value > 0 ? entry.value : 0), 0);
+      const negativeTotal = baseEntries.reduce((sum, entry) => sum + (entry.value < 0 ? Math.abs(entry.value) : 0), 0);
       const fallbackPercent = baseEntries.length ? 100 / baseEntries.length : 0;
+      const positiveSpace = negativeTotal > 0 ? 50 : 100;
+      const negativeSpace = positiveTotal > 0 ? 50 : 100;
+
+      const buildSegments = (entries, total, widthSpace) => {
+        let offset = 0;
+        return entries
+          .slice()
+          .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+          .map((entry) => {
+            const width = total > 0 ? (Math.abs(entry.value) / total) * widthSpace : (entries.length ? widthSpace / entries.length : 0);
+            const segment = { ...entry, width, offset };
+            offset += width;
+            return segment;
+          });
+      };
+
+      const positiveEntries = baseEntries.filter((entry) => entry.value >= 0);
+      const negativeEntries = baseEntries.filter((entry) => entry.value < 0);
+      const positiveSegments = buildSegments(positiveEntries, positiveTotal, positiveSpace);
+      const negativeSegments = buildSegments(negativeEntries, negativeTotal, negativeSpace);
 
       return {
         key: metric.key,
         label: metric.label,
-        totalFormatted: formatIncomingMetricValue(total || (metric.type === 'age' ? 0 : total), metric.type),
+        totalFormatted: formatIncomingMetricValue(net || (metric.type === 'age' ? 0 : net), metric.type),
+        netFormatted: formatIncomingMetricValue(net, metric.type),
+        positiveTotal,
+        negativeTotal,
+        hasBothSides: positiveEntries.length > 0 && negativeEntries.length > 0,
+        positiveSegments,
+        negativeSegments,
         entries: baseEntries.map((entry) => ({
           ...entry,
-          percent: total > 0 ? ((Math.abs(entry.value) / total) * 100) : fallbackPercent,
+          side: entry.value < 0 ? 'negative' : 'positive',
+          sharePercent: entry.value < 0
+            ? (negativeTotal > 0 ? ((Math.abs(entry.value) / negativeTotal) * 100) : fallbackPercent)
+            : (positiveTotal > 0 ? ((entry.value / positiveTotal) * 100) : fallbackPercent),
         })),
       };
     });
@@ -550,31 +708,24 @@ const TradeSummary = ({
             });
             const totalSalary = allIncoming.reduce((s, p) => s + (parseFloat(p.curYear) || 0), 0);
             const totalKtc = allIncoming.reduce((s, p) => s + (parseFloat(p.ktcValue) || 0), 0);
-            const totalValue = (() => {
+            const totalYear1Value = (() => {
               const perSum = allIncoming.reduce((sum, p) => sum + getBudgetValue(p, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
+              return Math.round(perSum);
+            })();
+            const totalLongTermValue = (() => {
+              const perSum = allIncoming.reduce((sum, p) => sum + getLongTermBudgetValue(p, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
               return Math.round(perSum);
             })();
             return (
               <div className="mb-4 bg-black/20 border border-white/10 rounded p-3">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold">Combined Trade Totals</div>
-                  <div className="text-xs text-white/70 inline-flex items-center">
-                    Budget Value
-                    <span className="ml-1 relative group inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-white cursor-help">i
-                      <div className="absolute -top-1 left-5 hidden group-hover:block bg-[#001A2B] border border-white/10 text-xs text-white p-2 rounded shadow-lg z-10">
-                        {usePositionRatios
-                          ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)) + AvgKTC(pos).`
-                          : (salaryKtcRatio != null
-                              ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).`
-                              : 'Ratio unavailable')}
-                      </div>
-                    </span>
-                  </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between text-sm">
                   <div className="text-white/80">KTC: {Math.round(totalKtc)}</div>
                   <div className="text-white/80">Salary: ${totalSalary.toFixed(1)}</div>
-                  <div className="text-white/90">Budget Value: {totalValue}</div>
+                  <div className="text-white/90">Year 1 BV: {totalYear1Value}</div>
+                  <div className="text-white/90">Long-Term BV: {totalLongTermValue}</div>
                 </div>
               </div>
             );
@@ -590,8 +741,12 @@ const TradeSummary = ({
               const capImpact = impactsByTeam?.[p.team];
               const totalCap = calculateTotalValue(received);
               const totalKTC = calculateTotalKTC(received);
-              const totalValue = (() => {
+              const totalYear1Value = (() => {
                 const perSum = received.reduce((sum, pl) => sum + getBudgetValue(pl, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
+                return Math.round(perSum);
+              })();
+              const totalLongTermValue = (() => {
+                const perSum = received.reduce((sum, pl) => sum + getLongTermBudgetValue(pl, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }), 0);
                 return Math.round(perSum);
               })();
               return (
@@ -605,17 +760,9 @@ const TradeSummary = ({
                       <p className="text-white/70 text-xs md:text-sm">
                         {received.length} asset{received.length !== 1 ? 's' : ''} • ${totalCap.toFixed(1)} current cap value • KTC: {totalKTC ? totalKTC.toFixed(0) : 0}
                       </p>
-                      <div className="text-white/90 text-xs md:text-sm font-bold flex items-center">
-                        Budget Value: {totalValue}
-                        <span className="ml-1 relative group inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-white cursor-help">i
-                          <div className="absolute -top-1 left-5 hidden group-hover:block bg-[#001A2B] border border-white/10 text-xs text-white p-2 rounded shadow-lg z-10">
-                            {usePositionRatios
-                              ? `Using position-specific ratios (KTC per $1). Falls back to global ratio ${(salaryKtcRatio ?? 0).toFixed(6)} when position is missing. Budget Value = KTC + Salary × (−Ratio(pos)) + AvgKTC(pos).`
-                              : (salaryKtcRatio != null
-                                  ? `KTC-to-Salary Ratio: ${salaryKtcRatio.toFixed(6)} KTC per $1 (applied negatively). Budget Value = KTC + Salary × (−Ratio) + AvgKTC(pos).`
-                                  : 'Ratio unavailable')}
-                          </div>
-                        </span>
+                      <div className="text-white/90 text-xs md:text-sm font-bold flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span>Year 1 BV: {totalYear1Value}</span>
+                        <span>Long-Term BV: {totalLongTermValue}</span>
                       </div>
                     </div>
                   </div>
@@ -719,8 +866,12 @@ const TradeSummary = ({
                                 {player.ktcValue ? player.ktcValue : "-"}
                               </span>
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
-                                <span className="text-white/60 mr-1">BV:</span>
+                                <span className="text-white/60 mr-1">Year 1 BV:</span>
                                 {getBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }) || '-'}
+                              </span>
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
+                                <span className="text-white/60 mr-1">Long-Term BV:</span>
+                                {getLongTermBudgetValue(player, { salaryKtcRatio, positionRatios, usePositionRatios, avgKtcByPosition }) || '-'}
                               </span>
                               {isDraftPickAsset(player) && (
                                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs md:text-sm font-semibold bg-white/10 text-white">
