@@ -1187,7 +1187,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
     async function fetchData() {
       try {
         // Fetch contracts data
-        const contractsResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+        const contractsResponse = await fetch('/api/contracts/normalized');
         const contractsText = await contractsResponse.text();
 
         // Fetch fines data

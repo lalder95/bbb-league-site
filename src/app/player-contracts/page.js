@@ -116,7 +116,7 @@ export default function Home() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const response = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+        const response = await fetch('/api/contracts/normalized');
         const text = await response.text();
         const rows = text.split('\n');
         const parsedData = rows.slice(1)

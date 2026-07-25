@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import clientPromise from '@/lib/mongodb';
 import dbConnect from '@/lib/dbConnect';
 import { getContractManagementSettings } from '@/lib/db-helpers';
+import { getNormalizedContractsData } from '@/lib/normalized-contracts';
 import { calculateDraftOrderForLeague } from '@/utils/draftOrderCalculator';
 import { estimateDraftPositions, getTeamName as getDraftTeamName } from '@/utils/draftUtils';
 import {
@@ -843,14 +844,14 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Unable to resolve leagueId' }, { status: 400 });
     }
 
-    const [leagueInfo, users, rosters, nflState, winnersBracket, contractSettingsResult, contractsCsv, finesCsv, activeAuction, latestMockDraft, holdoutSummary] = await Promise.all([
+    const [leagueInfo, users, rosters, nflState, winnersBracket, contractSettingsResult, contractsResult, finesCsv, activeAuction, latestMockDraft, holdoutSummary] = await Promise.all([
       fetchJson(`https://api.sleeper.app/v1/league/${leagueId}`),
       fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`),
       fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
       fetchJson('https://api.sleeper.app/v1/state/nfl'),
       fetchJsonSafe(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, []),
       getContractManagementSettings(),
-      fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv', { cache: 'no-store' }).then((response) => response.text()),
+      getNormalizedContractsData(),
       fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv', { cache: 'no-store' }).then((response) => response.text()),
       getActiveAuctionSummary(),
       getLatestMockDraft(),
@@ -882,7 +883,37 @@ export async function GET(request) {
     const currentRosterIdentityMap = buildRosterIdentityMap(rosters, users);
     const champion = pickChampion({ winnersBracket: summaryWinnersBracket, standingsRows: standingsData.rows });
 
-    const contracts = parseContractsCsv(contractsCsv);
+    const contracts = contractsResult.rows.map((row) => {
+      const status = row.Status;
+      const isActiveLike = status === 'Active' || status === 'Future';
+
+      return {
+        playerId: String(row['Player ID'] || '').trim(),
+        playerName: row['Player Name'],
+        position: row.Position,
+        contractType: row['Contract Type'],
+        status,
+        team: row.TeamDisplayName,
+        contractFinalYear: row['Contract Final Year'],
+        age: row.Age,
+        ktcValue: parseYear(row['Current KTC Value']),
+        rfaEligible: row['Will Be RFA?'],
+        franchiseTagEligible: row['Franchise Tag Eligible?'],
+        isActiveLike,
+        curYear: isActiveLike
+          ? toNumber(row['Relative Year 1 Salary'])
+          : toNumber(row['Relative Year 1 Dead']),
+        year2: isActiveLike
+          ? toNumber(row['Relative Year 2 Salary'])
+          : toNumber(row['Relative Year 2 Dead']),
+        year3: isActiveLike
+          ? toNumber(row['Relative Year 3 Salary'])
+          : toNumber(row['Relative Year 3 Dead']),
+        year4: isActiveLike
+          ? toNumber(row['Relative Year 4 Salary'])
+          : toNumber(row['Relative Year 4 Dead']),
+      };
+    });
     const fines = parseFinesCsv(finesCsv);
     const contractYearOverride = contractSettingsResult?.success ? parseYear(contractSettingsResult?.settings?.contractYearOverride) : null;
     const effectiveContractYear = contractYearOverride || parseYear(leagueInfo?.season) || parseYear(nflState?.season) || new Date().getFullYear();

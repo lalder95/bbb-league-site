@@ -13,7 +13,7 @@ import { estimateDraftPositions, getTeamName } from '@/utils/draftUtils';
 import { createDraftPickAsset, DEFAULT_FUTURE_PICK_BUCKET } from '@/utils/draftPickTradeUtils';
 
 const USER_ID = '456973480269705216';
-const CONTRACTS_CSV_URL = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv';
+const CONTRACTS_CSV_URL = '/api/contracts/normalized';
 
 function cn(...classes) { return classes.filter(Boolean).join(' '); }
 

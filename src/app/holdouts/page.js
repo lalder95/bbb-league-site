@@ -98,7 +98,7 @@ export default function HoldoutsPage() {
   useEffect(() => {
     async function fetchContracts() {
       try {
-        const res = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+        const res = await fetch('/api/contracts/normalized');
         const text = await res.text();
         const rows = text.split('\n').slice(1).filter(r => r.trim());
         const parsed = rows.map((row, index) => {

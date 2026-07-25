@@ -58,7 +58,7 @@ async function getFooterTradeCounterData() {
 
   try {
     const season = String(new Date().getFullYear());
-    const headerStore = headers();
+    const headerStore = await headers();
     const host = headerStore.get('x-forwarded-host') || headerStore.get('host');
 
     if (!host) return fallback;

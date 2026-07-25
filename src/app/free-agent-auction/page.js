@@ -884,7 +884,7 @@ export default function FreeAgentAuctionPage() {
   useEffect(() => {
     async function fetchCapData() {
       try {
-        const contractsResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+        const contractsResponse = await fetch('/api/contracts/normalized');
         const contractsText = await contractsResponse.text();
 
         const finesResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv');

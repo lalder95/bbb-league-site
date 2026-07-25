@@ -651,7 +651,7 @@ export default function Home() {
   // Helper: fetch player info from BBB_Contracts.csv
   async function fetchStarterPlayerInfo(neededIds = []) {
     // CSV expected at this URL; adjust if path changes
-    const resp = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+    const resp = await fetch('/api/contracts/normalized');
     if (!resp.ok) throw new Error('Failed to fetch BBB_Contracts.csv');
     const text = await resp.text();
     const lines = text.trim().split('\n').filter(Boolean);

@@ -159,7 +159,7 @@ export default function ContractManagementPage() {
   useEffect(() => {
     async function fetchPlayerData() {
       const [response, finesResponse] = await Promise.all([
-        fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv'),
+        fetch('/api/contracts/normalized'),
         fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv'),
       ]);
       // Parse fines

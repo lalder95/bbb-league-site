@@ -3,10 +3,10 @@ import {
   updateMediaFeedSyncState,
   upsertMediaFeedItem,
 } from '@/lib/db-helpers';
+import { getNormalizedContractsCsvText } from '@/lib/normalized-contracts';
 import { generateCutReaction, generateTradeReactions } from '@/lib/sleeper-transaction-reactions';
 
 const USER_ID = '456973480269705216';
-const CONTRACTS_CSV_URL = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv';
 const FINES_CSV_URL = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv';
 
 async function fetchJson(url) {
@@ -414,7 +414,7 @@ export async function syncSleeperTransactionsFeed() {
   const [users, rosters, csvText, finesText] = await Promise.all([
     fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`),
     fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
-    fetch(CONTRACTS_CSV_URL, { cache: 'no-store' }).then((response) => response.text()),
+    getNormalizedContractsCsvText(),
     fetch(FINES_CSV_URL, { cache: 'no-store' }).then((response) => response.text()),
   ]);
 

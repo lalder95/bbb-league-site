@@ -6,6 +6,7 @@ import {
   updateMediaFeedSyncState,
   upsertMediaFeedItem,
 } from '@/lib/db-helpers';
+import { getNormalizedContractsCsvText } from '@/lib/normalized-contracts';
 import { buildPlayerPoolWithNews } from '@/utils/playerPoolUtils';
 import { buildStyleToken, createRng } from '@/utils/mockDraftVoice';
 import {
@@ -19,7 +20,6 @@ import {
 const USER_ID = '456973480269705216';
 const FANS_FILE_PATH = path.join(process.cwd(), 'src/app/api/ai/fans.txt');
 const JOURNALISTS_FILE_PATH = path.join(process.cwd(), 'src/app/api/ai/journalists.txt');
-const CONTRACTS_CSV_URL = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv';
 const OPENAI_MODEL = 'gpt-4.1-nano';
 
 function shouldLogRookieDraftDiagnostics() {
@@ -438,7 +438,7 @@ Return JSON only.`;
 }
 
 async function loadTeamNeedsContext(rosters, users) {
-  const csvText = await fetch(CONTRACTS_CSV_URL, { cache: 'no-store' }).then((response) => response.text());
+  const csvText = await getNormalizedContractsCsvText();
   const activeContracts = parseBBBContractsCsv(csvText);
   const teamNames = (Array.isArray(rosters) ? rosters : []).map((roster) => {
     const user = (Array.isArray(users) ? users : []).find((entry) => entry.user_id === roster.owner_id);

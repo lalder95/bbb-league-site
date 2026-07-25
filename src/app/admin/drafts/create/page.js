@@ -130,7 +130,7 @@ export default function CreateDraftPage() {
   }, []);
 
   useEffect(() => {
-    Papa.parse('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv', {
+    Papa.parse('/api/contracts/normalized', {
       download: true,
       header: true,
       complete: (results) => {

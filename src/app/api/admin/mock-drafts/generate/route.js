@@ -3,6 +3,7 @@ import clientPromise from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { OpenAI } from 'openai';
+import { getNormalizedContractsCsvText } from '@/lib/normalized-contracts';
 import { buildPlayerPoolWithNews, popPlayerByName } from '@/utils/playerPoolUtils';
 import {
   createRng,
@@ -724,10 +725,8 @@ export async function POST(request) {
     // Roster-needs context from BBB_Contracts (Active only)
     let teamNeeds = null;
     try {
-      const csvUrl = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv';
-      const csvRes = await fetch(csvUrl, { cache: 'no-store' });
-      if (csvRes.ok) {
-        const csvText = await csvRes.text();
+      const csvText = await getNormalizedContractsCsvText();
+      if (csvText) {
         const activeContracts = parseBBBContractsCsv(csvText);
         const teamNames = Array.from(new Set(order.map(o => o.teamName))).filter(Boolean);
         if (teamNames.length) {

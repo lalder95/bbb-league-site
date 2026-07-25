@@ -25,7 +25,7 @@ function BudgetRatiosProvider({ children }) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv', { cache: 'no-store' });
+        const res = await fetch('/api/contracts/normalized', { cache: 'no-store' });
         const text = await res.text();
         const rows = text.split('\n').filter(Boolean);
         if (rows.length < 2) throw new Error('No contracts data');

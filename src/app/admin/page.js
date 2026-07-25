@@ -497,7 +497,7 @@ export default function AdminPage() {
       setLoadingMissing(true);
 
       // 1. Fetch contracts CSV from GitHub
-      const csvUrl = "https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv";
+      const csvUrl = '/api/contracts/normalized';
       const csvRes = await fetch(csvUrl);
       const csvText = await csvRes.text();
 

@@ -209,7 +209,7 @@ export default function Navigation() {
     if (allPlayers.length || loadingPlayers) return;
     try {
       setLoadingPlayers(true);
-      const res = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
+      const res = await fetch('/api/contracts/normalized');
       const text = await res.text();
       const rows = text.split('\n').filter(r => r.trim());
       const data = rows.slice(1).map((row, idx) => {
