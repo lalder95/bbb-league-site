@@ -243,13 +243,13 @@ function PlayerMetric({ label, value, accent = 'text-white', valueClassName = 't
 
 function SelectedAssetMetaItem({ label, value, icon }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-2 py-2">
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-2 py-2 sm:px-2.5">
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-sky-400/15 bg-sky-400/[0.08] text-sky-300 [&>svg]:h-4 [&>svg]:w-4">
         {icon}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-white/[0.42]">{label}</span>
-        <span className="mt-0.5 block truncate text-xs font-semibold leading-tight text-white/[0.88]">{value}</span>
+        <span className="block break-words text-[9px] font-bold uppercase leading-tight tracking-[0.11em] text-white/[0.42] sm:text-[10px] sm:tracking-[0.14em]">{label}</span>
+        <span className="mt-0.5 block break-words text-xs font-semibold leading-tight text-white/[0.88]">{value}</span>
       </span>
     </div>
   );
@@ -293,10 +293,10 @@ function SelectedAssetFeatureCard({ label, value, tooltip, icon, subtitle, tone 
               </span>
             ) : null}
           </div>
-          <div className="mt-1 truncate text-[1.35rem] font-black leading-none tracking-[-0.03em] text-white sm:text-[1.55rem]">
+          <div className="mt-1 break-words text-[1.35rem] font-black leading-none tracking-[-0.03em] text-white sm:text-[1.55rem]">
             {value}
           </div>
-          {subtitle ? <div className="mt-1 truncate text-[10px] text-white/[0.42]">{subtitle}</div> : null}
+          {subtitle ? <div className="mt-1 break-words text-[10px] leading-tight text-white/[0.42]">{subtitle}</div> : null}
         </div>
       </div>
     </div>
@@ -306,7 +306,7 @@ function SelectedAssetFeatureCard({ label, value, tooltip, icon, subtitle, tone 
 function SelectedAssetOverviewCard({ contractValue, ktcValue, isPick }) {
   return (
     <div className="overflow-hidden rounded-[18px] border border-white/[0.08] bg-[#091522]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-      <div className="grid grid-cols-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2">
         <div className="relative flex min-w-0 items-center gap-3 p-3">
           <div className="pointer-events-none absolute -left-10 top-0 h-24 w-24 rounded-full bg-cyan-400/10 blur-3xl" />
           <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
@@ -325,7 +325,7 @@ function SelectedAssetOverviewCard({ contractValue, ktcValue, isPick }) {
           </div>
         </div>
 
-        <div className="relative flex min-w-0 items-center gap-3 border-l border-white/[0.07] p-3">
+        <div className="relative flex min-w-0 items-center gap-3 border-t border-white/[0.07] p-3 sm:border-l sm:border-t-0">
           <div className="pointer-events-none absolute -right-10 top-0 h-24 w-24 rounded-full bg-blue-500/10 blur-3xl" />
           <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-blue-400/20 bg-blue-500/10 text-blue-300">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
@@ -503,8 +503,8 @@ function TeamSection({
   const [popupPlayer, setPopupPlayer] = useState(null);
 
   return (
-    <div className="flex-1 p-4">
-      <div className="bg-black/30 rounded-lg border border-white/10 p-4">
+    <div className="min-w-0 flex-1 p-0 sm:p-4">
+      <div className="rounded-lg border border-white/10 bg-black/30 p-3 sm:p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-[#FF4B1F]">{label}</h2>
           {canRemove && (
@@ -623,10 +623,10 @@ function TeamSection({
                         <div className="pointer-events-none absolute right-0 top-0 h-32 w-32 opacity-20 [background-image:radial-gradient(rgba(56,189,248,0.7)_1px,transparent_1px)] [background-size:12px_12px] [mask-image:linear-gradient(to_bottom_left,black,transparent_72%)]" />
 
                         <div className="relative p-3 sm:p-4">
-                          <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+                          <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-2.5 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-3">
                             <div className="relative overflow-hidden rounded-[20px] border border-blue-400/30 bg-[#071525] p-1.5 shadow-[0_0_0_1px_rgba(45,167,255,0.08),0_14px_30px_rgba(0,0,0,0.35)]">
                               <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-[linear-gradient(135deg,rgba(45,167,255,0.16),transparent_34%,transparent_68%,rgba(37,99,235,0.12))]" />
-                              <div className="relative flex min-h-[190px] items-center justify-center overflow-hidden rounded-[15px] border border-white/[0.08] bg-[radial-gradient(circle_at_top,rgba(45,167,255,0.18),rgba(5,13,22,0.4)_45%,rgba(2,7,12,0.92)_100%)] sm:min-h-[220px]">
+                              <div className="relative flex min-h-[168px] items-center justify-center overflow-hidden rounded-[15px] border border-white/[0.08] bg-[radial-gradient(circle_at_top,rgba(45,167,255,0.18),rgba(5,13,22,0.4)_45%,rgba(2,7,12,0.92)_100%)] sm:min-h-[220px]">
                                 <span className="absolute left-2 top-2 z-10 max-w-[calc(100%-2.5rem)] truncate rounded-md border border-white/10 bg-[#07111d]/[0.85] px-1.5 py-1 text-[7px] font-extrabold uppercase tracking-[0.14em] text-sky-200 backdrop-blur-sm">
                                   {isPick ? 'Draft Asset' : 'Player Asset'}
                                 </span>
@@ -646,7 +646,7 @@ function TeamSection({
                                       imageExtension="png"
                                       expanded={false}
                                       avatarOnly
-                                      className="h-[8.25rem] w-[8.25rem] sm:h-[9.75rem] sm:w-[9.75rem]"
+                                      className="h-[7rem] w-[7rem] sm:h-[9.75rem] sm:w-[9.75rem]"
                                       ktcPerDollar={ktcPerDollar}
                                       usePositionRatios={usePositionRatios}
                                       positionRatios={positionRatios}
@@ -676,7 +676,7 @@ function TeamSection({
                             <div className="min-w-0">
                               <div className="flex min-w-0 items-start gap-2">
                                 <h4
-                                  className="min-w-0 flex-1 break-words text-[1.3rem] font-black leading-[1.02] tracking-[-0.035em] text-white sm:text-[1.55rem]"
+                                  className="min-w-0 flex-1 break-words text-lg font-black leading-[1.04] tracking-[-0.035em] text-white sm:text-[1.55rem]"
                                   title={player.playerName}
                                 >
                                   {player.playerName}
@@ -688,7 +688,7 @@ function TeamSection({
                                     e.stopPropagation();
                                     removePlayer(getAssetKey(player));
                                   }}
-                                  className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg border border-red-500/35 bg-red-500/[0.08] px-2 py-1.5 text-[10px] font-bold text-red-300 transition-all hover:border-red-400/55 hover:bg-red-500/15 hover:text-red-200"
+                                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-red-500/35 bg-red-500/[0.08] p-0 text-[10px] font-bold text-red-300 transition-all hover:border-red-400/55 hover:bg-red-500/15 hover:text-red-200 sm:h-auto sm:w-auto sm:px-2 sm:py-1.5"
                                   aria-label={`Remove ${player.playerName}`}
                                 >
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5" aria-hidden="true">
@@ -698,7 +698,7 @@ function TeamSection({
                                     <path d="M6.75 7.5 7.5 18A1.5 1.5 0 0 0 9 19.5h6A1.5 1.5 0 0 0 16.5 18l.75-10.5" />
                                     <path d="M9 7.5V5.25A1.5 1.5 0 0 1 10.5 3.75h3A1.5 1.5 0 0 1 15 5.25V7.5" />
                                   </svg>
-                                  Remove
+                                  <span className="hidden sm:inline">Remove</span>
                                 </button>
                               </div>
 
@@ -720,7 +720,7 @@ function TeamSection({
                                 </span>
                               </div>
 
-                              <div className="mt-3 grid grid-cols-2 gap-1.5">
+                              <div className="mt-3 hidden grid-cols-2 gap-1.5 sm:grid">
                                 <SelectedAssetMetaItem
                                   label="Final Year"
                                   value={player.contractFinalYear || '-'}
@@ -771,6 +771,55 @@ function TeamSection({
                             </div>
                           </div>
 
+                          <div className="mt-3 grid grid-cols-2 gap-1.5 sm:hidden">
+                            <SelectedAssetMetaItem
+                              label="Final Year"
+                              value={player.contractFinalYear || '-'}
+                              icon={(
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                  <path d="M7 3.75h7l5 5V19.5A1.75 1.75 0 0 1 17.25 21H7A1.75 1.75 0 0 1 5.25 19.5v-14A1.75 1.75 0 0 1 7 3.75Z" />
+                                  <path d="M14 3.75V9h5" />
+                                </svg>
+                              )}
+                            />
+                            {!isPick && (
+                              <SelectedAssetMetaItem
+                                label="Age"
+                                value={player.age || '-'}
+                                icon={(
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                    <circle cx="12" cy="8" r="3.25" />
+                                    <path d="M5.5 19.5c.75-3.5 3-5.25 6.5-5.25s5.75 1.75 6.5 5.25" />
+                                  </svg>
+                                )}
+                              />
+                            )}
+                            {!isPick && (
+                              <SelectedAssetMetaItem
+                                label="RFA"
+                                value={getEligibilityText(player.rfaEligible)}
+                                icon={(
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                    <path d="M7 3.75h7l5 5V19.5A1.75 1.75 0 0 1 17.25 21H7A1.75 1.75 0 0 1 5.25 19.5v-14A1.75 1.75 0 0 1 7 3.75Z" />
+                                    <path d="M14 3.75V9h5M8.5 13h7M8.5 16.5h5" />
+                                  </svg>
+                                )}
+                              />
+                            )}
+                            {!isPick && (
+                              <SelectedAssetMetaItem
+                                label="Franchise Tag"
+                                value={getEligibilityText(player.franchiseTagEligible)}
+                                icon={(
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                    <path d="M4.5 12.5 11 6h6.5l2 2v6.5L13 21 4.5 12.5Z" />
+                                    <circle cx="15.5" cy="10" r="1" />
+                                  </svg>
+                                )}
+                              />
+                            )}
+                          </div>
+
                           <div className="mt-3">
                             <SelectedAssetOverviewCard
                               contractValue={contractDisplayLabel}
@@ -779,7 +828,7 @@ function TeamSection({
                             />
                           </div>
 
-                          <div className="mt-3 grid grid-cols-2 gap-2.5">
+                          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                             <SelectedAssetFeatureCard
                               label="Year 1 BV"
                               value={yearOneDisplayValue}
@@ -946,7 +995,7 @@ function CapSpaceImpactSection({ impact, currentSeason }) {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(34,211,238,0.10),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(37,99,235,0.08),transparent_24%)]" />
       <div className="pointer-events-none absolute right-0 top-0 h-24 w-32 opacity-15 [background-image:radial-gradient(rgba(56,189,248,0.7)_1px,transparent_1px)] [background-size:12px_12px] [mask-image:linear-gradient(to_bottom_left,black,transparent_72%)]" />
 
-      <div className="relative flex items-center justify-between gap-3">
+      <div className="relative flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
@@ -963,7 +1012,7 @@ function CapSpaceImpactSection({ impact, currentSeason }) {
         </div>
 
         {Number.isFinite(currentDelta) ? (
-          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-extrabold ${
+          <span className={`self-start shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-extrabold ${
             currentDelta > 0.049
               ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-300'
               : currentDelta < -0.049
@@ -975,7 +1024,34 @@ function CapSpaceImpactSection({ impact, currentSeason }) {
         ) : null}
       </div>
 
-      <div className="relative mt-3 overflow-x-auto pb-1">
+      <div className="relative mt-3 grid grid-cols-2 gap-2 sm:hidden">
+        {yearData.map(({ yearKey, yearLabel, before, after, delta }) => (
+          <div key={yearKey} className="overflow-hidden rounded-[16px] border border-white/[0.08] bg-[#091522]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="flex items-center justify-between gap-2 border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5">
+              <span className="text-[10px] font-extrabold tracking-[0.1em] text-white/[0.62]">{yearLabel}</span>
+              <span className={`whitespace-nowrap text-[9px] font-bold tabular-nums ${getCapDeltaColor(delta)}`}>
+                {formatCapDelta(delta)}
+              </span>
+            </div>
+            <div className="space-y-2 px-3 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-white/[0.36]">Before</span>
+                <span className={`whitespace-nowrap text-sm font-bold tabular-nums ${getValidationColor(before)}`}>
+                  {formatSalary(before)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] pt-2">
+                <span className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-cyan-300">After</span>
+                <span className={`whitespace-nowrap text-base font-black leading-none tabular-nums ${getValidationColor(after)}`}>
+                  {formatSalary(after)}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative mt-3 hidden overflow-x-auto pb-1 sm:block">
         <div
           className="overflow-hidden rounded-[18px] border border-white/[0.08] bg-[#091522]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
           style={{ minWidth: `${tableMinWidth}px` }}
@@ -1187,7 +1263,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
     async function fetchData() {
       try {
         // Fetch contracts data
-        const contractsResponse = await fetch('/api/contracts/normalized');
+        const contractsResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv');
         const contractsText = await contractsResponse.text();
 
         // Fetch fines data
@@ -2105,7 +2181,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
         )}
       </AnimatePresence>
 
-      <div className="bg-black/30 p-6 border-b border-white/10">
+      <div className="border-b border-white/10 bg-black/30 p-4 sm:p-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center gap-4 mb-4 md:mb-0">
             <img 
@@ -2168,7 +2244,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="mx-auto max-w-7xl p-3 sm:p-6">
         {shareMode && (
           <div className="mb-4 rounded-2xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
             <div className="font-semibold">Shared trade link</div>
@@ -2341,7 +2417,7 @@ export function TradePage({ shareMode = false, shareToken = '' }) {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-2">
           {participants.map((p, idx) => {
             const filtered = getFilteredPlayers(p);
             const teamOptions = participants.map(pp => pp.team).filter(Boolean);
