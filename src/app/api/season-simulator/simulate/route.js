@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const MAX_BATCH_SIMULATIONS = 20;
+const MAX_BATCH_SIMULATIONS = 30;
 
 function normalizeBatchSimulationCount(value) {
   const numeric = Number(value);
