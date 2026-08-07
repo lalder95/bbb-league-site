@@ -10,10 +10,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-function normalizeSimulationCount(value) {
+const MAX_BATCH_SIMULATIONS = 20;
+
+function normalizeBatchSimulationCount(value) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return DEFAULT_SIMULATION_SETTINGS.simulations;
-  return Math.min(5000, Math.max(1, Math.floor(numeric)));
+  if (!Number.isFinite(numeric)) return MAX_BATCH_SIMULATIONS;
+  return Math.min(MAX_BATCH_SIMULATIONS, Math.max(1, Math.floor(numeric)));
 }
 
 function normalizeRngConfig(rngConfig = {}) {
@@ -52,6 +54,7 @@ export async function GET(request) {
       teamCount: bundle.rosters?.length || 0,
       defaults: DEFAULT_SIMULATION_SETTINGS,
       defaultStartMode: 'current',
+      maxBatchSimulations: MAX_BATCH_SIMULATIONS,
     });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err?.message || 'Failed to load simulator config' }, { status: 502 });
@@ -72,7 +75,7 @@ export async function POST(request) {
     const startMode = body?.startMode === 'full' ? 'full' : 'current';
     const settingsResult = await getSeasonSimulatorSettings();
     const persistedSettings = settingsResult?.success ? settingsResult.settings : DEFAULT_SIMULATION_SETTINGS;
-    const simulations = normalizeSimulationCount(persistedSettings?.simulations);
+    const simulations = normalizeBatchSimulationCount(body?.simulations);
     const rosterTrades = Array.isArray(body?.rosterTrades) ? body.rosterTrades : [];
 
     const result = await runSeasonSimulation({
@@ -83,26 +86,26 @@ export async function POST(request) {
       rosterTrades,
     });
 
-    console.log('[Season Simulator] completed', {
+    console.log('[Season Simulator] batch completed', {
       leagueId,
       simulations,
       startMode,
       durationMs: Date.now() - startedAt,
-      matchupSummaries: Array.isArray(result?.matchupSummaries) ? result.matchupSummaries.length : 0,
     });
 
     return NextResponse.json({
       ...result,
       settingsUsed: persistedSettings,
+      maxBatchSimulations: MAX_BATCH_SIMULATIONS,
     });
   } catch (err) {
-    console.error('[Season Simulator] failed', {
+    console.error('[Season Simulator] batch failed', {
       durationMs: Date.now() - startedAt,
       error: err?.stack || err?.message || String(err),
     });
 
     return NextResponse.json(
-      { ok: false, error: err?.message || 'Failed to run season simulation' },
+      { ok: false, error: err?.message || 'Failed to run season simulation batch' },
       { status: 500 }
     );
   }

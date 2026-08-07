@@ -14,11 +14,15 @@ const DEFAULT_ADMIN_CONFIG = {
 };
 
 const ADMIN_FIELD_HELP = {
-  simulations: 'Number of simulated seasons to run for each export or leaderboard refresh.',
+  simulations: 'Total simulated seasons for the final dashboard. Production runs are automatically split into 20-season batches and combined.',
   boomBustStdDev: 'How wide the weekly point distribution should be. This is a decimal spread, not a percentage.',
   shortInjuryChance: "Chance a selected starter suffers an in-game injury after lineup selection. The player stays in the lineup, but that week's output is reduced to 35–80% of its randomized level.",
   longInjuryChance: 'Chance an otherwise eligible player is unavailable before lineup selection for that simulated week. If a projected starter is unavailable, the optimal lineup is rebuilt from the remaining players.',
 };
+
+const SIMULATION_BATCH_SIZE = 20;
+const SIMULATION_BATCH_ATTEMPTS = 3;
+
 
 function formatPercent(value) {
   return `${Number(value || 0).toFixed(2)}%`;
@@ -51,6 +55,150 @@ async function readApiJson(response, label = 'Request') {
       `${label} failed (${response.status}). The server returned a non-JSON response${preview ? `: ${preview}` : '.'}`
     );
   }
+}
+
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function populationStdDevFromTotals(sum, sumSquares, count) {
+  if (!count) return 0;
+  const mean = sum / count;
+  return Math.sqrt(Math.max(0, (sumSquares / count) - (mean * mean)));
+}
+
+function createSimulationAccumulator() {
+  return {
+    simulations: 0,
+    teams: new Map(),
+  };
+}
+
+function mergeSimulationAggregation(accumulator, aggregation) {
+  const batchSimulations = Number(aggregation?.simulations || 0);
+  if (!batchSimulations || !Array.isArray(aggregation?.teams)) {
+    throw new Error('Simulation batch returned no aggregate data.');
+  }
+
+  accumulator.simulations += batchSimulations;
+
+  for (const row of aggregation.teams) {
+    const key = String(row.rosterId);
+    if (!accumulator.teams.has(key)) {
+      accumulator.teams.set(key, {
+        rosterId: row.rosterId,
+        teamName: row.teamName,
+        displayName: row.displayName,
+        simulations: 0,
+        winsTotal: 0,
+        winsSquaredTotal: 0,
+        lossesTotal: 0,
+        tiesTotal: 0,
+        pointsForTotal: 0,
+        pointsForSquaredTotal: 0,
+        pointsAgainstTotal: 0,
+        playoffAppearances: 0,
+        championships: 0,
+        firstPickCount: 0,
+        finishTotal: 0,
+        recordCounts: new Map(),
+        slotStats: new Map(),
+      });
+    }
+
+    const team = accumulator.teams.get(key);
+    for (const field of [
+      'simulations',
+      'winsTotal',
+      'winsSquaredTotal',
+      'lossesTotal',
+      'tiesTotal',
+      'pointsForTotal',
+      'pointsForSquaredTotal',
+      'pointsAgainstTotal',
+      'playoffAppearances',
+      'championships',
+      'firstPickCount',
+      'finishTotal',
+    ]) {
+      team[field] += Number(row[field] || 0);
+    }
+
+    for (const recordRow of row.recordCounts || []) {
+      const record = String(recordRow.record || '');
+      if (!record) continue;
+      team.recordCounts.set(record, (team.recordCounts.get(record) || 0) + Number(recordRow.count || 0));
+    }
+
+    for (const slotRow of row.slotStats || []) {
+      const slot = String(slotRow.slot || slotRow.label || 'UNK');
+      if (!team.slotStats.has(slot)) {
+        team.slotStats.set(slot, { slot, appearances: 0, pointsTotal: 0 });
+      }
+      const bucket = team.slotStats.get(slot);
+      bucket.appearances += Number(slotRow.appearances || 0);
+      bucket.pointsTotal += Number(slotRow.pointsTotal || 0);
+    }
+  }
+
+  return batchSimulations;
+}
+
+function finalizeSimulationResult(meta, accumulator) {
+  const teamSummaries = Array.from(accumulator.teams.values())
+    .map((team) => {
+      const divisor = Math.max(1, team.simulations);
+      const averagePointsFor = team.pointsForTotal / divisor;
+      const averagePointsAgainst = team.pointsAgainstTotal / divisor;
+
+      return {
+        rosterId: team.rosterId,
+        teamName: team.teamName,
+        displayName: team.displayName,
+        averageWins: Number((team.winsTotal / divisor).toFixed(2)),
+        averageLosses: Number((team.lossesTotal / divisor).toFixed(2)),
+        averageTies: Number((team.tiesTotal / divisor).toFixed(2)),
+        averagePointsFor: Number(averagePointsFor.toFixed(2)),
+        averagePointsAgainst: Number(averagePointsAgainst.toFixed(2)),
+        averageMargin: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
+        pointsForVolatility: Number(
+          populationStdDevFromTotals(team.pointsForTotal, team.pointsForSquaredTotal, divisor).toFixed(2)
+        ),
+        winsVolatility: Number(
+          populationStdDevFromTotals(team.winsTotal, team.winsSquaredTotal, divisor).toFixed(2)
+        ),
+        averageFinish: Number((team.finishTotal / divisor).toFixed(2)),
+        playoffOdds: Number(((team.playoffAppearances / divisor) * 100).toFixed(2)),
+        championshipOdds: Number(((team.championships / divisor) * 100).toFixed(2)),
+        firstPickOdds: Number(((team.firstPickCount / divisor) * 100).toFixed(2)),
+        slotAverages: Array.from(team.slotStats.values())
+          .map((slot) => ({
+            slot: slot.slot,
+            appearances: slot.appearances,
+            avgPoints: Number((slot.pointsTotal / Math.max(1, slot.appearances)).toFixed(2)),
+          }))
+          .sort((left, right) => right.avgPoints - left.avgPoints || left.slot.localeCompare(right.slot)),
+        recordDistribution: Array.from(team.recordCounts.entries())
+          .sort((left, right) => right[1] - left[1])
+          .slice(0, 5)
+          .map(([record, count]) => ({
+            record,
+            count,
+            odds: Number(((count / divisor) * 100).toFixed(2)),
+          })),
+      };
+    })
+    .sort((left, right) => left.averageFinish - right.averageFinish);
+
+  return {
+    ...meta,
+    ok: true,
+    simulations: accumulator.simulations,
+    teamSummaries,
+    rawRunsIncluded: false,
+    matchupDetailIncluded: false,
+  };
 }
 
 function SummaryCard({ label, value, note }) {
@@ -279,12 +427,6 @@ function AdminField({ label, helpText, children }) {
   );
 }
 
-function toArrayFromMap(map, sortKey = null) {
-  const rows = Array.from(map.values());
-  if (!sortKey) return rows;
-  return rows.sort(sortKey);
-}
-
 function buildSlotLabels(rosterPositions = []) {
   const ignored = new Set(['BN', 'IR', 'TAXI']);
   const counts = new Map();
@@ -304,32 +446,6 @@ function buildSlotLabels(rosterPositions = []) {
   });
 }
 
-function buildPlayerStartOddsRows(playerStats, sims) {
-  return toArrayFromMap(playerStats, (left, right) => {
-    const leftOdds = (left.startCount / sims) * 100;
-    const rightOdds = (right.startCount / sims) * 100;
-    if (rightOdds !== leftOdds) return rightOdds - leftOdds;
-    return (right.pointsTotal || 0) - (left.pointsTotal || 0);
-  }).map((player) => ({
-    ...player,
-    startOdds: Number(((player.startCount / sims) * 100).toFixed(2)),
-    avgPoints: Number(((player.pointsTotal || 0) / Math.max(1, player.startCount)).toFixed(2)),
-  }));
-}
-
-function summarizeSlotMap(slotMap, slotOrder, sims) {
-  const orderLookup = new Map(slotOrder.map((slot, index) => [slot, index]));
-  return toArrayFromMap(slotMap, (left, right) => {
-    const leftAvg = (left.pointsTotal / Math.max(1, left.appearances));
-    const rightAvg = (right.pointsTotal / Math.max(1, right.appearances));
-    if (rightAvg !== leftAvg) return rightAvg - leftAvg;
-    return (orderLookup.get(left.label) ?? 999) - (orderLookup.get(right.label) ?? 999) || left.label.localeCompare(right.label);
-  }).map((slot) => ({
-    ...slot,
-    avgPoints: Number((slot.pointsTotal / Math.max(1, slot.appearances)).toFixed(2)),
-    avgAppearances: Number((slot.appearances / sims).toFixed(2)),
-  }));
-}
 
 export default function SeasonSimulatorPage() {
   const { data: session, status } = useSession();
@@ -343,6 +459,7 @@ export default function SeasonSimulatorPage() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [runError, setRunError] = useState('');
+  const [simulationProgress, setSimulationProgress] = useState({ completed: 0, total: 0, retry: 0, batchSize: SIMULATION_BATCH_SIZE });
   const [showRosterTradeModal, setShowRosterTradeModal] = useState(false);
   const [rosterTrades, setRosterTrades] = useState([]);
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -483,104 +600,6 @@ export default function SeasonSimulatorPage() {
     }));
   }, [result]);
 
-  const matchupRunRows = useMemo(() => {
-    if (!Array.isArray(result?.matchupSummaries)) return [];
-
-    const rows = [];
-
-    for (const matchup of result.matchupSummaries) {
-      rows.push({
-        'Record Type': 'Matchup Summary',
-        Week: matchup.week,
-        Stage: matchup.stage,
-        'Matchup ID': matchup.matchupId,
-        'Matchup Key': matchup.matchupKey,
-        'Home Team': matchup.homeTeamName,
-        'Away Team': matchup.awayTeamName,
-        'Simulated Meetings': matchup.simulations,
-        'Avg Home Score': formatNullableForCSV(matchup.avgHomeScore),
-        'Avg Away Score': formatNullableForCSV(matchup.avgAwayScore),
-        'Avg Margin': formatNullableForCSV(matchup.avgMargin),
-      });
-
-      for (const slot of matchup.homeSlotAverages || []) {
-        rows.push({
-          'Record Type': 'Slot Average',
-          Week: matchup.week,
-          Stage: matchup.stage,
-          'Matchup ID': matchup.matchupId,
-          'Matchup Key': matchup.matchupKey,
-          Side: 'Home',
-          Team: matchup.homeTeamName,
-          Opponent: matchup.awayTeamName,
-          Slot: slot.label,
-          'Avg Points': formatNullableForCSV(slot.avgPoints),
-          'Avg Appearances': formatNullableForCSV(slot.avgAppearances),
-        });
-      }
-
-      for (const slot of matchup.awaySlotAverages || []) {
-        rows.push({
-          'Record Type': 'Slot Average',
-          Week: matchup.week,
-          Stage: matchup.stage,
-          'Matchup ID': matchup.matchupId,
-          'Matchup Key': matchup.matchupKey,
-          Side: 'Away',
-          Team: matchup.awayTeamName,
-          Opponent: matchup.homeTeamName,
-          Slot: slot.label,
-          'Avg Points': formatNullableForCSV(slot.avgPoints),
-          'Avg Appearances': formatNullableForCSV(slot.avgAppearances),
-        });
-      }
-
-      for (const player of matchup.homePlayerOdds || []) {
-        rows.push({
-          'Record Type': 'Player Start Odds',
-          Week: matchup.week,
-          Stage: matchup.stage,
-          'Matchup ID': matchup.matchupId,
-          'Matchup Key': matchup.matchupKey,
-          Side: 'Home',
-          Team: matchup.homeTeamName,
-          Opponent: matchup.awayTeamName,
-          'Player Name': player.name,
-          'Player ID': player.playerId,
-          Position: player.position,
-          'Start Odds': formatNullableForCSV(player.startOdds),
-          'Avg Points When Starting': formatNullableForCSV(player.avgPoints),
-        });
-      }
-
-      for (const player of matchup.awayPlayerOdds || []) {
-        rows.push({
-          'Record Type': 'Player Start Odds',
-          Week: matchup.week,
-          Stage: matchup.stage,
-          'Matchup ID': matchup.matchupId,
-          'Matchup Key': matchup.matchupKey,
-          Side: 'Away',
-          Team: matchup.awayTeamName,
-          Opponent: matchup.homeTeamName,
-          'Player Name': player.name,
-          'Player ID': player.playerId,
-          Position: player.position,
-          'Start Odds': formatNullableForCSV(player.startOdds),
-          'Avg Points When Starting': formatNullableForCSV(player.avgPoints),
-        });
-      }
-    }
-
-    return rows;
-  }, [result]);
-
-  const matchupSummaries = useMemo(() => {
-    if (!Array.isArray(result?.matchupSummaries)) return [];
-    return result.matchupSummaries;
-  }, [result]);
-
-
   const teamAnalytics = useMemo(() => {
     const summaries = Array.isArray(result?.teamSummaries) ? result.teamSummaries : [];
     if (!summaries.length) return [];
@@ -676,7 +695,7 @@ export default function SeasonSimulatorPage() {
         if (!weaknesses.length) {
           if (championshipOdds < leagueAvgChampionship) weaknesses.push('Title ceiling trails the league average');
           else if (team.pointsForVolatility > medianVolatility && team.pointsForVolatility > 0) weaknesses.push('Volatility is the main watch item');
-          else weaknesses.push('No major aggregate red flag; matchup variance remains');
+          else weaknesses.push('No major aggregate red flag; weekly variance remains');
         }
 
         return { ...team, scoringRank, marginRank, strengths, weaknesses };
@@ -700,24 +719,98 @@ export default function SeasonSimulatorPage() {
 
   async function runSimulation() {
     if (!leagueInfo?.leagueId) return;
+
+    const targetSimulations = Math.max(
+      1,
+      Math.min(5000, Math.floor(Number(adminConfig.simulations) || DEFAULT_ADMIN_CONFIG.simulations))
+    );
+    const serverBatchLimit = Math.max(
+      1,
+      Math.min(SIMULATION_BATCH_SIZE, Number(leagueInfo?.maxBatchSimulations) || SIMULATION_BATCH_SIZE)
+    );
+
     setRunning(true);
     setRunError('');
+    setSimulationProgress({ completed: 0, total: targetSimulations, retry: 0, batchSize: serverBatchLimit });
+
+    const accumulator = createSimulationAccumulator();
+    let completed = 0;
+    let resultMeta = null;
+    let activeBatchSize = serverBatchLimit;
 
     try {
-      const response = await fetch('/api/season-simulator/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leagueId: leagueInfo.leagueId,
-          startMode,
-          rosterTrades,
-        }),
-      });
-      const json = await readApiJson(response, 'Simulation');
-      if (!response.ok || !json?.ok) {
-        throw new Error(json?.error || `Simulation failed (${response.status})`);
+      while (completed < targetSimulations) {
+        const requestedBatch = Math.min(activeBatchSize, targetSimulations - completed);
+        let batchJson = null;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= SIMULATION_BATCH_ATTEMPTS; attempt += 1) {
+          setSimulationProgress({
+            completed,
+            total: targetSimulations,
+            retry: attempt > 1 ? attempt - 1 : 0,
+            batchSize: activeBatchSize,
+          });
+
+          try {
+            const response = await fetch('/api/season-simulator/simulate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                leagueId: leagueInfo.leagueId,
+                startMode,
+                rosterTrades,
+                simulations: requestedBatch,
+              }),
+            });
+
+            const json = await readApiJson(response, `Simulation batch ${completed + 1}-${completed + requestedBatch}`);
+            if (!response.ok || !json?.ok) {
+              throw new Error(json?.error || `Simulation batch failed (${response.status})`);
+            }
+
+            batchJson = json;
+            break;
+          } catch (error) {
+            lastError = error;
+            if (attempt < SIMULATION_BATCH_ATTEMPTS) {
+              await sleep(500 * attempt);
+            }
+          }
+        }
+
+        if (!batchJson) {
+          if (activeBatchSize > 1) {
+            activeBatchSize = Math.max(1, Math.floor(activeBatchSize / 2));
+            setSimulationProgress({
+              completed,
+              total: targetSimulations,
+              retry: 0,
+              batchSize: activeBatchSize,
+            });
+            await sleep(750);
+            continue;
+          }
+
+          throw new Error(
+            `${lastError?.message || 'Simulation batch failed'} Progress was ${completed}/${targetSimulations}.`
+          );
+        }
+
+        if (!resultMeta) {
+          const { aggregation, teamSummaries, ...meta } = batchJson;
+          resultMeta = meta;
+        }
+
+        const batchCompleted = mergeSimulationAggregation(accumulator, batchJson.aggregation);
+        completed += batchCompleted;
+        setSimulationProgress({ completed, total: targetSimulations, retry: 0, batchSize: activeBatchSize });
+
+        // Yield briefly so the progress indicator can paint between requests.
+        if (completed < targetSimulations) await sleep(50);
       }
-      setResult(json);
+
+      setResult(finalizeSimulationResult(resultMeta || {}, accumulator));
     } catch (error) {
       setRunError(error?.message || 'Simulation failed');
     } finally {
@@ -728,13 +821,7 @@ export default function SeasonSimulatorPage() {
   function exportSummaryCsv() {
     if (!rawRunRows.length) return;
     const today = new Date().toISOString().split('T')[0];
-    downloadCSV(rawRunRows, `season-simulator-runs-${today}.csv`);
-  }
-
-  function exportMatchupCsv() {
-    if (!matchupRunRows.length) return;
-    const today = new Date().toISOString().split('T')[0];
-    downloadCSV(matchupRunRows, `season-simulator-matchups-${today}.csv`);
+    downloadCSV(rawRunRows, `season-simulator-summary-${today}.csv`);
   }
 
   if (loadingLeague || status === 'loading') {
@@ -866,13 +953,23 @@ export default function SeasonSimulatorPage() {
                 {running ? (
                   <>
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                    Simulating…
+                    Simulating… {simulationProgress.completed}/{simulationProgress.total}
                   </>
                 ) : (
                   <>Run simulation <span aria-hidden="true">→</span></>
                 )}
               </button>
-              <p className="mt-2 text-center text-xs leading-5 text-white/40">Results replace the previous simulation on this page.</p>
+              {running && simulationProgress.total > 0 ? (
+                <div className="mt-3">
+                  <ProgressBar value={simulationProgress.completed} max={simulationProgress.total} height="h-2" />
+                  <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-white/40">
+                    <span>Batch size: {simulationProgress.batchSize} season{simulationProgress.batchSize === 1 ? '' : 's'}</span>
+                    <span>{simulationProgress.retry ? `Retry ${simulationProgress.retry}/${SIMULATION_BATCH_ATTEMPTS - 1}` : `${simulationProgress.completed}/${simulationProgress.total}`}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-center text-xs leading-5 text-white/40">Results replace the previous simulation on this page.</p>
+              )}
             </div>
           </div>
 
@@ -930,11 +1027,10 @@ export default function SeasonSimulatorPage() {
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FF8A6D]">Team report cards</p>
                   <h2 className="mt-1 text-2xl font-black text-white">Strengths, weaknesses & risk</h2>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/50">Automatically derived from aggregate scoring, finish distributions, playoff odds, title odds, and downside risk.</p>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/50">Automatically derived from aggregate scoring, lineup-slot production, finish distributions, playoff odds, title odds, and downside risk.</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:flex">
+                <div className="flex">
                   <button type="button" onClick={exportSummaryCsv} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] sm:text-sm">Team CSV</button>
-                  <button type="button" onClick={exportMatchupCsv} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] sm:text-sm">Matchup CSV</button>
                 </div>
               </div>
 
@@ -989,91 +1085,6 @@ export default function SeasonSimulatorPage() {
               </div>
             </details>
 
-            <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#0A1D2B]">
-              <div className="border-b border-white/10 px-4 py-5 sm:px-6">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FF8A6D]">Matchup lab</p>
-                <h2 className="mt-1 text-2xl font-black text-white">Weekly matchup detail</h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-white/50">Compare projected scoring side-by-side, then open a matchup to see which lineup slots and players are driving the result.</p>
-              </div>
-
-              <div className="space-y-3 p-3 sm:p-4">
-                {matchupSummaries.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm text-white/45">No matchup detail is available yet.</div>
-                ) : (
-                  matchupSummaries.map((matchup) => {
-                    const homeScore = Number(matchup.avgHomeScore) || 0;
-                    const awayScore = Number(matchup.avgAwayScore) || 0;
-                    const scoreMax = Math.max(homeScore, awayScore, 1);
-                    const homeLeads = homeScore >= awayScore;
-                    return (
-                      <details key={matchup.matchupKey} className="group overflow-hidden rounded-2xl border border-white/10 bg-black/15 open:border-white/15 open:bg-black/20">
-                        <summary className="cursor-pointer list-none px-4 py-4 sm:px-5 [&::-webkit-details-marker]:hidden">
-                          <div className="flex items-start gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35"><span>{matchup.stage}</span><span>•</span><span>Week {matchup.week}</span></div>
-                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                {[
-                                  { name: matchup.homeTeamName || `Roster ${matchup.homeRosterId}`, score: homeScore, leads: homeLeads },
-                                  { name: matchup.awayTeamName || `Roster ${matchup.awayRosterId}`, score: awayScore, leads: !homeLeads },
-                                ].map((side) => (
-                                  <div key={side.name} className={`rounded-xl border px-3 py-3 ${side.leads ? 'border-[#FF4B1F]/25 bg-[#FF4B1F]/8' : 'border-white/10 bg-white/[0.025]'}`}>
-                                    <div className="flex items-center justify-between gap-3"><span className="truncate text-sm font-bold text-white">{side.name}</span><span className="text-lg font-black text-white">{formatNumber(side.score)}</span></div>
-                                    <div className="mt-2"><ProgressBar value={side.score} max={scoreMax} tone={side.leads ? 'accent' : 'muted'} /></div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="mt-2 text-xs text-white/40">Average margin: <span className="font-bold text-white/65">{formatNumber(Math.abs(matchup.avgMargin))} pts</span></div>
-                            </div>
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-lg text-white/50 transition group-open:rotate-180 group-open:text-white">⌄</span>
-                          </div>
-                        </summary>
-
-                        <div className="border-t border-white/10 p-3 sm:p-4">
-                          <div className="grid gap-3 xl:grid-cols-2">
-                            {[
-                              { label: 'Home', teamName: matchup.homeTeamName || `Roster ${matchup.homeRosterId}`, slots: matchup.homeSlotAverages, players: matchup.homePlayerOdds },
-                              { label: 'Away', teamName: matchup.awayTeamName || `Roster ${matchup.awayRosterId}`, slots: matchup.awaySlotAverages, players: matchup.awayPlayerOdds },
-                            ].map((side) => {
-                              const slotMax = Math.max(1, ...side.slots.map((slot) => Number(slot.avgPoints) || 0));
-                              return (
-                                <div key={side.label} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-                                  <div><div className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">{side.label}</div><h3 className="mt-0.5 font-bold text-white">{side.teamName}</h3></div>
-
-                                  <div className="mt-4">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">Lineup production</div>
-                                    <div className="mt-3 space-y-2.5">
-                                      {side.slots.map((slot) => (
-                                        <div key={slot.label} className="grid grid-cols-[58px_minmax(0,1fr)_58px] items-center gap-2 text-xs">
-                                          <div className="font-semibold text-white/50">{slot.label}</div>
-                                          <ProgressBar value={slot.avgPoints} max={slotMax} height="h-2.5" />
-                                          <div className="text-right font-black text-white/75">{formatNumber(slot.avgPoints)}</div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-5">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">Most likely starters</div>
-                                    <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10 bg-black/15">
-                                      {side.players.slice(0, 8).map((player) => (
-                                        <div key={player.playerId} className="px-3 py-2.5">
-                                          <div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="truncate text-sm font-semibold text-white">{player.name || player.playerId}</div><div className="text-xs text-white/35">{player.position} · {formatNumber(player.avgPoints)} avg pts</div></div><div className="shrink-0 text-xs font-black text-white/70">{formatPercent(player.startOdds)}</div></div>
-                                          <div className="mt-2"><ProgressBar value={player.startOdds} tone="muted" /></div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </details>
-                    );
-                  })
-                )}
-              </div>
-            </section>
           </section>
         ) : null}      </div>
 
