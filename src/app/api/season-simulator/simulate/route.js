@@ -8,7 +8,7 @@ import { getSeasonSimulatorSettings } from '@/lib/db-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const MAX_BATCH_SIMULATIONS = 20;
 
