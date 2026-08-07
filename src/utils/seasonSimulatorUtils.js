@@ -48,15 +48,20 @@ export function randomizeProjectedPoints(basePoints, rngConfig = {}, randomFn = 
   const startingPoints = Math.max(0, Number(basePoints) || 0);
   if (startingPoints === 0) return 0;
 
+  // Backward-compatible injury switches. `includeInjury: false` still disables
+  // both injury types, while callers can now control short/in-game and
+  // unavailable/pre-lineup injuries independently.
   const includeInjury = options.includeInjury !== false;
+  const includeShortInjury = options.includeShortInjury ?? includeInjury;
+  const includeLongInjury = options.includeLongInjury ?? includeInjury;
   const boomBustStdDev = clampNumber(rngConfig.boomBustStdDev ?? DEFAULT_SIMULATION_SETTINGS.boomBustStdDev, 0, 1);
   const shortInjuryChance = clampNumber(rngConfig.shortInjuryChance ?? DEFAULT_SIMULATION_SETTINGS.shortInjuryChance, 0, 1);
   const longInjuryChance = clampNumber(rngConfig.longInjuryChance ?? DEFAULT_SIMULATION_SETTINGS.longInjuryChance, 0, 1);
 
-  if (includeInjury && randomFn() < longInjuryChance) return 0;
+  if (includeLongInjury && randomFn() < longInjuryChance) return 0;
 
   let multiplier = 1 + gaussianRandom(randomFn) * boomBustStdDev;
-  if (includeInjury && randomFn() < shortInjuryChance) {
+  if (includeShortInjury && randomFn() < shortInjuryChance) {
     multiplier *= 0.35 + randomFn() * 0.45;
   }
 
@@ -249,7 +254,7 @@ export async function fetchSleeperLeagueBundle(leagueId) {
     fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
     fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`),
     fetchJson('https://api.sleeper.app/v1/state/nfl'),
-    fetchJson('https://api.sleeper.app/v1/players/nfl'),
+    fetchJson('https://api.sleeper.app/v1/players/nfl', { cache: 'force-cache', next: { revalidate: 3600 } }),
   ]);
 
   return {
@@ -321,16 +326,172 @@ function buildProjectedLineupPlayers({ roster, projectionMap, playerMetaMap }) {
     .filter((player) => player.available);
 }
 
-function buildActualPointMap({ roster, projectionMap, playerMetaMap, rngConfig }) {
-  const actualPlayers = (roster?.players || []).map((playerId) => {
-    const projected = getProjectedPointsForPlayer(playerId, projectionMap, playerMetaMap);
-    return {
-      playerId: projected.playerId,
-      points: randomizeProjectedPoints(projected.points, rngConfig, Math.random, { includeInjury: false }),
-    };
+function buildSlotLabels(rosterPositions = []) {
+  const ignored = new Set(['BN', 'IR', 'TAXI']);
+  const counts = new Map();
+  const slots = [];
+
+  for (const rawSlot of rosterPositions) {
+    const slot = String(rawSlot || '').trim();
+    if (!slot || ignored.has(slot)) continue;
+    counts.set(slot, (counts.get(slot) || 0) + 1);
+    slots.push(slot);
+  }
+
+  const seen = new Map();
+  return slots.map((slot) => {
+    seen.set(slot, (seen.get(slot) || 0) + 1);
+    return counts.get(slot) > 1 ? `${slot}${seen.get(slot)}` : slot;
+  });
+}
+
+function buildProjectedLineupTemplateFromPlayers({
+  weeklyPlayers = [],
+  slots,
+  flexDefs,
+  slotLabels = [],
+}) {
+  const projectedLineup = fillWeeklyMaxDetailed(weeklyPlayers, slots, flexDefs);
+
+  return projectedLineup.assignments.map((assignment, index) => ({
+    ...assignment,
+    slotLabel: slotLabels[index] || assignment.slot || assignment.position || 'UNK',
+    projectedPoints: Number(assignment.points || 0),
+  }));
+}
+
+function buildPreparedWeeklyRoster({
+  roster,
+  projectionMap,
+  playerMetaMap,
+  slots,
+  flexDefs,
+  slotLabels = [],
+}) {
+  const playerPool = buildProjectedLineupPlayers({ roster, projectionMap, playerMetaMap });
+  const healthyTemplate = buildProjectedLineupTemplateFromPlayers({
+    weeklyPlayers: playerPool,
+    slots,
+    flexDefs,
+    slotLabels,
   });
 
-  return new Map(actualPlayers.map((player) => [player.playerId, player.points]));
+  return {
+    playerPool,
+    healthyTemplate,
+    healthyStarterIds: new Set(healthyTemplate.map((assignment) => String(assignment.playerId))),
+  };
+}
+
+function selectLineupForSimulation({
+  preparedRoster,
+  rngConfig = {},
+  slots,
+  flexDefs,
+  slotLabels = [],
+  randomFn = Math.random,
+}) {
+  const prepared = preparedRoster || { playerPool: [], healthyTemplate: [], healthyStarterIds: new Set() };
+  const unavailableChance = clampNumber(
+    rngConfig.longInjuryChance ?? DEFAULT_SIMULATION_SETTINGS.longInjuryChance,
+    0,
+    1
+  );
+
+  // Fast path: only an unavailable projected starter can change the optimal
+  // lineup. Roll starters first. If all projected starters are available,
+  // bench-player availability cannot affect the selected lineup, so the cached
+  // healthy template is valid and no lineup optimizer call is needed.
+  if (unavailableChance <= 0 || prepared.healthyTemplate.length === 0) {
+    return prepared.healthyTemplate;
+  }
+
+  const unavailablePlayerIds = new Set();
+  let starterUnavailable = false;
+
+  for (const assignment of prepared.healthyTemplate) {
+    const playerId = String(assignment.playerId);
+    if (randomFn() < unavailableChance) {
+      unavailablePlayerIds.add(playerId);
+      starterUnavailable = true;
+    }
+  }
+
+  if (!starterUnavailable) {
+    return prepared.healthyTemplate;
+  }
+
+  // Once a starter is unavailable, replacement availability matters. Roll the
+  // remaining player pool exactly once for this simulated team-week, then
+  // rebuild the optimal lineup from players who are still available.
+  for (const player of prepared.playerPool) {
+    const playerId = String(player.playerId);
+    if (prepared.healthyStarterIds.has(playerId)) continue;
+    if (randomFn() < unavailableChance) {
+      unavailablePlayerIds.add(playerId);
+    }
+  }
+
+  const availablePlayers = prepared.playerPool.filter(
+    (player) => !unavailablePlayerIds.has(String(player.playerId))
+  );
+
+  return buildProjectedLineupTemplateFromPlayers({
+    weeklyPlayers: availablePlayers,
+    slots,
+    flexDefs,
+    slotLabels,
+  });
+}
+
+function simulatePreparedLineup(template = [], rngConfig = {}, randomFn = Math.random) {
+  let total = 0;
+  const assignments = new Array(template.length);
+
+  for (let index = 0; index < template.length; index += 1) {
+    const assignment = template[index];
+    const points = randomizeProjectedPoints(
+      assignment.projectedPoints,
+      rngConfig,
+      randomFn,
+      { includeLongInjury: false, includeShortInjury: true }
+    );
+
+    total += points;
+    assignments[index] = {
+      ...assignment,
+      points,
+    };
+  }
+
+  return {
+    total,
+    assignments,
+  };
+}
+
+function simulatePreparedRosterWeek({
+  preparedRoster,
+  rngConfig = {},
+  slots,
+  flexDefs,
+  slotLabels = [],
+  randomFn = Math.random,
+}) {
+  const template = selectLineupForSimulation({
+    preparedRoster,
+    rngConfig,
+    slots,
+    flexDefs,
+    slotLabels,
+    randomFn,
+  });
+
+  const simulated = simulatePreparedLineup(template, rngConfig, randomFn);
+  return {
+    ...simulated,
+    chosen: template.map((assignment) => assignment.playerId),
+  };
 }
 
 export function scoreRosterOptimalLineup({
@@ -341,21 +502,23 @@ export function scoreRosterOptimalLineup({
   rngConfig,
 }) {
   const { slots, flexDefs } = buildStarterSlots(rosterPositions);
-  const weeklyPlayers = buildProjectedLineupPlayers({ roster, projectionMap, playerMetaMap });
-  const projectedLineup = fillWeeklyMaxDetailed(weeklyPlayers, slots, flexDefs);
-  const actualPointsByPlayerId = buildActualPointMap({ roster, projectionMap, playerMetaMap, rngConfig });
+  const slotLabels = buildSlotLabels(rosterPositions);
+  const preparedRoster = buildPreparedWeeklyRoster({
+    roster,
+    projectionMap,
+    playerMetaMap,
+    slots,
+    flexDefs,
+    slotLabels,
+  });
 
-  const assignments = projectedLineup.assignments.map((assignment) => ({
-    ...assignment,
-    projectedPoints: assignment.points,
-    points: Number(actualPointsByPlayerId.get(String(assignment.playerId)) || 0),
-  }));
-
-  return {
-    total: assignments.reduce((sum, assignment) => sum + (assignment.points || 0), 0),
-    chosen: projectedLineup.chosen,
-    assignments,
-  };
+  return simulatePreparedRosterWeek({
+    preparedRoster,
+    rngConfig,
+    slots,
+    flexDefs,
+    slotLabels,
+  });
 }
 
 function pairMatchupsFromWeek(matchups, rosterIds) {
@@ -448,13 +611,22 @@ function getMatchupScore(matchup) {
   return Number(numeric ?? 0) || 0;
 }
 
-async function buildBaselineStandings({ leagueId, rosterMap, currentWeek, startFromCurrentWeek }) {
+async function buildBaselineStandings({
+  leagueId,
+  rosterMap,
+  currentWeek,
+  startFromCurrentWeek,
+  matchupCache = null,
+}) {
   const standings = buildStandingsFromCurrentState(rosterMap, { startFromCurrentWeek: false });
   const standingsMap = new Map(standings.map((team) => [team.rosterId, team]));
 
   const lastCompletedWeek = startFromCurrentWeek ? Math.max(0, currentWeek - 1) : 0;
   for (let week = 1; week <= lastCompletedWeek; week += 1) {
-    const matchups = await fetchSleeperWeeklyMatchups(leagueId, week);
+    const matchups = matchupCache?.has(week)
+      ? matchupCache.get(week)
+      : await fetchSleeperWeeklyMatchups(leagueId, week);
+
     const groups = new Map();
     for (const matchup of Array.isArray(matchups) ? matchups : []) {
       const matchupId = Number(matchup?.matchup_id ?? matchup?.matchupId ?? -1);
@@ -479,6 +651,158 @@ async function buildBaselineStandings({ leagueId, rosterMap, currentWeek, startF
   return { standings, standingsMap };
 }
 
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const input = Array.from(items || []);
+  const results = new Array(input.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= input.length) return;
+      results[index] = await mapper(input[index], index);
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(Number(concurrency) || 1, input.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+function addAssignmentStats(slotStats, playerStats, assignments = []) {
+  for (const assignment of assignments) {
+    const slot = assignment.slotLabel || assignment.slot || assignment.position || 'UNK';
+    const points = Number(assignment.points || 0);
+    const playerId = String(assignment.playerId || '');
+    const name = assignment.name || assignment.playerName || playerId;
+    const position = assignment.position || 'UNK';
+
+    if (!slotStats.has(slot)) {
+      slotStats.set(slot, { label: slot, appearances: 0, pointsTotal: 0 });
+    }
+    const slotRow = slotStats.get(slot);
+    slotRow.appearances += 1;
+    slotRow.pointsTotal += points;
+
+    if (!playerId) continue;
+    if (!playerStats.has(playerId)) {
+      playerStats.set(playerId, {
+        playerId,
+        name,
+        position,
+        startCount: 0,
+        pointsTotal: 0,
+      });
+    }
+
+    const playerRow = playerStats.get(playerId);
+    playerRow.startCount += 1;
+    playerRow.pointsTotal += points;
+  }
+}
+
+function serializeSlotStats(slotStats, simulations) {
+  return Array.from(slotStats.values())
+    .map((slot) => ({
+      label: slot.label,
+      avgPoints: Number((slot.pointsTotal / Math.max(1, slot.appearances)).toFixed(2)),
+      avgAppearances: Number((slot.appearances / Math.max(1, simulations)).toFixed(2)),
+      appearances: slot.appearances,
+    }))
+    .sort((left, right) => right.avgPoints - left.avgPoints || left.label.localeCompare(right.label));
+}
+
+function serializePlayerStats(playerStats, simulations) {
+  return Array.from(playerStats.values())
+    .map((player) => ({
+      playerId: player.playerId,
+      name: player.name,
+      position: player.position,
+      startOdds: Number(((player.startCount / Math.max(1, simulations)) * 100).toFixed(2)),
+      avgPoints: Number((player.pointsTotal / Math.max(1, player.startCount)).toFixed(2)),
+      starts: player.startCount,
+    }))
+    .sort((left, right) => right.startOdds - left.startOdds || right.avgPoints - left.avgPoints);
+}
+
+function populationStdDev(sum, sumSquares, count) {
+  if (!count) return 0;
+  const mean = sum / count;
+  const variance = Math.max(0, (sumSquares / count) - (mean * mean));
+  return Math.sqrt(variance);
+}
+
+function createMatchupAccumulator({
+  matchupKey,
+  week,
+  stage,
+  matchupId,
+  homeRosterId,
+  awayRosterId,
+  homeTeamName,
+  awayTeamName,
+}) {
+  return {
+    matchupKey,
+    week,
+    stage,
+    matchupId,
+    homeRosterId,
+    awayRosterId,
+    homeTeamName,
+    awayTeamName,
+    sims: 0,
+    homeScoreTotal: 0,
+    awayScoreTotal: 0,
+    marginTotal: 0,
+    homeSlotStats: new Map(),
+    awaySlotStats: new Map(),
+    homePlayerStats: new Map(),
+    awayPlayerStats: new Map(),
+  };
+}
+
+function accumulateMatchup(matchupTotals, {
+  matchupKey,
+  week,
+  stage,
+  matchupId,
+  homeRosterId,
+  awayRosterId,
+  homeTeamName,
+  awayTeamName,
+  homeScore,
+  awayScore,
+}) {
+  if (!matchupTotals.has(matchupKey)) {
+    matchupTotals.set(matchupKey, createMatchupAccumulator({
+      matchupKey,
+      week,
+      stage,
+      matchupId,
+      homeRosterId,
+      awayRosterId,
+      homeTeamName,
+      awayTeamName,
+    }));
+  }
+
+  const group = matchupTotals.get(matchupKey);
+  group.sims += 1;
+  group.homeScoreTotal += Number(homeScore.total || 0);
+  group.awayScoreTotal += Number(awayScore.total || 0);
+  group.marginTotal += Number(homeScore.total || 0) - Number(awayScore.total || 0);
+
+  addAssignmentStats(group.homeSlotStats, group.homePlayerStats, homeScore.assignments);
+  addAssignmentStats(group.awaySlotStats, group.awayPlayerStats, awayScore.assignments);
+}
+
+function addTeamLineupStats(teamTotal, assignments = []) {
+  if (!teamTotal) return;
+  addAssignmentStats(teamTotal.slotStats, teamTotal.playerStats, assignments);
+}
+
 export async function runSeasonSimulation({
   leagueId,
   startMode = 'current',
@@ -498,13 +822,69 @@ export async function runSeasonSimulation({
   const projectionCache = new Map();
   const matchupCache = new Map();
 
+  // Load schedule and projection data once, with bounded concurrency.
+  // Matchups are only needed through the end of the regular season.
+  const fetchTasks = [];
+  for (let week = 1; week <= regularSeasonEndWeek; week += 1) {
+    fetchTasks.push({ type: 'matchups', week });
+  }
   for (let week = weekStart; week <= seasonEndWeek; week += 1) {
-    const [matchups, projections] = await Promise.all([
-      fetchSleeperWeeklyMatchups(leagueId, week),
-      fetchSleeperWeeklyProjections({ season: bundle.season, week }).catch(() => new Map()),
-    ]);
-    matchupCache.set(week, matchups);
-    projectionCache.set(week, projections);
+    fetchTasks.push({ type: 'projections', week });
+  }
+
+  const fetched = await mapWithConcurrency(fetchTasks, 8, async (task) => {
+    if (task.type === 'matchups') {
+      return {
+        ...task,
+        value: await fetchSleeperWeeklyMatchups(leagueId, task.week),
+      };
+    }
+
+    return {
+      ...task,
+      value: await fetchSleeperWeeklyProjections({
+        season: bundle.season,
+        week: task.week,
+      }).catch(() => new Map()),
+    };
+  });
+
+  for (const row of fetched) {
+    if (row.type === 'matchups') matchupCache.set(row.week, row.value);
+    else projectionCache.set(row.week, row.value);
+  }
+
+  const { slots, flexDefs } = buildStarterSlots(bundle.rosterPositions);
+  const slotLabels = buildSlotLabels(bundle.rosterPositions);
+
+  // Cache each team's eligible weekly player pool and its healthy optimal
+  // lineup. Most simulated team-weeks can reuse that lineup directly. We only
+  // rerun the lineup optimizer when an otherwise healthy projected starter is
+  // randomly unavailable for that specific simulated week.
+  const preparedRosterCache = new Map();
+  for (let week = weekStart; week <= seasonEndWeek; week += 1) {
+    const projectionMap = projectionCache.get(week) || new Map();
+    const byRoster = new Map();
+
+    for (const [rosterId, roster] of rosterMap.entries()) {
+      byRoster.set(rosterId, buildPreparedWeeklyRoster({
+        roster,
+        projectionMap,
+        playerMetaMap,
+        slots,
+        flexDefs,
+        slotLabels,
+      }));
+    }
+
+    preparedRosterCache.set(week, byRoster);
+  }
+
+  // Regular-season pairings are schedule data, so compute them once rather
+  // than rebuilding the same groups for every simulated season.
+  const regularPairingsCache = new Map();
+  for (let week = weekStart; week <= regularSeasonEndWeek; week += 1) {
+    regularPairingsCache.set(week, pairMatchupsFromWeek(matchupCache.get(week), teamIds));
   }
 
   const totals = new Map();
@@ -515,92 +895,103 @@ export async function runSeasonSimulation({
       teamName: team.teamName,
       simulations: 0,
       winsTotal: 0,
+      winsSquaredTotal: 0,
       lossesTotal: 0,
       tiesTotal: 0,
       pointsForTotal: 0,
+      pointsForSquaredTotal: 0,
+      pointsAgainstTotal: 0,
       playoffAppearances: 0,
       championships: 0,
       firstPickOdds: 0,
       finishTotal: 0,
       recordCounts: new Map(),
+      slotStats: new Map(),
+      playerStats: new Map(),
     });
   }
 
-  const simulationRuns = [];
+  const matchupTotals = new Map();
   const playoffTeamCount = Math.max(2, Math.min(bundle.playoffTeams || 6, teamIds.length));
   const baseline = await buildBaselineStandings({
     leagueId,
     rosterMap,
     currentWeek: bundle.currentWeek,
     startFromCurrentWeek: activeStartMode === 'current',
+    matchupCache,
   });
 
   for (let simulationIndex = 0; simulationIndex < simulations; simulationIndex += 1) {
-    const runRecord = {
-      simulationIndex: simulationIndex + 1,
-      championRosterId: null,
-      matchups: [],
-      rows: [],
-    };
     const standings = baseline.standings.map((team) => ({ ...team }));
     const standingsMap = new Map(standings.map((team) => [team.rosterId, team]));
 
     for (let week = weekStart; week <= regularSeasonEndWeek; week += 1) {
-      const projectionMap = projectionCache.get(week) || new Map();
-      const pairings = pairMatchupsFromWeek(matchupCache.get(week), teamIds);
+      const pairings = regularPairingsCache.get(week) || [];
+      const weekPreparedRosters = preparedRosterCache.get(week) || new Map();
 
       for (const pairing of pairings) {
         const homeTeam = rosterMap.get(pairing.homeRosterId);
         const awayTeam = rosterMap.get(pairing.awayRosterId);
         if (!homeTeam || !awayTeam) continue;
 
-        const homeScore = scoreRosterOptimalLineup({
-          roster: homeTeam,
-          projectionMap,
-          playerMetaMap,
-          rosterPositions: bundle.rosterPositions,
+        const homeScore = simulatePreparedRosterWeek({
+          preparedRoster: weekPreparedRosters.get(pairing.homeRosterId),
           rngConfig,
+          slots,
+          flexDefs,
+          slotLabels,
         });
-        const awayScore = scoreRosterOptimalLineup({
-          roster: awayTeam,
-          projectionMap,
-          playerMetaMap,
-          rosterPositions: bundle.rosterPositions,
+        const awayScore = simulatePreparedRosterWeek({
+          preparedRoster: weekPreparedRosters.get(pairing.awayRosterId),
           rngConfig,
+          slots,
+          flexDefs,
+          slotLabels,
         });
 
-        updateStandingsForGame(standingsMap, pairing.homeRosterId, pairing.awayRosterId, homeScore.total, awayScore.total);
+        updateStandingsForGame(
+          standingsMap,
+          pairing.homeRosterId,
+          pairing.awayRosterId,
+          homeScore.total,
+          awayScore.total
+        );
 
-        const matchupRecord = {
-          simulationIndex: simulationIndex + 1,
+        addTeamLineupStats(totals.get(pairing.homeRosterId), homeScore.assignments);
+        addTeamLineupStats(totals.get(pairing.awayRosterId), awayScore.assignments);
+
+        const matchupKey = `${week}|regular|${pairing.matchupId}|${pairing.homeRosterId}|${pairing.awayRosterId}`;
+        accumulateMatchup(matchupTotals, {
+          matchupKey,
           week,
-          matchupId: pairing.matchupId,
           stage: 'regular',
-          matchupKey: `${week}|regular|${pairing.matchupId}|${pairing.homeRosterId}|${pairing.awayRosterId}`,
+          matchupId: pairing.matchupId,
           homeRosterId: pairing.homeRosterId,
           awayRosterId: pairing.awayRosterId,
           homeTeamName: homeTeam.displayName,
           awayTeamName: awayTeam.displayName,
-          homeScore: Number(homeScore.total.toFixed(2)),
-          awayScore: Number(awayScore.total.toFixed(2)),
-          winnerRosterId: homeScore.total >= awayScore.total ? pairing.homeRosterId : pairing.awayRosterId,
-          homeStarters: homeScore.assignments,
-          awayStarters: awayScore.assignments,
-        };
-
-        runRecord.matchups.push(matchupRecord);
+          homeScore,
+          awayScore,
+        });
       }
     }
 
-    const playoffField = sortStandings(standings).slice(0, playoffTeamCount).map((team) => team.rosterId);
+    const playoffField = sortStandings(standings)
+      .slice(0, playoffTeamCount)
+      .map((team) => team.rosterId);
+
     playoffField.forEach((rosterId) => {
       const teamTotal = totals.get(rosterId);
       if (teamTotal) teamTotal.playoffAppearances += 1;
     });
 
     let activePlayoffTeams = playoffField;
-    for (let week = bundle.playoffWeekStart; week <= seasonEndWeek && activePlayoffTeams.length > 1; week += 1) {
-      const projectionMap = projectionCache.get(week) || new Map();
+    for (
+      let week = bundle.playoffWeekStart;
+      week <= seasonEndWeek && activePlayoffTeams.length > 1;
+      week += 1
+    ) {
+      const weekPreparedRosters = preparedRosterCache.get(week) || new Map();
       const { pairings, byeTeam } = buildPlayoffPairings(activePlayoffTeams, standingsMap);
       const winners = [];
 
@@ -613,42 +1004,42 @@ export async function runSeasonSimulation({
         const awayTeam = rosterMap.get(pairing.awayRosterId);
         if (!homeTeam || !awayTeam) continue;
 
-        const homeScore = scoreRosterOptimalLineup({
-          roster: homeTeam,
-          projectionMap,
-          playerMetaMap,
-          rosterPositions: bundle.rosterPositions,
+        const homeScore = simulatePreparedRosterWeek({
+          preparedRoster: weekPreparedRosters.get(pairing.homeRosterId),
           rngConfig,
+          slots,
+          flexDefs,
+          slotLabels,
         });
-        const awayScore = scoreRosterOptimalLineup({
-          roster: awayTeam,
-          projectionMap,
-          playerMetaMap,
-          rosterPositions: bundle.rosterPositions,
+        const awayScore = simulatePreparedRosterWeek({
+          preparedRoster: weekPreparedRosters.get(pairing.awayRosterId),
           rngConfig,
+          slots,
+          flexDefs,
+          slotLabels,
         });
 
-        const winnerRosterId = homeScore.total >= awayScore.total ? pairing.homeRosterId : pairing.awayRosterId;
+        const winnerRosterId = homeScore.total >= awayScore.total
+          ? pairing.homeRosterId
+          : pairing.awayRosterId;
         winners.push(winnerRosterId);
 
-        const matchupRecord = {
-          simulationIndex: simulationIndex + 1,
+        addTeamLineupStats(totals.get(pairing.homeRosterId), homeScore.assignments);
+        addTeamLineupStats(totals.get(pairing.awayRosterId), awayScore.assignments);
+
+        const matchupKey = `${week}|playoffs|${pairing.matchupId}|${pairing.homeRosterId}|${pairing.awayRosterId}`;
+        accumulateMatchup(matchupTotals, {
+          matchupKey,
           week,
-          matchupId: pairing.matchupId,
           stage: 'playoffs',
-          matchupKey: `${week}|playoffs|${pairing.matchupId}|${pairing.homeRosterId}|${pairing.awayRosterId}`,
+          matchupId: pairing.matchupId,
           homeRosterId: pairing.homeRosterId,
           awayRosterId: pairing.awayRosterId,
           homeTeamName: homeTeam.displayName,
           awayTeamName: awayTeam.displayName,
-          homeScore: Number(homeScore.total.toFixed(2)),
-          awayScore: Number(awayScore.total.toFixed(2)),
-          winnerRosterId,
-          homeStarters: homeScore.assignments,
-          awayStarters: awayScore.assignments,
-        };
-
-        runRecord.matchups.push(matchupRecord);
+          homeScore,
+          awayScore,
+        });
       }
 
       activePlayoffTeams = winners;
@@ -656,7 +1047,7 @@ export async function runSeasonSimulation({
 
     const championRosterId = activePlayoffTeams[0] ?? sortStandings(standings)[0]?.rosterId;
     const finalRankings = sortStandings(standings);
-    const finishByRosterId = new Map(finalRankings.map((team, index) => [team.rosterId, index + 1]));
+
     if (championRosterId !== undefined && championRosterId !== null) {
       const championStanding = finalRankings.find((team) => team.rosterId === championRosterId);
       if (championStanding) {
@@ -669,11 +1060,15 @@ export async function runSeasonSimulation({
     finalRankings.forEach((team, index) => {
       const total = totals.get(team.rosterId);
       if (!total) return;
+
       total.simulations += 1;
       total.winsTotal += team.wins;
+      total.winsSquaredTotal += team.wins * team.wins;
       total.lossesTotal += team.losses;
       total.tiesTotal += team.ties;
       total.pointsForTotal += team.pointsFor;
+      total.pointsForSquaredTotal += team.pointsFor * team.pointsFor;
+      total.pointsAgainstTotal += team.pointsAgainst;
       total.finishTotal += index + 1;
 
       const recordKey = `${team.wins}-${team.losses}-${team.ties}`;
@@ -688,47 +1083,76 @@ export async function runSeasonSimulation({
       const championTotal = totals.get(championRosterId);
       if (championTotal) championTotal.championships += 1;
     }
-
-    runRecord.championRosterId = championRosterId ?? null;
-    runRecord.rows = Array.from(standingsMap.values())
-        .map((team) => ({
-          rosterId: team.rosterId,
-          displayName: team.displayName,
-          teamName: team.teamName,
-          wins: team.wins,
-          losses: team.losses,
-          ties: team.ties,
-          pointsFor: Number(team.pointsFor.toFixed(2)),
-          pointsAgainst: Number(team.pointsAgainst.toFixed(2)),
-          finish: finishByRosterId.get(team.rosterId) || null,
-          madePlayoffs: playoffField.includes(team.rosterId),
-          wonChampionship: championRosterId === team.rosterId,
-          wonFirstPick: finishByRosterId.get(team.rosterId) === teamIds.length,
-        }))
-        .sort((left, right) => (left.finish || 999) - (right.finish || 999));
-
-    simulationRuns.push(runRecord);
   }
 
   const teamSummaries = Array.from(totals.values())
-    .map((team) => ({
-      rosterId: team.rosterId,
-      teamName: team.teamName,
-      displayName: team.displayName,
-      averageWins: Number((team.winsTotal / simulations).toFixed(2)),
-      averageLosses: Number((team.lossesTotal / simulations).toFixed(2)),
-      averageTies: Number((team.tiesTotal / simulations).toFixed(2)),
-      averagePointsFor: Number((team.pointsForTotal / simulations).toFixed(2)),
-      averageFinish: Number((team.finishTotal / simulations).toFixed(2)),
-      playoffOdds: Number(((team.playoffAppearances / simulations) * 100).toFixed(2)),
-      championshipOdds: Number(((team.championships / simulations) * 100).toFixed(2)),
-      firstPickOdds: Number(((team.firstPickOdds / simulations) * 100).toFixed(2)),
-      recordDistribution: Array.from(team.recordCounts.entries())
-        .sort((left, right) => right[1] - left[1])
-        .slice(0, 5)
-        .map(([record, count]) => ({ record, count, odds: Number(((count / simulations) * 100).toFixed(2)) })),
-    }))
+    .map((team) => {
+      const divisor = Math.max(1, simulations);
+      const averagePointsFor = team.pointsForTotal / divisor;
+      const averagePointsAgainst = team.pointsAgainstTotal / divisor;
+
+      return {
+        rosterId: team.rosterId,
+        teamName: team.teamName,
+        displayName: team.displayName,
+        averageWins: Number((team.winsTotal / divisor).toFixed(2)),
+        averageLosses: Number((team.lossesTotal / divisor).toFixed(2)),
+        averageTies: Number((team.tiesTotal / divisor).toFixed(2)),
+        averagePointsFor: Number(averagePointsFor.toFixed(2)),
+        averagePointsAgainst: Number(averagePointsAgainst.toFixed(2)),
+        averageMargin: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
+        pointsForVolatility: Number(
+          populationStdDev(team.pointsForTotal, team.pointsForSquaredTotal, divisor).toFixed(2)
+        ),
+        winsVolatility: Number(
+          populationStdDev(team.winsTotal, team.winsSquaredTotal, divisor).toFixed(2)
+        ),
+        averageFinish: Number((team.finishTotal / divisor).toFixed(2)),
+        playoffOdds: Number(((team.playoffAppearances / divisor) * 100).toFixed(2)),
+        championshipOdds: Number(((team.championships / divisor) * 100).toFixed(2)),
+        firstPickOdds: Number(((team.firstPickOdds / divisor) * 100).toFixed(2)),
+        slotAverages: serializeSlotStats(team.slotStats, divisor).map((slot) => ({
+          slot: slot.label,
+          avgPoints: slot.avgPoints,
+          appearances: slot.appearances,
+        })),
+        recordDistribution: Array.from(team.recordCounts.entries())
+          .sort((left, right) => right[1] - left[1])
+          .slice(0, 5)
+          .map(([record, count]) => ({
+            record,
+            count,
+            odds: Number(((count / divisor) * 100).toFixed(2)),
+          })),
+      };
+    })
     .sort((left, right) => left.averageFinish - right.averageFinish);
+
+  const matchupSummaries = Array.from(matchupTotals.values())
+    .map((group) => ({
+      matchupKey: group.matchupKey,
+      week: group.week,
+      stage: group.stage,
+      matchupId: group.matchupId,
+      homeRosterId: group.homeRosterId,
+      awayRosterId: group.awayRosterId,
+      homeTeamName: group.homeTeamName,
+      awayTeamName: group.awayTeamName,
+      simulations: group.sims,
+      avgHomeScore: Number((group.homeScoreTotal / Math.max(1, group.sims)).toFixed(2)),
+      avgAwayScore: Number((group.awayScoreTotal / Math.max(1, group.sims)).toFixed(2)),
+      avgMargin: Number((group.marginTotal / Math.max(1, group.sims)).toFixed(2)),
+      homeSlotAverages: serializeSlotStats(group.homeSlotStats, group.sims),
+      awaySlotAverages: serializeSlotStats(group.awaySlotStats, group.sims),
+      homePlayerOdds: serializePlayerStats(group.homePlayerStats, group.sims),
+      awayPlayerOdds: serializePlayerStats(group.awayPlayerStats, group.sims),
+    }))
+    .sort((left, right) => {
+      if (left.week !== right.week) return left.week - right.week;
+      const leftLabel = `${left.homeTeamName || ''} ${left.awayTeamName || ''}`;
+      const rightLabel = `${right.homeTeamName || ''} ${right.awayTeamName || ''}`;
+      return leftLabel.localeCompare(rightLabel);
+    });
 
   return {
     ok: true,
@@ -741,13 +1165,21 @@ export async function runSeasonSimulation({
     playoffWeekStart: bundle.playoffWeekStart,
     regularSeasonEndWeek,
     teamSummaries,
-    simulationRuns,
+    matchupSummaries,
+    rawRunsIncluded: false,
     settingsUsed: {
       simulations,
-      boomBustStdDev: Number(rngConfig.boomBustStdDev ?? DEFAULT_SIMULATION_SETTINGS.boomBustStdDev),
-      shortInjuryChance: Number(rngConfig.shortInjuryChance ?? DEFAULT_SIMULATION_SETTINGS.shortInjuryChance),
-      longInjuryChance: Number(rngConfig.longInjuryChance ?? DEFAULT_SIMULATION_SETTINGS.longInjuryChance),
+      boomBustStdDev: Number(
+        rngConfig.boomBustStdDev ?? DEFAULT_SIMULATION_SETTINGS.boomBustStdDev
+      ),
+      shortInjuryChance: Number(
+        rngConfig.shortInjuryChance ?? DEFAULT_SIMULATION_SETTINGS.shortInjuryChance
+      ),
+      longInjuryChance: Number(
+        rngConfig.longInjuryChance ?? DEFAULT_SIMULATION_SETTINGS.longInjuryChance
+      ),
     },
     rosterTrades: appliedMoves,
   };
 }
+

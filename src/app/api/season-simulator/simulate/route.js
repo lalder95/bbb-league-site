@@ -8,6 +8,7 @@ import { getSeasonSimulatorSettings } from '@/lib/db-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 function normalizeSimulationCount(value) {
   const numeric = Number(value);
@@ -58,6 +59,8 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  const startedAt = Date.now();
+
   try {
     const body = await request.json();
 
@@ -69,14 +72,23 @@ export async function POST(request) {
     const startMode = body?.startMode === 'full' ? 'full' : 'current';
     const settingsResult = await getSeasonSimulatorSettings();
     const persistedSettings = settingsResult?.success ? settingsResult.settings : DEFAULT_SIMULATION_SETTINGS;
+    const simulations = normalizeSimulationCount(persistedSettings?.simulations);
     const rosterTrades = Array.isArray(body?.rosterTrades) ? body.rosterTrades : [];
 
     const result = await runSeasonSimulation({
       leagueId,
-      simulations: normalizeSimulationCount(persistedSettings?.simulations),
+      simulations,
       startMode,
       rngConfig: normalizeRngConfig(persistedSettings),
       rosterTrades,
+    });
+
+    console.log('[Season Simulator] completed', {
+      leagueId,
+      simulations,
+      startMode,
+      durationMs: Date.now() - startedAt,
+      matchupSummaries: Array.isArray(result?.matchupSummaries) ? result.matchupSummaries.length : 0,
     });
 
     return NextResponse.json({
@@ -84,6 +96,14 @@ export async function POST(request) {
       settingsUsed: persistedSettings,
     });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err?.message || 'Failed to run season simulation' }, { status: 500 });
+    console.error('[Season Simulator] failed', {
+      durationMs: Date.now() - startedAt,
+      error: err?.stack || err?.message || String(err),
+    });
+
+    return NextResponse.json(
+      { ok: false, error: err?.message || 'Failed to run season simulation' },
+      { status: 500 }
+    );
   }
 }

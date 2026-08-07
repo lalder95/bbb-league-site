@@ -16,8 +16,8 @@ const DEFAULT_ADMIN_CONFIG = {
 const ADMIN_FIELD_HELP = {
   simulations: 'Number of simulated seasons to run for each export or leaderboard refresh.',
   boomBustStdDev: 'How wide the weekly point distribution should be. This is a decimal spread, not a percentage.',
-  shortInjuryChance: 'Chance that a player has a reduced-output week, applied per player per week.',
-  longInjuryChance: 'Chance that a player is effectively unavailable for the week, applied per player per week.',
+  shortInjuryChance: "Chance a selected starter suffers an in-game injury after lineup selection. The player stays in the lineup, but that week's output is reduced to 35–80% of its randomized level.",
+  longInjuryChance: 'Chance an otherwise eligible player is unavailable before lineup selection for that simulated week. If a projected starter is unavailable, the optimal lineup is rebuilt from the remaining players.',
 };
 
 function formatPercent(value) {
@@ -34,6 +34,23 @@ function normalizePercentInputValue(value) {
 
 function formatNumber(value) {
   return Number(value || 0).toFixed(2);
+}
+
+async function readApiJson(response, label = 'Request') {
+  const text = await response.text();
+
+  if (!text) {
+    throw new Error(`${label} failed (${response.status}) with an empty response.`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const preview = text.replace(/\s+/g, ' ').trim().slice(0, 180);
+    throw new Error(
+      `${label} failed (${response.status}). The server returned a non-JSON response${preview ? `: ${preview}` : '.'}`
+    );
+  }
 }
 
 function SummaryCard({ label, value, note }) {
@@ -442,98 +459,116 @@ export default function SeasonSimulatorPage() {
   }, []);
 
   const rawRunRows = useMemo(() => {
-    if (!Array.isArray(result?.simulationRuns)) return [];
+    if (!Array.isArray(result?.teamSummaries)) return [];
 
-    return result.simulationRuns.flatMap((simulation) =>
-      (simulation.rows || []).map((row) => ({
-        Simulation: simulation.simulationIndex,
-        Team: formatNullableForCSV(row.displayName || row.teamName),
-        Finish: formatNullableForCSV(row.finish),
-        Wins: formatNullableForCSV(row.wins),
-        Losses: formatNullableForCSV(row.losses),
-        Ties: formatNullableForCSV(row.ties),
-        'Points For': formatNullableForCSV(row.pointsFor),
-        'Points Against': formatNullableForCSV(row.pointsAgainst),
-        'Made Playoffs': row.madePlayoffs ? 'Yes' : 'No',
-        'Won Championship': row.wonChampionship ? 'Yes' : 'No',
-        'Won #1 Pick': row.wonFirstPick ? 'Yes' : 'No',
-      }))
-    );
+    return result.teamSummaries.map((team) => ({
+      Team: formatNullableForCSV(team.displayName || team.teamName),
+      'Avg Finish': formatNullableForCSV(team.averageFinish),
+      'Avg Wins': formatNullableForCSV(team.averageWins),
+      'Avg Losses': formatNullableForCSV(team.averageLosses),
+      'Avg Ties': formatNullableForCSV(team.averageTies),
+      'Avg Points For': formatNullableForCSV(team.averagePointsFor),
+      'Avg Points Against': formatNullableForCSV(team.averagePointsAgainst),
+      'Avg Margin': formatNullableForCSV(team.averageMargin),
+      'Playoff Odds': formatNullableForCSV(team.playoffOdds),
+      'Championship Odds': formatNullableForCSV(team.championshipOdds),
+      '#1 Pick Odds': formatNullableForCSV(team.firstPickOdds),
+      'Scoring Volatility': formatNullableForCSV(team.pointsForVolatility),
+      'Wins Volatility': formatNullableForCSV(team.winsVolatility),
+      'Top Record Outcomes': formatNullableForCSV(
+        (team.recordDistribution || [])
+          .map((row) => `${row.record} (${row.odds}%)`)
+          .join('; ')
+      ),
+    }));
   }, [result]);
 
   const matchupRunRows = useMemo(() => {
-    if (!Array.isArray(result?.simulationRuns)) return [];
+    if (!Array.isArray(result?.matchupSummaries)) return [];
 
     const rows = [];
 
-    for (const simulation of result.simulationRuns) {
-      for (const matchup of simulation.matchups || []) {
-        const homeStarters = Array.isArray(matchup.homeStarters) ? matchup.homeStarters : [];
-        const awayStarters = Array.isArray(matchup.awayStarters) ? matchup.awayStarters : [];
+    for (const matchup of result.matchupSummaries) {
+      rows.push({
+        'Record Type': 'Matchup Summary',
+        Week: matchup.week,
+        Stage: matchup.stage,
+        'Matchup ID': matchup.matchupId,
+        'Matchup Key': matchup.matchupKey,
+        'Home Team': matchup.homeTeamName,
+        'Away Team': matchup.awayTeamName,
+        'Simulated Meetings': matchup.simulations,
+        'Avg Home Score': formatNullableForCSV(matchup.avgHomeScore),
+        'Avg Away Score': formatNullableForCSV(matchup.avgAwayScore),
+        'Avg Margin': formatNullableForCSV(matchup.avgMargin),
+      });
 
+      for (const slot of matchup.homeSlotAverages || []) {
         rows.push({
-          'Record Type': 'Matchup Summary',
-          Simulation: simulation.simulationIndex,
+          'Record Type': 'Slot Average',
           Week: matchup.week,
           Stage: matchup.stage,
           'Matchup ID': matchup.matchupId,
           'Matchup Key': matchup.matchupKey,
-          'Home Team': matchup.homeTeamName,
-          'Away Team': matchup.awayTeamName,
-          'Home Score': formatNullableForCSV(matchup.homeScore),
-          'Away Score': formatNullableForCSV(matchup.awayScore),
-          Winner: matchup.winnerRosterId === matchup.homeRosterId ? matchup.homeTeamName : matchup.awayTeamName,
-          'Home Starters': homeStarters.length,
-          'Away Starters': awayStarters.length,
+          Side: 'Home',
+          Team: matchup.homeTeamName,
+          Opponent: matchup.awayTeamName,
+          Slot: slot.label,
+          'Avg Points': formatNullableForCSV(slot.avgPoints),
+          'Avg Appearances': formatNullableForCSV(slot.avgAppearances),
         });
+      }
 
-        for (const [starterIndex, starter] of homeStarters.entries()) {
-          rows.push({
-            'Record Type': 'Starter Detail',
-            Simulation: simulation.simulationIndex,
-            Week: matchup.week,
-            Stage: matchup.stage,
-            'Matchup ID': matchup.matchupId,
-            'Matchup Key': matchup.matchupKey,
-            Side: 'Home',
-            Team: matchup.homeTeamName,
-            Opponent: matchup.awayTeamName,
-            'Team Score': formatNullableForCSV(matchup.homeScore),
-            'Opponent Score': formatNullableForCSV(matchup.awayScore),
-            Winner: matchup.winnerRosterId === matchup.homeRosterId ? matchup.homeTeamName : matchup.awayTeamName,
-            'Starter Order': starterIndex + 1,
-            Slot: starter.slot,
-            'Player Name': starter.name,
-            'Player ID': starter.playerId,
-            Position: starter.position,
-            'Projected Points': formatNullableForCSV(starter.projectedPoints),
-            'Actual Points': formatNullableForCSV(starter.points),
-          });
-        }
+      for (const slot of matchup.awaySlotAverages || []) {
+        rows.push({
+          'Record Type': 'Slot Average',
+          Week: matchup.week,
+          Stage: matchup.stage,
+          'Matchup ID': matchup.matchupId,
+          'Matchup Key': matchup.matchupKey,
+          Side: 'Away',
+          Team: matchup.awayTeamName,
+          Opponent: matchup.homeTeamName,
+          Slot: slot.label,
+          'Avg Points': formatNullableForCSV(slot.avgPoints),
+          'Avg Appearances': formatNullableForCSV(slot.avgAppearances),
+        });
+      }
 
-        for (const [starterIndex, starter] of awayStarters.entries()) {
-          rows.push({
-            'Record Type': 'Starter Detail',
-            Simulation: simulation.simulationIndex,
-            Week: matchup.week,
-            Stage: matchup.stage,
-            'Matchup ID': matchup.matchupId,
-            'Matchup Key': matchup.matchupKey,
-            Side: 'Away',
-            Team: matchup.awayTeamName,
-            Opponent: matchup.homeTeamName,
-            'Team Score': formatNullableForCSV(matchup.awayScore),
-            'Opponent Score': formatNullableForCSV(matchup.homeScore),
-            Winner: matchup.winnerRosterId === matchup.awayRosterId ? matchup.awayTeamName : matchup.homeTeamName,
-            'Starter Order': starterIndex + 1,
-            Slot: starter.slot,
-            'Player Name': starter.name,
-            'Player ID': starter.playerId,
-            Position: starter.position,
-            'Projected Points': formatNullableForCSV(starter.projectedPoints),
-            'Actual Points': formatNullableForCSV(starter.points),
-          });
-        }
+      for (const player of matchup.homePlayerOdds || []) {
+        rows.push({
+          'Record Type': 'Player Start Odds',
+          Week: matchup.week,
+          Stage: matchup.stage,
+          'Matchup ID': matchup.matchupId,
+          'Matchup Key': matchup.matchupKey,
+          Side: 'Home',
+          Team: matchup.homeTeamName,
+          Opponent: matchup.awayTeamName,
+          'Player Name': player.name,
+          'Player ID': player.playerId,
+          Position: player.position,
+          'Start Odds': formatNullableForCSV(player.startOdds),
+          'Avg Points When Starting': formatNullableForCSV(player.avgPoints),
+        });
+      }
+
+      for (const player of matchup.awayPlayerOdds || []) {
+        rows.push({
+          'Record Type': 'Player Start Odds',
+          Week: matchup.week,
+          Stage: matchup.stage,
+          'Matchup ID': matchup.matchupId,
+          'Matchup Key': matchup.matchupKey,
+          Side: 'Away',
+          Team: matchup.awayTeamName,
+          Opponent: matchup.homeTeamName,
+          'Player Name': player.name,
+          'Player ID': player.playerId,
+          Position: player.position,
+          'Start Odds': formatNullableForCSV(player.startOdds),
+          'Avg Points When Starting': formatNullableForCSV(player.avgPoints),
+        });
       }
     }
 
@@ -541,100 +576,8 @@ export default function SeasonSimulatorPage() {
   }, [result]);
 
   const matchupSummaries = useMemo(() => {
-    const ledgers = Array.isArray(result?.simulationRuns)
-      ? result.simulationRuns.flatMap((simulation) =>
-          (simulation.matchups || []).map((matchup) => ({
-            ...matchup,
-            simulationIndex: simulation.simulationIndex,
-          }))
-        )
-      : [];
-
-    const groups = new Map();
-
-    for (const ledger of ledgers) {
-      const matchupKey = ledger.matchupKey || `${ledger.week}|${ledger.stage}|${ledger.matchupId}|${ledger.homeRosterId}|${ledger.awayRosterId}`;
-      if (!groups.has(matchupKey)) {
-        groups.set(matchupKey, {
-          matchupKey,
-          week: ledger.week,
-          stage: ledger.stage,
-          matchupId: ledger.matchupId,
-          homeRosterId: ledger.homeRosterId,
-          awayRosterId: ledger.awayRosterId,
-          homeTeamName: ledger.homeTeamName,
-          awayTeamName: ledger.awayTeamName,
-          sims: 0,
-          homeScoreTotal: 0,
-          awayScoreTotal: 0,
-          marginTotal: 0,
-          homeSlotStats: new Map(),
-          awaySlotStats: new Map(),
-          homePlayerStats: new Map(),
-          awayPlayerStats: new Map(),
-        });
-      }
-
-      const group = groups.get(matchupKey);
-      group.sims += 1;
-      group.homeScoreTotal += Number(ledger.homeScore) || 0;
-      group.awayScoreTotal += Number(ledger.awayScore) || 0;
-      group.marginTotal += (Number(ledger.homeScore) || 0) - (Number(ledger.awayScore) || 0);
-
-      const addStarters = (starters = [], slotStats, playerStats) => {
-        for (const [slotIndex, starter] of starters.entries()) {
-          const slot = slotLabels[slotIndex] || starter.slot || starter.position || 'UNK';
-          const playerId = String(starter.playerId || '');
-          const name = starter.name || starter.playerName || playerId;
-          const position = starter.position || 'UNK';
-          const points = Number(starter.points || 0) || 0;
-
-          if (!slotStats.has(slot)) {
-            slotStats.set(slot, { label: slot, appearances: 0, pointsTotal: 0 });
-          }
-          const slotRow = slotStats.get(slot);
-          slotRow.appearances += 1;
-          slotRow.pointsTotal += points;
-
-          if (!playerId) continue;
-          if (!playerStats.has(playerId)) {
-            playerStats.set(playerId, {
-              playerId,
-              name,
-              position,
-              startCount: 0,
-              pointsTotal: 0,
-              slotCounts: new Map(),
-            });
-          }
-          const playerRow = playerStats.get(playerId);
-          playerRow.startCount += 1;
-          playerRow.pointsTotal += points;
-          playerRow.slotCounts.set(slot, (playerRow.slotCounts.get(slot) || 0) + 1);
-        }
-      };
-
-      addStarters(ledger.homeStarters, group.homeSlotStats, group.homePlayerStats);
-      addStarters(ledger.awayStarters, group.awaySlotStats, group.awayPlayerStats);
-    }
-
-    return Array.from(groups.values())
-      .map((group) => ({
-        ...group,
-        avgHomeScore: Number((group.homeScoreTotal / Math.max(1, group.sims)).toFixed(2)),
-        avgAwayScore: Number((group.awayScoreTotal / Math.max(1, group.sims)).toFixed(2)),
-        avgMargin: Number((group.marginTotal / Math.max(1, group.sims)).toFixed(2)),
-        homeSlotAverages: summarizeSlotMap(group.homeSlotStats, slotLabels, group.sims),
-        awaySlotAverages: summarizeSlotMap(group.awaySlotStats, slotLabels, group.sims),
-        homePlayerOdds: buildPlayerStartOddsRows(group.homePlayerStats, group.sims),
-        awayPlayerOdds: buildPlayerStartOddsRows(group.awayPlayerStats, group.sims),
-      }))
-      .sort((left, right) => {
-        if (left.week !== right.week) return left.week - right.week;
-        const leftLabel = `${left.homeTeamName || ''} ${left.awayTeamName || ''}`;
-        const rightLabel = `${right.homeTeamName || ''} ${right.awayTeamName || ''}`;
-        return leftLabel.localeCompare(rightLabel);
-      });
+    if (!Array.isArray(result?.matchupSummaries)) return [];
+    return result.matchupSummaries;
   }, [result]);
 
 
@@ -642,82 +585,45 @@ export default function SeasonSimulatorPage() {
     const summaries = Array.isArray(result?.teamSummaries) ? result.teamSummaries : [];
     if (!summaries.length) return [];
 
-    const aggregateByKey = new Map();
-    const slotStatsByRoster = new Map();
-
-    const addSlotProduction = (rosterId, starters = []) => {
-      const rosterKey = String(rosterId ?? '');
-      if (!rosterKey) return;
-      if (!slotStatsByRoster.has(rosterKey)) slotStatsByRoster.set(rosterKey, new Map());
-      const rosterSlots = slotStatsByRoster.get(rosterKey);
-      for (const [slotIndex, starter] of starters.entries()) {
-        const slot = slotLabels[slotIndex] || starter?.slot || starter?.position || 'UNK';
-        if (!rosterSlots.has(slot)) rosterSlots.set(slot, { total: 0, count: 0 });
-        const row = rosterSlots.get(slot);
-        row.total += Number(starter?.points) || 0;
-        row.count += 1;
-      }
-    };
-
-    for (const simulation of result?.simulationRuns || []) {
-      for (const matchup of simulation.matchups || []) {
-        addSlotProduction(matchup.homeRosterId, matchup.homeStarters || []);
-        addSlotProduction(matchup.awayRosterId, matchup.awayStarters || []);
-      }
-
-      for (const row of simulation.rows || []) {
-        const rosterKey = String(row.rosterId ?? row.roster_id ?? '');
-        const nameKey = String(row.displayName || row.teamName || '').trim().toLowerCase();
-        const key = rosterKey || nameKey;
-        if (!key) continue;
-
-        if (!aggregateByKey.has(key)) {
-          aggregateByKey.set(key, { pointsFor: [], pointsAgainst: [], wins: [], finishes: [] });
-        }
-        const bucket = aggregateByKey.get(key);
-        bucket.pointsFor.push(Number(row.pointsFor) || 0);
-        bucket.pointsAgainst.push(Number(row.pointsAgainst) || 0);
-        bucket.wins.push(Number(row.wins) || 0);
-        bucket.finishes.push(Number(row.finish) || 0);
-      }
-    }
-
     const base = summaries.map((team) => {
-      const rosterKey = String(team.rosterId ?? team.roster_id ?? '');
-      const nameKey = String(team.displayName || team.teamName || '').trim().toLowerCase();
-      const bucket = aggregateByKey.get(rosterKey) || aggregateByKey.get(nameKey) || { pointsFor: [], pointsAgainst: [], wins: [], finishes: [] };
-      const avgPointsFor = average(bucket.pointsFor);
-      const avgPointsAgainst = average(bucket.pointsAgainst);
-      const avgMargin = avgPointsFor - avgPointsAgainst;
-
-      const rosterSlots = slotStatsByRoster.get(rosterKey) || new Map();
-      const slotAverages = Array.from(rosterSlots.entries()).map(([slot, values]) => ({
-        slot,
-        avgPoints: values.count ? values.total / values.count : 0,
-        appearances: values.count,
-      }));
+      const avgPointsFor = Number(team.averagePointsFor ?? team.avgPointsFor ?? 0) || 0;
+      const avgPointsAgainst = Number(team.averagePointsAgainst ?? team.avgPointsAgainst ?? 0) || 0;
+      const avgMargin = Number(
+        team.averageMargin ?? team.avgMargin ?? (avgPointsFor - avgPointsAgainst)
+      ) || 0;
 
       return {
         ...team,
         avgPointsFor,
         avgPointsAgainst,
         avgMargin,
-        pointsForVolatility: standardDeviation(bucket.pointsFor),
-        winsVolatility: standardDeviation(bucket.wins),
-        slotAverages,
+        pointsForVolatility: Number(team.pointsForVolatility || 0),
+        winsVolatility: Number(team.winsVolatility || 0),
+        slotAverages: Array.isArray(team.slotAverages) ? team.slotAverages : [],
       };
     });
 
     const leagueSlotTotals = new Map();
-    for (const rosterSlots of slotStatsByRoster.values()) {
-      for (const [slot, values] of rosterSlots.entries()) {
-        if (!leagueSlotTotals.has(slot)) leagueSlotTotals.set(slot, { total: 0, count: 0 });
-        const bucket = leagueSlotTotals.get(slot);
-        bucket.total += values.total;
-        bucket.count += values.count;
+    for (const team of base) {
+      for (const slot of team.slotAverages || []) {
+        const label = slot.slot || slot.label || 'UNK';
+        const appearances = Number(slot.appearances || 0);
+        const avgPoints = Number(slot.avgPoints || 0);
+        if (!leagueSlotTotals.has(label)) {
+          leagueSlotTotals.set(label, { total: 0, count: 0 });
+        }
+        const bucket = leagueSlotTotals.get(label);
+        bucket.total += avgPoints * appearances;
+        bucket.count += appearances;
       }
     }
-    const leagueSlotAverages = new Map(Array.from(leagueSlotTotals.entries()).map(([slot, values]) => [slot, values.count ? values.total / values.count : 0]));
+
+    const leagueSlotAverages = new Map(
+      Array.from(leagueSlotTotals.entries()).map(([slot, values]) => [
+        slot,
+        values.count ? values.total / values.count : 0,
+      ])
+    );
 
     const scoringOrder = [...base].sort((left, right) => right.avgPointsFor - left.avgPointsFor);
     const marginOrder = [...base].sort((left, right) => right.avgMargin - left.avgMargin);
@@ -807,9 +713,9 @@ export default function SeasonSimulatorPage() {
           rosterTrades,
         }),
       });
-      const json = await response.json();
+      const json = await readApiJson(response, 'Simulation');
       if (!response.ok || !json?.ok) {
-        throw new Error(json?.error || 'Simulation failed');
+        throw new Error(json?.error || `Simulation failed (${response.status})`);
       }
       setResult(json);
     } catch (error) {
@@ -1212,7 +1118,7 @@ export default function SeasonSimulatorPage() {
               />
             </AdminField>
 
-            <AdminField label="Short injury chance" helpText={ADMIN_FIELD_HELP.shortInjuryChance}>
+            <AdminField label="In-game injury chance" helpText={ADMIN_FIELD_HELP.shortInjuryChance}>
               <input
                 type="number"
                 min="0"
@@ -1224,7 +1130,7 @@ export default function SeasonSimulatorPage() {
               />
             </AdminField>
 
-            <AdminField label="Long injury chance" helpText={ADMIN_FIELD_HELP.longInjuryChance}>
+            <AdminField label="Unavailable chance" helpText={ADMIN_FIELD_HELP.longInjuryChance}>
               <input
                 type="number"
                 min="0"
