@@ -6,7 +6,7 @@ async function fetchJson(url) {
   return res.json();
 }
 
-function buildStarterSlots(rosterPositions = []) {
+export function buildStarterSlots(rosterPositions = []) {
   const ignored = new Set(['BN', 'IR', 'TAXI']);
   const slots = rosterPositions.filter((p) => !ignored.has(p));
   const flexDefs = {
@@ -19,23 +19,45 @@ function buildStarterSlots(rosterPositions = []) {
   return { slots, flexDefs };
 }
 
-function fillWeeklyMax(weeklyPlayers, slots, flexDefs) {
+function resolvePlayerName(player) {
+  return player?.name || player?.player_name || player?.fullName || player?.full_name || player?.display_name || '';
+}
+
+export function fillWeeklyMaxDetailed(weeklyPlayers, slots, flexDefs) {
   const byPoints = [...weeklyPlayers].sort((a, b) => (b.points || 0) - (a.points || 0));
   const chosen = [];
+  const assignments = [];
   const used = new Set();
+  const getPlayerId = (player) => String(player?.player_id ?? player?.playerId ?? player?.id ?? '');
   const isEligible = (pos, slot) => {
     if (slot in flexDefs) return flexDefs[slot].includes(pos);
     return pos === slot;
   };
   for (const slot of slots) {
-    const pick = byPoints.find((p) => !used.has(p.player_id) && isEligible(p.position, slot));
+    const pick = byPoints.find((p) => {
+      const playerId = getPlayerId(p);
+      return playerId && !used.has(playerId) && isEligible(p.position, slot);
+    });
     if (pick) {
-      used.add(pick.player_id);
+      const playerId = getPlayerId(pick);
+      used.add(playerId);
       chosen.push(pick);
+      assignments.push({
+        slot,
+        playerId,
+        name: resolvePlayerName(pick),
+        position: pick.position || 'UNK',
+        points: Number(pick.points || 0),
+      });
     }
   }
   const total = chosen.reduce((sum, p) => sum + (p.points || 0), 0);
-  return { total, chosen: chosen.map((p) => p.player_id) };
+  return { total, chosen: chosen.map((p) => getPlayerId(p)), assignments };
+}
+
+export function fillWeeklyMax(weeklyPlayers, slots, flexDefs) {
+  const result = fillWeeklyMaxDetailed(weeklyPlayers, slots, flexDefs);
+  return { total: result.total, chosen: result.chosen };
 }
 
 export async function calculateSeasonMaxPF({ leagueId }) {

@@ -842,6 +842,60 @@ export async function updateTradeBlockSettings(settings) {
   }
 }
 
+function normalizeSeasonSimulatorSettings(settings = {}) {
+  const simulations = Number(settings?.simulations);
+  const boomBustStdDev = Number(settings?.boomBustStdDev);
+  const shortInjuryChance = Number(settings?.shortInjuryChance);
+  const longInjuryChance = Number(settings?.longInjuryChance);
+
+  return {
+    simulations: Number.isFinite(simulations) ? Math.min(5000, Math.max(1, Math.floor(simulations))) : 250,
+    boomBustStdDev: Number.isFinite(boomBustStdDev) ? Math.min(1, Math.max(0, boomBustStdDev)) : 0.18,
+    shortInjuryChance: Number.isFinite(shortInjuryChance) ? Math.min(1, Math.max(0, shortInjuryChance)) : 0.05,
+    longInjuryChance: Number.isFinite(longInjuryChance) ? Math.min(1, Math.max(0, longInjuryChance)) : 0.01,
+  };
+}
+
+export async function getSeasonSimulatorSettings() {
+  try {
+    const col = await getAppSettingsCollection();
+    const doc = await col.findOne({ key: 'season-simulator-settings' });
+    return {
+      success: true,
+      settings: normalizeSeasonSimulatorSettings(doc || {}),
+      updatedAt: doc?.updatedAt || null,
+      updatedBy: doc?.updatedBy || null,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateSeasonSimulatorSettings(settings, updatedBy) {
+  try {
+    const normalized = normalizeSeasonSimulatorSettings(settings);
+    const col = await getAppSettingsCollection();
+    const updateDoc = {
+      ...normalized,
+      updatedAt: new Date(),
+      updatedBy: updatedBy || null,
+    };
+
+    await col.updateOne(
+      { key: 'season-simulator-settings' },
+      {
+        $set: updateDoc,
+        $setOnInsert: { key: 'season-simulator-settings', createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    return { success: true, settings: updateDoc };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 export async function autoWithdrawOffersForLostAssets(listingId, offererUsername, lostPlayerIds) {
   try {
     if (!lostPlayerIds || lostPlayerIds.length === 0) return { success: true, withdrawn: 0 };

@@ -173,7 +173,17 @@ export function downloadCSV(rows, filename) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
   const safeRows = Array.isArray(rows) ? rows : [];
+  const fields = Array.from(
+    safeRows.reduce((keys, row) => {
+      if (!row || typeof row !== 'object') return keys;
+      for (const key of Object.keys(row)) {
+        keys.add(key);
+      }
+      return keys;
+    }, new Set())
+  );
   const csvContent = Papa.unparse(safeRows, {
+    fields,
     header: true,
     skipEmptyLines: true,
   });

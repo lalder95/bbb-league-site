@@ -18,6 +18,7 @@ These notes make AI coding agents productive quickly in this Next.js 15 app (App
   - Headers for isolation are applied only to `/trade/:path*` in `next.config.mjs` using `COOP/COEP (credentialless)`.
   - Assets can be fetched via `npm run setup:tesseract` which downloads and pins worker/wasm/lang data.
 - External league data: Utilities in `src/utils/*` wrap Sleeper API (e.g., `sleeperUtils.js`) and draft logic (`draftUtils.js`). Prefer using these helpers over re-implementing.
+- Sleeper API reference: consult [public/Sleeper API_files/Sleeper_API_Endpoints_Documented_and_Undocumented.csv](public/Sleeper%20API_files/Sleeper_API_Endpoints_Documented_and_Undocumented.csv) for documented and observed endpoints, parameters, caching guidance, and source URLs before adding new Sleeper integrations.
 
 ### Draft Order utilities
 - Server-side calculator: `src/utils/draftOrderCalculator.js`
