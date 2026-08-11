@@ -144,7 +144,12 @@ export function buildPlayerMetaMap(playersMeta = {}) {
       nflTeam: String(meta?.team || meta?.team_abbr || meta?.nfl_team || '').toUpperCase(),
       status,
       injuryStatus,
-      availableForLineup: Boolean(meta?.active) && !injuryStatus && !['out', 'ir', 'injured reserve', 'suspended', 'doubtful'].includes(status.toLowerCase()),
+      // Sleeper's player metadata is a current-state snapshot. Do not let a
+      // current injury designation make a player unavailable for every future
+      // week of a season simulation. `active === false` is retained as metadata
+      // only; weekly projections and the simulator's unavailable-chance model
+      // determine future lineup eligibility.
+      active: meta?.active !== false,
       raw: meta,
     });
   }
@@ -160,13 +165,22 @@ export function buildTeamRosterMap(rosters = [], users = []) {
     if (!Number.isFinite(rosterId)) continue;
 
     const owner = userById.get(String(roster?.owner_id));
-    const displayName = owner?.display_name || owner?.team_name || owner?.username || `Team ${rosterId}`;
+    const userName = owner?.display_name || owner?.username || `Team ${rosterId}`;
+    const teamName = owner?.metadata?.team_name || owner?.team_name || userName;
+    const avatar = owner?.avatar || owner?.metadata?.avatar || '';
+    const rawDivision = roster?.settings?.division ?? roster?.division ?? roster?.metadata?.division;
+    const division = rawDivision === undefined || rawDivision === null || String(rawDivision).trim() === ''
+      ? null
+      : String(rawDivision);
 
     rosterMap.set(rosterId, {
       rosterId,
       ownerId: roster?.owner_id || null,
-      displayName,
-      teamName: owner?.team_name || owner?.display_name || displayName,
+      displayName: userName,
+      userName,
+      teamName,
+      avatar,
+      division,
       players: Array.isArray(roster?.players) ? roster.players.map(String) : [],
       wins: Number(roster?.wins) || 0,
       losses: Number(roster?.losses) || 0,
@@ -304,25 +318,37 @@ function getProjectedPointsForPlayer(playerId, projectionMap, playerMetaMap) {
   };
 }
 
-function buildRosterPlayerAvailability(meta = {}) {
+function buildRosterPlayerAvailability(meta = {}, projectedPoints = 0) {
+  const points = Number(projectedPoints || 0);
+
+  // A positive projection for the simulated week is the strongest signal that
+  // the player should participate in lineup optimization. Sleeper injury/status
+  // fields describe the player's current real-world state and otherwise caused
+  // one current designation to bench that player for every future simulated week.
+  if (points > 0) return true;
+
+  // When there is no useful weekly projection, keep clearly inactive/retired
+  // players out of the candidate pool. Zero-point active players are harmless
+  // fallback candidates if a roster cannot otherwise fill a required slot.
   const status = String(meta?.status || '').trim().toLowerCase();
-  const injuryStatus = String(meta?.injuryStatus || meta?.injury_status || '').trim();
-  if (meta?.availableForLineup === false) return false;
-  if (status && ['out', 'ir', 'injured reserve', 'suspended', 'doubtful'].includes(status)) return false;
-  if (injuryStatus) return false;
+  if (meta?.active === false) return false;
+  if (['inactive', 'retired'].includes(status)) return false;
   return true;
 }
 
+function buildRosterProjectedPlayers({ roster, projectionMap, playerMetaMap }) {
+  return (roster?.players || []).map((playerId) => {
+    const projected = getProjectedPointsForPlayer(playerId, projectionMap, playerMetaMap);
+    const meta = playerMetaMap.get(String(playerId)) || {};
+    return {
+      ...projected,
+      available: buildRosterPlayerAvailability(meta, projected.points),
+    };
+  });
+}
+
 function buildProjectedLineupPlayers({ roster, projectionMap, playerMetaMap }) {
-  return (roster?.players || [])
-    .map((playerId) => {
-      const projected = getProjectedPointsForPlayer(playerId, projectionMap, playerMetaMap);
-      const meta = playerMetaMap.get(String(playerId)) || {};
-      return {
-        ...projected,
-        available: buildRosterPlayerAvailability(meta),
-      };
-    })
+  return buildRosterProjectedPlayers({ roster, projectionMap, playerMetaMap })
     .filter((player) => player.available);
 }
 
@@ -368,7 +394,8 @@ function buildPreparedWeeklyRoster({
   flexDefs,
   slotLabels = [],
 }) {
-  const playerPool = buildProjectedLineupPlayers({ roster, projectionMap, playerMetaMap });
+  const rosterPlayers = buildRosterProjectedPlayers({ roster, projectionMap, playerMetaMap });
+  const playerPool = rosterPlayers.filter((player) => player.available);
   const healthyTemplate = buildProjectedLineupTemplateFromPlayers({
     weeklyPlayers: playerPool,
     slots,
@@ -376,10 +403,47 @@ function buildPreparedWeeklyRoster({
     slotLabels,
   });
 
+  const healthyStarterIds = new Set(healthyTemplate.map((assignment) => String(assignment.playerId)));
+  const benchPlayers = playerPool.filter((player) => !healthyStarterIds.has(String(player.playerId)));
+
+  // Depth measures replacement quality, not the average of every bench player.
+  // QB/TE use the best reserve; RB/WR use the best two reserves. If a roster
+  // does not have the full target number, the missing replacement slot counts
+  // as zero so thin depth is appropriately penalized.
+  const depthTargets = { QB: 1, RB: 2, WR: 2, TE: 1 };
+  const depthSnapshot = {};
+
+  for (const [position, targetPlayers] of Object.entries(depthTargets)) {
+    const players = benchPlayers
+      .filter((player) => String(player.position || '').toUpperCase() === position)
+      .sort((left, right) => Number(right.points || 0) - Number(left.points || 0));
+    const selectedPlayers = players.slice(0, targetPlayers);
+    const selectedPoints = selectedPlayers.reduce((sum, player) => sum + Number(player.points || 0), 0);
+
+    depthSnapshot[position] = {
+      position,
+      playerCount: selectedPlayers.length,
+      targetPlayers,
+      avgPoints: selectedPoints / targetPlayers,
+    };
+  }
+
+  const replacementValues = Object.values(depthSnapshot).map((row) => Number(row.avgPoints || 0));
+  depthSnapshot.BENCH = {
+    position: 'BENCH',
+    playerCount: Object.values(depthSnapshot).reduce((sum, row) => sum + Number(row.playerCount || 0), 0),
+    targetPlayers: Object.values(depthTargets).reduce((sum, value) => sum + value, 0),
+    avgPoints: replacementValues.length
+      ? replacementValues.reduce((sum, value) => sum + value, 0) / replacementValues.length
+      : 0,
+  };
+
   return {
+    rosterPlayers,
     playerPool,
     healthyTemplate,
-    healthyStarterIds: new Set(healthyTemplate.map((assignment) => String(assignment.playerId))),
+    healthyStarterIds,
+    depthSnapshot,
   };
 }
 
@@ -453,6 +517,94 @@ function addSlotPoint(slotStats, assignment, points) {
   const bucket = slotStats.get(slot);
   bucket.appearances += 1;
   bucket.pointsTotal += Number(points || 0);
+}
+
+function addDepthSnapshot(depthStats, depthSnapshot = {}) {
+  if (!depthStats) return;
+  for (const [position, row] of Object.entries(depthSnapshot || {})) {
+    if (!depthStats.has(position)) {
+      depthStats.set(position, {
+        position,
+        weeks: 0,
+        pointsTotal: 0,
+        playerCountTotal: 0,
+      });
+    }
+    const bucket = depthStats.get(position);
+    bucket.weeks += 1;
+    bucket.pointsTotal += Number(row?.avgPoints || 0);
+    bucket.playerCountTotal += Number(row?.playerCount || 0);
+  }
+}
+
+function addPositionGroupSnapshot(positionGroupStats, preparedRoster = {}) {
+  if (!positionGroupStats) return;
+  const starterIds = preparedRoster?.healthyStarterIds || new Set();
+
+  for (const player of preparedRoster?.rosterPlayers || []) {
+    const position = String(player?.position || 'UNK').toUpperCase();
+    if (!['QB', 'RB', 'WR', 'TE'].includes(position)) continue;
+
+    const playerId = String(player?.playerId || '').trim();
+    if (!playerId) continue;
+
+    if (!positionGroupStats.has(playerId)) {
+      positionGroupStats.set(playerId, {
+        playerId,
+        name: String(player?.name || '').trim(),
+        nflTeam: String(player?.nflTeam || '').trim(),
+        position,
+        rosterWeeks: 0,
+        projectionWeeks: 0,
+        projectedPointsTotal: 0,
+        starterWeeks: 0,
+      });
+    }
+
+    const bucket = positionGroupStats.get(playerId);
+    bucket.rosterWeeks += 1;
+
+    const projectedPoints = Number(player?.points || 0);
+    if (projectedPoints > 0) {
+      bucket.projectionWeeks += 1;
+      bucket.projectedPointsTotal += projectedPoints;
+    }
+
+    if (starterIds.has(playerId)) {
+      bucket.starterWeeks += 1;
+    }
+
+    if (!bucket.name && player?.name) bucket.name = String(player.name);
+    if (!bucket.nflTeam && player?.nflTeam) bucket.nflTeam = String(player.nflTeam);
+  }
+}
+
+function addWeeklyScoreStats(teamTotal, score, margin) {
+  if (!teamTotal) return;
+  const numericScore = Number(score || 0);
+  const numericMargin = Number(margin || 0);
+  teamTotal.weeklyScoreTotal += numericScore;
+  teamTotal.weeklyScoreSquaredTotal += numericScore * numericScore;
+  teamTotal.weeklyScoreCount += 1;
+  teamTotal.weeklyMarginTotal += numericMargin;
+  teamTotal.weeklyMarginCount += 1;
+}
+
+function addHeadToHeadResult(teamTotal, opponentRosterId, score, opponentScore) {
+  if (!teamTotal) return;
+  const key = String(opponentRosterId);
+  if (!teamTotal.headToHead.has(key)) {
+    teamTotal.headToHead.set(key, {
+      opponentRosterId,
+      comparisons: 0,
+      wins: 0,
+      ties: 0,
+    });
+  }
+  const bucket = teamTotal.headToHead.get(key);
+  bucket.comparisons += 1;
+  if (score > opponentScore) bucket.wins += 1;
+  else if (score === opponentScore) bucket.ties += 1;
 }
 
 function simulatePreparedLineup(
@@ -719,20 +871,35 @@ function buildTeamSummaries(totals, simulations) {
       const divisor = Math.max(1, team.simulations || simulations);
       const averagePointsFor = team.pointsForTotal / divisor;
       const averagePointsAgainst = team.pointsAgainstTotal / divisor;
+      const weeklyDivisor = Math.max(1, team.weeklyScoreCount);
+      const marginDivisor = Math.max(1, team.weeklyMarginCount);
+      const averageWeeklyScore = team.weeklyScoreTotal / weeklyDivisor;
+      const averageWeeklyMargin = team.weeklyMarginTotal / marginDivisor;
+      const weeklyScoreVolatility = populationStdDev(
+        team.weeklyScoreTotal,
+        team.weeklyScoreSquaredTotal,
+        weeklyDivisor
+      );
 
       return {
         rosterId: team.rosterId,
+        ownerId: team.ownerId,
         teamName: team.teamName,
         displayName: team.displayName,
+        userName: team.userName || team.displayName,
+        avatar: team.avatar || '',
+        division: team.division ?? null,
         averageWins: Number((team.winsTotal / divisor).toFixed(2)),
         averageLosses: Number((team.lossesTotal / divisor).toFixed(2)),
         averageTies: Number((team.tiesTotal / divisor).toFixed(2)),
         averagePointsFor: Number(averagePointsFor.toFixed(2)),
         averagePointsAgainst: Number(averagePointsAgainst.toFixed(2)),
-        averageMargin: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
-        pointsForVolatility: Number(
-          populationStdDev(team.pointsForTotal, team.pointsForSquaredTotal, divisor).toFixed(2)
-        ),
+        seasonPointDifferential: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
+        averageWeeklyScore: Number(averageWeeklyScore.toFixed(2)),
+        averageWeeklyMargin: Number(averageWeeklyMargin.toFixed(2)),
+        averageMargin: Number(averageWeeklyMargin.toFixed(2)),
+        scoringVolatility: Number(weeklyScoreVolatility.toFixed(2)),
+        pointsForVolatility: Number(weeklyScoreVolatility.toFixed(2)),
         winsVolatility: Number(
           populationStdDev(team.winsTotal, team.winsSquaredTotal, divisor).toFixed(2)
         ),
@@ -745,6 +912,43 @@ function buildTeamSummaries(totals, simulations) {
           avgPoints: slot.avgPoints,
           appearances: slot.appearances,
         })),
+        depthAverages: Array.from(team.depthStats.values())
+          .map((row) => ({
+            position: row.position,
+            avgPoints: Number((row.pointsTotal / Math.max(1, row.weeks)).toFixed(2)),
+            avgPlayers: Number((row.playerCountTotal / Math.max(1, row.weeks)).toFixed(2)),
+            weeks: row.weeks,
+          }))
+          .sort((left, right) => left.position.localeCompare(right.position)),
+        positionGroupPlayers: Array.from(team.positionGroupStats.values())
+          .map((row) => ({
+            playerId: row.playerId,
+            name: row.name,
+            nflTeam: row.nflTeam,
+            position: row.position,
+            rosterWeeks: row.rosterWeeks,
+            projectionWeeks: row.projectionWeeks,
+            avgProjectedPoints: Number(
+              (row.projectedPointsTotal / Math.max(1, row.projectionWeeks)).toFixed(2)
+            ),
+            starterRate: Number(
+              ((row.starterWeeks / Math.max(1, row.rosterWeeks)) * 100).toFixed(1)
+            ),
+          }))
+          .sort((left, right) => (
+            left.position.localeCompare(right.position)
+            || right.avgProjectedPoints - left.avgProjectedPoints
+            || left.name.localeCompare(right.name)
+          )),
+        headToHead: Array.from(team.headToHead.values())
+          .map((row) => ({
+            opponentRosterId: row.opponentRosterId,
+            comparisons: row.comparisons,
+            wins: row.wins,
+            ties: row.ties,
+            winOdds: Number((((row.wins + row.ties * 0.5) / Math.max(1, row.comparisons)) * 100).toFixed(2)),
+          }))
+          .sort((left, right) => Number(left.opponentRosterId) - Number(right.opponentRosterId)),
         recordDistribution: Array.from(team.recordCounts.entries())
           .sort((left, right) => right[1] - left[1])
           .slice(0, 5)
@@ -763,8 +967,12 @@ function buildAggregationPayload(totals, simulations) {
     simulations,
     teams: Array.from(totals.values()).map((team) => ({
       rosterId: team.rosterId,
+      ownerId: team.ownerId,
       teamName: team.teamName,
       displayName: team.displayName,
+      userName: team.userName || team.displayName,
+      avatar: team.avatar || '',
+      division: team.division ?? null,
       simulations: team.simulations,
       winsTotal: team.winsTotal,
       winsSquaredTotal: team.winsSquaredTotal,
@@ -773,6 +981,11 @@ function buildAggregationPayload(totals, simulations) {
       pointsForTotal: team.pointsForTotal,
       pointsForSquaredTotal: team.pointsForSquaredTotal,
       pointsAgainstTotal: team.pointsAgainstTotal,
+      weeklyScoreTotal: team.weeklyScoreTotal,
+      weeklyScoreSquaredTotal: team.weeklyScoreSquaredTotal,
+      weeklyScoreCount: team.weeklyScoreCount,
+      weeklyMarginTotal: team.weeklyMarginTotal,
+      weeklyMarginCount: team.weeklyMarginCount,
       playoffAppearances: team.playoffAppearances,
       championships: team.championships,
       firstPickCount: team.firstPickCount,
@@ -783,6 +996,14 @@ function buildAggregationPayload(totals, simulations) {
         appearances: slot.appearances,
         pointsTotal: slot.pointsTotal,
       })),
+      depthStats: Array.from(team.depthStats.values()).map((row) => ({
+        position: row.position,
+        weeks: row.weeks,
+        pointsTotal: row.pointsTotal,
+        playerCountTotal: row.playerCountTotal,
+      })),
+      positionGroupStats: Array.from(team.positionGroupStats.values()).map((row) => ({ ...row })),
+      headToHead: Array.from(team.headToHead.values()).map((row) => ({ ...row })),
     })),
   };
 }
@@ -870,8 +1091,12 @@ export async function runSeasonSimulation({
   for (const team of rosterMap.values()) {
     totals.set(team.rosterId, {
       rosterId: team.rosterId,
+      ownerId: team.ownerId,
       displayName: team.displayName,
+      userName: team.userName || team.displayName,
       teamName: team.teamName,
+      avatar: team.avatar || '',
+      division: team.division ?? null,
       simulations: 0,
       winsTotal: 0,
       winsSquaredTotal: 0,
@@ -880,13 +1105,34 @@ export async function runSeasonSimulation({
       pointsForTotal: 0,
       pointsForSquaredTotal: 0,
       pointsAgainstTotal: 0,
+      weeklyScoreTotal: 0,
+      weeklyScoreSquaredTotal: 0,
+      weeklyScoreCount: 0,
+      weeklyMarginTotal: 0,
+      weeklyMarginCount: 0,
       playoffAppearances: 0,
       championships: 0,
       firstPickCount: 0,
       finishTotal: 0,
       recordCounts: new Map(),
       slotStats: new Map(),
+      depthStats: new Map(),
+      positionGroupStats: new Map(),
+      headToHead: new Map(),
     });
+  }
+
+  // Depth is a stable projected roster-quality measure, so calculate it once
+  // per team/week instead of re-scoring every bench player in every Monte Carlo run.
+  for (let week = weekStart; week <= regularSeasonEndWeek; week += 1) {
+    const weekPreparedRosters = preparedRosterCache.get(week) || new Map();
+    for (const rosterId of teamIds) {
+      const total = totals.get(rosterId);
+      const prepared = weekPreparedRosters.get(rosterId);
+      if (!total || !prepared) continue;
+      addDepthSnapshot(total.depthStats, prepared.depthSnapshot);
+      addPositionGroupSnapshot(total.positionGroupStats, prepared);
+    }
   }
 
   const playoffTeamCount = Math.max(2, Math.min(bundle.playoffTeams || 6, teamIds.length));
@@ -907,6 +1153,7 @@ export async function runSeasonSimulation({
     for (let week = weekStart; week <= regularSeasonEndWeek; week += 1) {
       const pairings = regularPairingsCache.get(week) || [];
       const weekPreparedRosters = preparedRosterCache.get(week) || new Map();
+      const weekScores = new Map();
 
       for (const pairing of pairings) {
         const homeTotal = totals.get(pairing.homeRosterId);
@@ -937,6 +1184,29 @@ export async function runSeasonSimulation({
           homeScore.total,
           awayScore.total
         );
+
+        weekScores.set(pairing.homeRosterId, homeScore.total);
+        weekScores.set(pairing.awayRosterId, awayScore.total);
+        addWeeklyScoreStats(homeTotal, homeScore.total, homeScore.total - awayScore.total);
+        addWeeklyScoreStats(awayTotal, awayScore.total, awayScore.total - homeScore.total);
+      }
+
+      // Neutral head-to-head odds reuse the same weekly score draws. This adds
+      // no extra player simulation work: every pair is simply compared as if
+      // they had met that simulated week.
+      for (let leftIndex = 0; leftIndex < teamIds.length; leftIndex += 1) {
+        const leftRosterId = teamIds[leftIndex];
+        const leftScore = weekScores.get(leftRosterId);
+        if (!Number.isFinite(leftScore)) continue;
+
+        for (let rightIndex = leftIndex + 1; rightIndex < teamIds.length; rightIndex += 1) {
+          const rightRosterId = teamIds[rightIndex];
+          const rightScore = weekScores.get(rightRosterId);
+          if (!Number.isFinite(rightScore)) continue;
+
+          addHeadToHeadResult(totals.get(leftRosterId), rightRosterId, leftScore, rightScore);
+          addHeadToHeadResult(totals.get(rightRosterId), leftRosterId, rightScore, leftScore);
+        }
       }
     }
 
@@ -972,7 +1242,6 @@ export async function runSeasonSimulation({
           slots,
           flexDefs,
           slotLabels,
-          slotStats: homeTotal.slotStats,
         });
         const awayScore = simulatePreparedRosterWeek({
           preparedRoster: weekPreparedRosters.get(pairing.awayRosterId),
@@ -980,7 +1249,6 @@ export async function runSeasonSimulation({
           slots,
           flexDefs,
           slotLabels,
-          slotStats: awayTotal.slotStats,
         });
 
         const winnerRosterId = homeScore.total >= awayScore.total

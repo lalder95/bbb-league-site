@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import AdminToolModal from '../admin/components/AdminToolModal';
 import RosterTradeModal from './components/RosterTradeModal';
+import TeamReportCardModal from './components/TeamReportCardModal';
 import { downloadCSV, formatNullableForCSV } from '@/utils/csvUtils';
 
 const DEFAULT_ADMIN_CONFIG = {
@@ -22,6 +23,49 @@ const ADMIN_FIELD_HELP = {
 
 const SIMULATION_BATCH_SIZE = 20;
 const SIMULATION_BATCH_ATTEMPTS = 3;
+function getRosterTradeStorageKey(leagueId) {
+  const normalizedLeagueId = String(leagueId || '').trim();
+  return normalizedLeagueId ? `season-simulator:roster-trades:${normalizedLeagueId}` : '';
+}
+
+function normalizeRosterTrades(trades) {
+  if (!Array.isArray(trades)) return [];
+
+  return trades
+    .filter((trade) => {
+      const fromRosterId = Number(trade?.fromRosterId);
+      const toRosterId = Number(trade?.toRosterId);
+      const playerId = String(trade?.asset?.playerId || trade?.playerId || '').trim();
+      return Number.isFinite(fromRosterId)
+        && Number.isFinite(toRosterId)
+        && fromRosterId !== toRosterId
+        && Boolean(playerId);
+    })
+    .map((trade) => ({
+      ...trade,
+      fromRosterId: Number(trade.fromRosterId),
+      toRosterId: Number(trade.toRosterId),
+      asset: trade.asset
+        ? { ...trade.asset, playerId: String(trade.asset.playerId || trade.playerId || '').trim() }
+        : {
+            assetType: 'player',
+            playerId: String(trade.playerId || '').trim(),
+          },
+    }));
+}
+
+function clearPersistedRosterTrades(leagueId) {
+  const storageKey = getRosterTradeStorageKey(leagueId);
+  if (!storageKey || typeof window === 'undefined') return;
+
+  try {
+    // Roster edits are intentionally session-only. Clear any state saved by
+    // older builds so every page load starts from the live Sleeper rosters.
+    window.localStorage.removeItem(storageKey);
+  } catch (error) {
+    console.warn('Failed to clear legacy Season Simulator roster edits.', error);
+  }
+}
 
 
 function formatPercent(value) {
@@ -88,8 +132,12 @@ function mergeSimulationAggregation(accumulator, aggregation) {
     if (!accumulator.teams.has(key)) {
       accumulator.teams.set(key, {
         rosterId: row.rosterId,
+        ownerId: row.ownerId,
         teamName: row.teamName,
         displayName: row.displayName,
+        userName: row.userName || row.displayName,
+        avatar: row.avatar || '',
+        division: row.division ?? null,
         simulations: 0,
         winsTotal: 0,
         winsSquaredTotal: 0,
@@ -98,12 +146,20 @@ function mergeSimulationAggregation(accumulator, aggregation) {
         pointsForTotal: 0,
         pointsForSquaredTotal: 0,
         pointsAgainstTotal: 0,
+        weeklyScoreTotal: 0,
+        weeklyScoreSquaredTotal: 0,
+        weeklyScoreCount: 0,
+        weeklyMarginTotal: 0,
+        weeklyMarginCount: 0,
         playoffAppearances: 0,
         championships: 0,
         firstPickCount: 0,
         finishTotal: 0,
         recordCounts: new Map(),
         slotStats: new Map(),
+        depthStats: new Map(),
+        positionGroupStats: new Map(),
+        headToHead: new Map(),
       });
     }
 
@@ -117,6 +173,11 @@ function mergeSimulationAggregation(accumulator, aggregation) {
       'pointsForTotal',
       'pointsForSquaredTotal',
       'pointsAgainstTotal',
+      'weeklyScoreTotal',
+      'weeklyScoreSquaredTotal',
+      'weeklyScoreCount',
+      'weeklyMarginTotal',
+      'weeklyMarginCount',
       'playoffAppearances',
       'championships',
       'firstPickCount',
@@ -140,6 +201,59 @@ function mergeSimulationAggregation(accumulator, aggregation) {
       bucket.appearances += Number(slotRow.appearances || 0);
       bucket.pointsTotal += Number(slotRow.pointsTotal || 0);
     }
+
+
+    for (const depthRow of row.depthStats || []) {
+      const position = String(depthRow.position || 'BENCH');
+      if (!team.depthStats.has(position)) {
+        team.depthStats.set(position, { position, weeks: 0, pointsTotal: 0, playerCountTotal: 0 });
+      }
+      const bucket = team.depthStats.get(position);
+      bucket.weeks += Number(depthRow.weeks || 0);
+      bucket.pointsTotal += Number(depthRow.pointsTotal || 0);
+      bucket.playerCountTotal += Number(depthRow.playerCountTotal || 0);
+    }
+
+    for (const playerRow of row.positionGroupStats || []) {
+      const playerId = String(playerRow.playerId || '').trim();
+      if (!playerId) continue;
+      if (!team.positionGroupStats.has(playerId)) {
+        team.positionGroupStats.set(playerId, {
+          playerId,
+          name: playerRow.name || '',
+          nflTeam: playerRow.nflTeam || '',
+          position: playerRow.position || 'UNK',
+          rosterWeeks: 0,
+          projectionWeeks: 0,
+          projectedPointsTotal: 0,
+          starterWeeks: 0,
+        });
+      }
+      const bucket = team.positionGroupStats.get(playerId);
+      bucket.rosterWeeks += Number(playerRow.rosterWeeks || 0);
+      bucket.projectionWeeks += Number(playerRow.projectionWeeks || 0);
+      bucket.projectedPointsTotal += Number(playerRow.projectedPointsTotal || 0);
+      bucket.starterWeeks += Number(playerRow.starterWeeks || 0);
+      if (!bucket.name && playerRow.name) bucket.name = playerRow.name;
+      if (!bucket.nflTeam && playerRow.nflTeam) bucket.nflTeam = playerRow.nflTeam;
+      if ((!bucket.position || bucket.position === 'UNK') && playerRow.position) bucket.position = playerRow.position;
+    }
+
+    for (const h2hRow of row.headToHead || []) {
+      const opponentKey = String(h2hRow.opponentRosterId);
+      if (!team.headToHead.has(opponentKey)) {
+        team.headToHead.set(opponentKey, {
+          opponentRosterId: h2hRow.opponentRosterId,
+          comparisons: 0,
+          wins: 0,
+          ties: 0,
+        });
+      }
+      const bucket = team.headToHead.get(opponentKey);
+      bucket.comparisons += Number(h2hRow.comparisons || 0);
+      bucket.wins += Number(h2hRow.wins || 0);
+      bucket.ties += Number(h2hRow.ties || 0);
+    }
   }
 
   return batchSimulations;
@@ -151,20 +265,35 @@ function finalizeSimulationResult(meta, accumulator) {
       const divisor = Math.max(1, team.simulations);
       const averagePointsFor = team.pointsForTotal / divisor;
       const averagePointsAgainst = team.pointsAgainstTotal / divisor;
+      const weeklyDivisor = Math.max(1, team.weeklyScoreCount);
+      const marginDivisor = Math.max(1, team.weeklyMarginCount);
+      const averageWeeklyScore = team.weeklyScoreTotal / weeklyDivisor;
+      const averageWeeklyMargin = team.weeklyMarginTotal / marginDivisor;
+      const scoringVolatility = populationStdDevFromTotals(
+        team.weeklyScoreTotal,
+        team.weeklyScoreSquaredTotal,
+        weeklyDivisor
+      );
 
       return {
         rosterId: team.rosterId,
+        ownerId: team.ownerId,
         teamName: team.teamName,
         displayName: team.displayName,
+        userName: team.userName || team.displayName,
+        avatar: team.avatar || '',
+        division: team.division ?? null,
         averageWins: Number((team.winsTotal / divisor).toFixed(2)),
         averageLosses: Number((team.lossesTotal / divisor).toFixed(2)),
         averageTies: Number((team.tiesTotal / divisor).toFixed(2)),
         averagePointsFor: Number(averagePointsFor.toFixed(2)),
         averagePointsAgainst: Number(averagePointsAgainst.toFixed(2)),
-        averageMargin: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
-        pointsForVolatility: Number(
-          populationStdDevFromTotals(team.pointsForTotal, team.pointsForSquaredTotal, divisor).toFixed(2)
-        ),
+        seasonPointDifferential: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
+        averageWeeklyScore: Number(averageWeeklyScore.toFixed(2)),
+        averageWeeklyMargin: Number(averageWeeklyMargin.toFixed(2)),
+        averageMargin: Number(averageWeeklyMargin.toFixed(2)),
+        scoringVolatility: Number(scoringVolatility.toFixed(2)),
+        pointsForVolatility: Number(scoringVolatility.toFixed(2)),
         winsVolatility: Number(
           populationStdDevFromTotals(team.winsTotal, team.winsSquaredTotal, divisor).toFixed(2)
         ),
@@ -179,6 +308,43 @@ function finalizeSimulationResult(meta, accumulator) {
             avgPoints: Number((slot.pointsTotal / Math.max(1, slot.appearances)).toFixed(2)),
           }))
           .sort((left, right) => right.avgPoints - left.avgPoints || left.slot.localeCompare(right.slot)),
+        depthAverages: Array.from(team.depthStats.values())
+          .map((row) => ({
+            position: row.position,
+            avgPoints: Number((row.pointsTotal / Math.max(1, row.weeks)).toFixed(2)),
+            avgPlayers: Number((row.playerCountTotal / Math.max(1, row.weeks)).toFixed(2)),
+            weeks: row.weeks,
+          }))
+          .sort((left, right) => left.position.localeCompare(right.position)),
+        positionGroupPlayers: Array.from(team.positionGroupStats.values())
+          .map((row) => ({
+            playerId: row.playerId,
+            name: row.name,
+            nflTeam: row.nflTeam,
+            position: row.position,
+            rosterWeeks: row.rosterWeeks,
+            projectionWeeks: row.projectionWeeks,
+            avgProjectedPoints: Number(
+              (row.projectedPointsTotal / Math.max(1, row.projectionWeeks)).toFixed(2)
+            ),
+            starterRate: Number(
+              ((row.starterWeeks / Math.max(1, row.rosterWeeks)) * 100).toFixed(1)
+            ),
+          }))
+          .sort((left, right) => (
+            String(left.position).localeCompare(String(right.position))
+            || Number(right.avgProjectedPoints || 0) - Number(left.avgProjectedPoints || 0)
+            || String(left.name || '').localeCompare(String(right.name || ''))
+          )),
+        headToHead: Array.from(team.headToHead.values())
+          .map((row) => ({
+            opponentRosterId: row.opponentRosterId,
+            comparisons: row.comparisons,
+            wins: row.wins,
+            ties: row.ties,
+            winOdds: Number((((row.wins + row.ties * 0.5) / Math.max(1, row.comparisons)) * 100).toFixed(2)),
+          }))
+          .sort((left, right) => Number(left.opponentRosterId) - Number(right.opponentRosterId)),
         recordDistribution: Array.from(team.recordCounts.entries())
           .sort((left, right) => right[1] - left[1])
           .slice(0, 5)
@@ -189,6 +355,7 @@ function finalizeSimulationResult(meta, accumulator) {
           })),
       };
     })
+
     .sort((left, right) => left.averageFinish - right.averageFinish);
 
   return {
@@ -346,13 +513,24 @@ function OutcomeMatrix({ teams = [] }) {
   );
 }
 
-function TeamOutlookCard({ team, index }) {
+function TeamOutlookCard({ team, index, onOpen }) {
   return (
-    <article className="overflow-hidden rounded-3xl border border-white/10 bg-[#0A1D2B]">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen?.(team)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen?.(team);
+        }
+      }}
+      className="cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-[#0A1D2B] text-left transition hover:-translate-y-0.5 hover:border-[#FF4B1F]/35 hover:shadow-[0_18px_50px_rgba(0,0,0,0.22)] focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]/40"
+    >
       <div className="border-b border-white/10 p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">Projected rank #{index + 1}</div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35"><span>Projected rank #{index + 1}</span><span className="text-[#FF8A6D]/70">Open report card →</span></div>
             <h3 className="mt-1 truncate text-lg font-black text-white">{team.displayName || team.teamName}</h3>
             <div className="mt-1 text-xs text-white/40">Scoring rank {team.scoringRank ? `#${team.scoringRank}` : '—'} · Avg finish {formatNumber(team.averageFinish)}</div>
           </div>
@@ -408,7 +586,7 @@ function TeamOutlookCard({ team, index }) {
             <span className={`font-black ${team.avgMargin >= 0 ? 'text-emerald-200' : 'text-amber-100'}`}>{team.avgMargin >= 0 ? '+' : ''}{formatNumber(team.avgMargin)}</span>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-black/15 px-3 py-2">
-            <span className="text-white/40">#1 pick risk</span>
+            <span className="text-white/40">#1 pick odds</span>
             <span className="font-black text-white/75">{formatPercent(team.firstPickOdds)}</span>
           </div>
         </div>
@@ -458,6 +636,9 @@ export default function SeasonSimulatorPage() {
   const [startMode, setStartMode] = useState('current');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
+  const [reportCardTeam, setReportCardTeam] = useState(null);
+  const [pdfExport, setPdfExport] = useState({ running: false, current: 0, total: 0, label: '' });
+  const [pdfExportError, setPdfExportError] = useState('');
   const [runError, setRunError] = useState('');
   const [simulationProgress, setSimulationProgress] = useState({ completed: 0, total: 0, retry: 0, batchSize: SIMULATION_BATCH_SIZE });
   const [showRosterTradeModal, setShowRosterTradeModal] = useState(false);
@@ -494,6 +675,9 @@ export default function SeasonSimulatorPage() {
         }
 
         if (cancelled) return;
+        const resolvedLeagueId = configJson.leagueId || leagueJson.leagueId;
+        clearPersistedRosterTrades(resolvedLeagueId);
+        setRosterTrades([]);
         setLeagueInfo(configJson);
         setStartMode(configJson.defaultStartMode || 'current');
         const initialSettings = configJson.settings || DEFAULT_ADMIN_CONFIG;
@@ -524,6 +708,12 @@ export default function SeasonSimulatorPage() {
       cancelled = true;
     };
   }, []);
+
+  function handleRosterTradesSave(nextTrades) {
+    // Roster edits live only for the current page session. A refresh/reset
+    // always returns the simulator to the live Sleeper roster state.
+    setRosterTrades(normalizeRosterTrades(nextTrades));
+  }
 
   useEffect(() => {
     if (!isAdmin || !settingsLoaded) return;
@@ -586,11 +776,12 @@ export default function SeasonSimulatorPage() {
       'Avg Ties': formatNullableForCSV(team.averageTies),
       'Avg Points For': formatNullableForCSV(team.averagePointsFor),
       'Avg Points Against': formatNullableForCSV(team.averagePointsAgainst),
-      'Avg Margin': formatNullableForCSV(team.averageMargin),
+      'Avg Weekly Score': formatNullableForCSV(team.averageWeeklyScore),
+      'Avg Weekly Margin': formatNullableForCSV(team.averageWeeklyMargin),
       'Playoff Odds': formatNullableForCSV(team.playoffOdds),
       'Championship Odds': formatNullableForCSV(team.championshipOdds),
       '#1 Pick Odds': formatNullableForCSV(team.firstPickOdds),
-      'Scoring Volatility': formatNullableForCSV(team.pointsForVolatility),
+      'Scoring Volatility': formatNullableForCSV(team.scoringVolatility ?? team.pointsForVolatility),
       'Wins Volatility': formatNullableForCSV(team.winsVolatility),
       'Top Record Outcomes': formatNullableForCSV(
         (team.recordDistribution || [])
@@ -644,6 +835,14 @@ export default function SeasonSimulatorPage() {
       ])
     );
 
+    const leagueDepthAverages = new Map();
+    for (const position of ['QB', 'RB', 'WR', 'TE', 'BENCH']) {
+      const values = base
+        .map((team) => Number((team.depthAverages || []).find((row) => row.position === position)?.avgPoints || 0))
+        .filter((value) => Number.isFinite(value));
+      leagueDepthAverages.set(position, average(values));
+    }
+
     const scoringOrder = [...base].sort((left, right) => right.avgPointsFor - left.avgPointsFor);
     const marginOrder = [...base].sort((left, right) => right.avgMargin - left.avgMargin);
     const volatilityValues = base.map((team) => team.pointsForVolatility).sort((a, b) => a - b);
@@ -661,7 +860,6 @@ export default function SeasonSimulatorPage() {
         const marginRank = marginOrder.findIndex((row) => String(row.rosterId) === String(team.rosterId)) + 1;
         const playoffOdds = Number(team.playoffOdds) || 0;
         const championshipOdds = Number(team.championshipOdds) || 0;
-        const firstPickOdds = Number(team.firstPickOdds) || 0;
         const titleConversion = playoffOdds > 0 ? championshipOdds / playoffOdds : 0;
         const strengths = [];
         const weaknesses = [];
@@ -670,8 +868,18 @@ export default function SeasonSimulatorPage() {
           .filter((slot) => slot.appearances > 0 && slot.leagueAvg > 0);
         const bestSlot = [...slotComparisons].sort((a, b) => b.delta - a.delta)[0];
         const weakestSlot = [...slotComparisons].sort((a, b) => a.delta - b.delta)[0];
+        const depthComparisons = (team.depthAverages || [])
+          .filter((row) => row.position && row.position !== 'BENCH')
+          .map((row) => ({
+            ...row,
+            leagueAvg: leagueDepthAverages.get(row.position) || 0,
+            delta: Number(row.avgPoints || 0) - (leagueDepthAverages.get(row.position) || 0),
+          }));
+        const bestDepth = [...depthComparisons].sort((a, b) => b.delta - a.delta)[0];
+        const weakestDepth = [...depthComparisons].sort((a, b) => a.delta - b.delta)[0];
 
         if (bestSlot?.delta >= 0.75) strengths.push(`${bestSlot.slot} production is +${formatNumber(bestSlot.delta)} pts above league norm`);
+        if (bestDepth?.delta >= 0.5) strengths.push(`${bestDepth.position} replacement depth is +${formatNumber(bestDepth.delta)} pts above league norm`);
         if (scoringRank && scoringRank <= topThird) strengths.push(`#${scoringRank} simulated scoring profile`);
         if (marginRank && marginRank <= topThird && team.avgMargin > 0) strengths.push(`Strong weekly edge: +${formatNumber(team.avgMargin)} scoring margin`);
         if (playoffOdds >= Math.max(65, leagueAvgPlayoff + 8)) strengths.push(`High playoff floor at ${formatPercent(playoffOdds)}`);
@@ -679,10 +887,10 @@ export default function SeasonSimulatorPage() {
         if (titleConversion >= 0.22 && championshipOdds >= leagueAvgChampionship) strengths.push('Efficient title conversion after making the playoffs');
 
         if (weakestSlot?.delta <= -0.75) weaknesses.push(`${weakestSlot.slot} production is ${formatNumber(Math.abs(weakestSlot.delta))} pts below league norm`);
+        if (weakestDepth?.delta <= -0.5) weaknesses.push(`${weakestDepth.position} replacement depth is ${formatNumber(Math.abs(weakestDepth.delta))} pts below league norm`);
         if (scoringRank && scoringRank >= bottomThirdStart && team.avgPointsFor > 0) weaknesses.push(`Bottom-third simulated scoring profile (#${scoringRank})`);
         if (team.avgMargin < -0.5) weaknesses.push(`Negative scoring margin (${formatNumber(team.avgMargin)})`);
         if (playoffOdds < Math.min(45, leagueAvgPlayoff - 8)) weaknesses.push(`Narrow playoff path at ${formatPercent(playoffOdds)}`);
-        if (firstPickOdds >= 12) weaknesses.push(`Meaningful #1-pick downside (${formatPercent(firstPickOdds)})`);
         if (team.avgPointsAgainst > leagueAvgPointsAgainst * 1.02 && team.avgPointsAgainst > 0) weaknesses.push('Tougher-than-average simulated schedule pressure');
         if (team.pointsForVolatility > medianVolatility * 1.12 && team.pointsForVolatility > 0) weaknesses.push('Higher scoring volatility than most teams');
 
@@ -713,7 +921,7 @@ export default function SeasonSimulatorPage() {
       titleFavorite: byChamp[0],
       safestPlayoff: byPlayoff[0],
       scoringLeader: Number(byScoring[0]?.avgPointsFor || 0) > 0 ? byScoring[0] : null,
-      biggestDownside: byFirstPick[0],
+      firstPickFavorite: byFirstPick[0],
     };
   }, [teamAnalytics]);
 
@@ -730,6 +938,7 @@ export default function SeasonSimulatorPage() {
     );
 
     setRunning(true);
+    setReportCardTeam(null);
     setRunError('');
     setSimulationProgress({ completed: 0, total: targetSimulations, retry: 0, batchSize: serverBatchLimit });
 
@@ -822,6 +1031,44 @@ export default function SeasonSimulatorPage() {
     if (!rawRunRows.length) return;
     const today = new Date().toISOString().split('T')[0];
     downloadCSV(rawRunRows, `season-simulator-summary-${today}.csv`);
+  }
+
+  async function exportFullPdf() {
+    if (!result || !teamAnalytics.length || pdfExport.running) return;
+
+    setPdfExportError('');
+    setPdfExport({ running: true, current: 0, total: teamAnalytics.length + 1, label: 'Preparing PDF export' });
+
+    try {
+      const { exportSeasonSimulatorPdf } = await import('./utils/seasonSimulatorPdfExport');
+      await exportSeasonSimulatorPdf({
+        leagueInfo,
+        result,
+        teams: teamAnalytics,
+        rosters: leagueInfo?.rosters || [],
+        slotLabels,
+        startMode,
+        onProgress: (progress) => {
+          setPdfExport((previous) => ({
+            ...previous,
+            running: true,
+            current: Number(progress?.current || 0),
+            total: Number(progress?.total || previous.total || teamAnalytics.length + 1),
+            label: progress?.label || previous.label || 'Building PDF',
+          }));
+        },
+      });
+
+      setPdfExport({
+        running: false,
+        current: teamAnalytics.length + 1,
+        total: teamAnalytics.length + 1,
+        label: 'PDF downloaded',
+      });
+    } catch (error) {
+      setPdfExportError(error?.message || 'Failed to export PDF');
+      setPdfExport((previous) => ({ ...previous, running: false, label: '' }));
+    }
   }
 
   if (loadingLeague || status === 'loading') {
@@ -1003,7 +1250,7 @@ export default function SeasonSimulatorPage() {
                         { label: 'Title favorite', team: leagueStory.titleFavorite, value: formatPercent(leagueStory.titleFavorite?.championshipOdds) },
                         { label: 'Safest playoffs', team: leagueStory.safestPlayoff, value: formatPercent(leagueStory.safestPlayoff?.playoffOdds) },
                         { label: 'Scoring leader', team: leagueStory.scoringLeader, value: leagueStory.scoringLeader?.avgPointsFor ? formatNumber(leagueStory.scoringLeader.avgPointsFor) : '—' },
-                        { label: 'Most #1-pick risk', team: leagueStory.biggestDownside, value: formatPercent(leagueStory.biggestDownside?.firstPickOdds) },
+                        { label: 'Highest #1-pick odds', team: leagueStory.firstPickFavorite, value: formatPercent(leagueStory.firstPickFavorite?.firstPickOdds) },
                       ].map((item) => (
                         <div key={item.label} className="rounded-2xl border border-white/10 bg-black/20 p-3">
                           <div className="text-[10px] font-bold uppercase tracking-wide text-white/30">{item.label}</div>
@@ -1026,11 +1273,25 @@ export default function SeasonSimulatorPage() {
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FF8A6D]">Team report cards</p>
-                  <h2 className="mt-1 text-2xl font-black text-white">Strengths, weaknesses & risk</h2>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/50">Automatically derived from aggregate scoring, lineup-slot production, finish distributions, playoff odds, title odds, and downside risk.</p>
+                  <h2 className="mt-1 text-2xl font-black text-white">Strengths, weaknesses & outlook</h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/50">Click any team to open its full curved report card, including starters, depth, margin, odds, head-to-head power, and scoring consistency.</p>
                 </div>
-                <div className="flex">
-                  <button type="button" onClick={exportSummaryCsv} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] sm:text-sm">Team CSV</button>
+                <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={exportSummaryCsv} disabled={pdfExport.running} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm">Team CSV</button>
+                    <button type="button" onClick={exportFullPdf} disabled={pdfExport.running || !teamAnalytics.length} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#FF4B1F]/30 bg-[#FF4B1F]/10 px-3 py-2 text-xs font-black text-[#FFB09C] transition hover:border-[#FF4B1F]/55 hover:bg-[#FF4B1F]/15 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm">
+                      {pdfExport.running ? (
+                        <>
+                          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#FFB09C]/35 border-t-[#FFB09C]" />
+                          PDF {pdfExport.current}/{pdfExport.total}
+                        </>
+                      ) : (
+                        <>Full PDF <span aria-hidden="true">↓</span></>
+                      )}
+                    </button>
+                  </div>
+                  {pdfExport.running || pdfExport.label ? <div className="max-w-[320px] text-right text-[11px] text-white/40">{pdfExport.label}</div> : null}
+                  {pdfExportError ? <div className="max-w-[320px] text-right text-[11px] text-red-300">{pdfExportError}</div> : null}
                 </div>
               </div>
 
@@ -1042,7 +1303,7 @@ export default function SeasonSimulatorPage() {
               ) : null}
 
               <div className="grid gap-4 lg:grid-cols-2">
-                {teamAnalytics.map((team, index) => <TeamOutlookCard key={team.rosterId || team.teamName} team={team} index={index} />)}
+                {teamAnalytics.map((team, index) => <TeamOutlookCard key={team.rosterId || team.teamName} team={team} index={index} onOpen={setReportCardTeam} />)}
               </div>
             </section>
 
@@ -1088,10 +1349,20 @@ export default function SeasonSimulatorPage() {
           </section>
         ) : null}      </div>
 
+      <TeamReportCardModal
+        isOpen={Boolean(reportCardTeam)}
+        team={reportCardTeam}
+        teams={teamAnalytics}
+        rosters={leagueInfo?.rosters || []}
+        slotLabels={slotLabels}
+        simulations={result?.simulations || 0}
+        onClose={() => setReportCardTeam(null)}
+      />
+
       <RosterTradeModal
         isOpen={showRosterTradeModal}
         onClose={() => setShowRosterTradeModal(false)}
-        onSave={setRosterTrades}
+        onSave={handleRosterTradesSave}
         rosters={leagueInfo?.rosters || []}
         users={leagueInfo?.users || []}
         rosterTrades={rosterTrades}
