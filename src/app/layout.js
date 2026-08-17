@@ -56,6 +56,10 @@ async function getFooterTradeCounterData() {
     sinceText: 'No trades yet this season',
   };
 
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return fallback;
+  }
+
   try {
     const season = String(new Date().getFullYear());
     const headerStore = await headers();

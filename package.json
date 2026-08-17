@@ -6,7 +6,7 @@
     "dev": "next dev",
     "predev": "npm run generate-image-index",
     "build": "next build",
-    "prebuild": "npm run generate-image-index",
+    "prebuild": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && npm run generate-image-index",
     "setup:tesseract": "node scripts/fetchTesseractAssets.js",
     "start": "next start",
     "lint": "next lint",
