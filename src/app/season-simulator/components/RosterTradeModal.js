@@ -105,38 +105,11 @@ export default function RosterTradeModal({
     setSearchText('');
   }, [isOpen, rosterTrades, rosters]);
 
-  const baseRosterOptions = useMemo(() => (Array.isArray(rosters) ? rosters : []).map((roster) => ({
+  const rosterOptions = useMemo(() => (Array.isArray(rosters) ? rosters : []).map((roster) => ({
     rosterId: Number(roster?.roster_id),
     label: buildTeamName(roster, usersById),
     players: Array.isArray(roster?.players) ? roster.players.map(String) : [],
   })), [rosters, usersById]);
-
-  // Build the effective roster view after every queued move. This keeps the player
-  // picker in sync with saved/restored edits instead of always showing raw Sleeper rosters.
-  const rosterOptions = useMemo(() => {
-    const options = baseRosterOptions.map((team) => ({
-      ...team,
-      players: [...team.players],
-    }));
-    const byRosterId = new Map(options.map((team) => [String(team.rosterId), team]));
-
-    for (const move of Array.isArray(queuedMoves) ? queuedMoves : []) {
-      const fromTeam = byRosterId.get(String(move?.fromRosterId));
-      const toTeam = byRosterId.get(String(move?.toRosterId));
-      const playerId = String(move?.asset?.playerId || move?.playerId || '').trim();
-      if (!fromTeam || !toTeam || !playerId) continue;
-
-      const sourceIndex = fromTeam.players.indexOf(playerId);
-      if (sourceIndex === -1) continue;
-
-      fromTeam.players.splice(sourceIndex, 1);
-      if (!toTeam.players.includes(playerId)) {
-        toTeam.players.push(playerId);
-      }
-    }
-
-    return options;
-  }, [baseRosterOptions, queuedMoves]);
 
   const fromRoster = rosterOptions.find((team) => String(team.rosterId) === String(fromRosterId));
   const toRoster = rosterOptions.find((team) => String(team.rosterId) === String(toRosterId));
@@ -154,13 +127,6 @@ export default function RosterTradeModal({
         return [player.playerName, player.position, player.nflTeam, player.playerId].join(' ').toLowerCase().includes(search);
       });
   }, [fromRoster, playersById, searchText]);
-
-  useEffect(() => {
-    if (!selectedPlayerId) return;
-    if (!filteredPlayers.some((player) => player.playerId === String(selectedPlayerId))) {
-      setSelectedPlayerId('');
-    }
-  }, [filteredPlayers, selectedPlayerId]);
 
   const selectedPlayer = filteredPlayers.find((player) => player.playerId === String(selectedPlayerId));
   const sameTeamSelected = fromRoster && toRoster && String(fromRoster.rosterId) === String(toRoster.rosterId);
@@ -203,7 +169,7 @@ export default function RosterTradeModal({
   return (
     <ModalShell
       title="Edit Roster Trades"
-      subtitle="Move players between teams to test alternate roster builds. Applied edits are restored after a page refresh in this browser."
+      subtitle="Temporarily move players between teams to test alternate roster builds in the next simulation."
       onClose={onClose}
       maxWidth="max-w-6xl"
     >
@@ -261,7 +227,7 @@ export default function RosterTradeModal({
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FF4B1F] text-xs font-black text-white">2</span>
               <div>
                 <h3 className="font-bold text-white">Pick a player</h3>
-                <p className="text-xs text-white/45">Tap a player to select them. The list reflects all currently queued moves.</p>
+                <p className="text-xs text-white/45">Tap a player to select them for the move.</p>
               </div>
             </div>
 
@@ -327,7 +293,7 @@ export default function RosterTradeModal({
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-xs font-black text-white/70">3</span>
                 <h3 className="font-bold text-white">Simulation moves</h3>
               </div>
-              <p className="mt-2 text-xs leading-5 text-white/40">These changes affect only the simulator, not Sleeper. Applied moves are saved locally until you clear them.</p>
+              <p className="mt-2 text-xs leading-5 text-white/40">These changes affect only the simulation, not the Sleeper league.</p>
             </div>
             <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs font-bold text-white/60">{queuedMoves.length}</span>
           </div>

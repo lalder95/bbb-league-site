@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import AdminToolModal from '../admin/components/AdminToolModal';
 import RosterTradeModal from './components/RosterTradeModal';
+import TeamReportCardModal from './components/TeamReportCardModal';
+import { exportSeasonSimulatorPdf } from './utils/seasonSimulatorPdfExport';
 import { downloadCSV, formatNullableForCSV } from '@/utils/csvUtils';
 
 const DEFAULT_ADMIN_CONFIG = {
@@ -404,7 +406,7 @@ function OutcomeMatrix({ teams = [] }) {
   );
 }
 
-function TeamOutlookCard({ team, index }) {
+function TeamOutlookCard({ team, index, onOpenReportCard }) {
   return (
     <article className="overflow-hidden rounded-3xl border border-white/10 bg-[#0A1D2B]">
       <div className="border-b border-white/10 p-4 sm:p-5">
@@ -437,6 +439,14 @@ function TeamOutlookCard({ team, index }) {
       </div>
 
       <div className="space-y-4 p-4 sm:p-5">
+        <button
+          type="button"
+          onClick={() => onOpenReportCard?.(team)}
+          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white/75 transition hover:border-[#FF4B1F]/35 hover:bg-white/[0.08] hover:text-white"
+        >
+          Open full report card
+        </button>
+
         <div>
           <div className="mb-2 flex items-center justify-between text-xs">
             <span className="font-bold uppercase tracking-[0.13em] text-white/35">Playoff probability</span>
@@ -520,6 +530,10 @@ export default function SeasonSimulatorPage() {
   const [simulationProgress, setSimulationProgress] = useState({ completed: 0, total: 0, retry: 0, batchSize: SIMULATION_BATCH_SIZE });
   const [showRosterTradeModal, setShowRosterTradeModal] = useState(false);
   const [rosterTrades, setRosterTrades] = useState([]);
+  const [selectedReportTeam, setSelectedReportTeam] = useState(null);
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfExportProgress, setPdfExportProgress] = useState(null);
+  const [pdfExportError, setPdfExportError] = useState('');
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminConfig, setAdminConfig] = useState(DEFAULT_ADMIN_CONFIG);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -905,6 +919,39 @@ export default function SeasonSimulatorPage() {
     downloadCSV(rawRunRows, `season-simulator-summary-${today}.csv`);
   }
 
+  function openReportCard(team) {
+    setSelectedReportTeam(team || null);
+  }
+
+  function closeReportCard() {
+    setSelectedReportTeam(null);
+  }
+
+  async function exportReportCardsPdf() {
+    if (!result || !teamAnalytics.length || pdfExporting) return;
+
+    setPdfExportError('');
+    setPdfExporting(true);
+    setPdfExportProgress({ phase: 'prepare', current: 0, total: teamAnalytics.length + 1, label: 'Preparing PDF export' });
+
+    try {
+      await exportSeasonSimulatorPdf({
+        leagueInfo,
+        result,
+        teams: teamAnalytics,
+        rosters: leagueInfo?.rosters || [],
+        slotLabels,
+        startMode,
+        onProgress: setPdfExportProgress,
+      });
+    } catch (error) {
+      setPdfExportError(error?.message || 'Failed to export report cards PDF');
+    } finally {
+      setPdfExporting(false);
+      setTimeout(() => setPdfExportProgress(null), 1200);
+    }
+  }
+
   if (loadingLeague || status === 'loading') {
     return (
       <main className="min-h-screen bg-[#001A2B] text-white">
@@ -1110,10 +1157,36 @@ export default function SeasonSimulatorPage() {
                   <h2 className="mt-1 text-2xl font-black text-white">Strengths, weaknesses & risk</h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-white/50">Automatically derived from aggregate scoring, lineup-slot production, finish distributions, playoff odds, title odds, and downside risk.</p>
                 </div>
-                <div className="flex">
+                <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={exportSummaryCsv} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] sm:text-sm">Team CSV</button>
+                  <button
+                    type="button"
+                    onClick={exportReportCardsPdf}
+                    disabled={pdfExporting || !teamAnalytics.length}
+                    className="min-h-10 rounded-xl border border-[#FF4B1F]/30 bg-[#FF4B1F]/12 px-3 py-2 text-xs font-bold text-white transition hover:bg-[#FF4B1F]/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                  >
+                    {pdfExporting ? 'Exporting PDF…' : 'Export report cards PDF'}
+                  </button>
                 </div>
               </div>
+
+              {pdfExportError ? (
+                <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                  {pdfExportError}
+                </div>
+              ) : null}
+
+              {pdfExporting && pdfExportProgress ? (
+                <div className="mb-4 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2 text-xs text-white/60">
+                    <span>{pdfExportProgress.label || 'Exporting PDF'}</span>
+                    <span>{Math.min(pdfExportProgress.current || 0, pdfExportProgress.total || 0)}/{pdfExportProgress.total || 0}</span>
+                  </div>
+                  <div className="mt-2">
+                    <ProgressBar value={pdfExportProgress.current || 0} max={Math.max(1, pdfExportProgress.total || 1)} height="h-1.5" tone="warning" />
+                  </div>
+                </div>
+              ) : null}
 
               {isAdmin ? (
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/55">
@@ -1123,7 +1196,14 @@ export default function SeasonSimulatorPage() {
               ) : null}
 
               <div className="grid gap-4 lg:grid-cols-2">
-                {teamAnalytics.map((team, index) => <TeamOutlookCard key={team.rosterId || team.teamName} team={team} index={index} />)}
+                {teamAnalytics.map((team, index) => (
+                  <TeamOutlookCard
+                    key={team.rosterId || team.teamName}
+                    team={team}
+                    index={index}
+                    onOpenReportCard={openReportCard}
+                  />
+                ))}
               </div>
             </section>
 
@@ -1168,6 +1248,16 @@ export default function SeasonSimulatorPage() {
 
           </section>
         ) : null}      </div>
+
+      <TeamReportCardModal
+        isOpen={Boolean(selectedReportTeam)}
+        team={selectedReportTeam}
+        teams={teamAnalytics}
+        rosters={leagueInfo?.rosters || []}
+        slotLabels={slotLabels}
+        simulations={result?.simulations || 0}
+        onClose={closeReportCard}
+      />
 
       <RosterTradeModal
         isOpen={showRosterTradeModal}
