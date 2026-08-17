@@ -442,9 +442,12 @@ function TeamOutlookCard({ team, index, onOpenReportCard }) {
         <button
           type="button"
           onClick={() => onOpenReportCard?.(team)}
-          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white/75 transition hover:border-[#FF4B1F]/35 hover:bg-white/[0.08] hover:text-white"
+          className="w-full rounded-xl border border-[#FF4B1F]/35 bg-[#FF4B1F]/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition hover:border-[#FF4B1F]/55 hover:bg-[#FF4B1F]/16"
         >
-          Open full report card
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#FF4B1F] shadow-[0_0_10px_rgba(255,75,31,0.7)] motion-safe:animate-pulse" />
+            <span className="motion-safe:animate-pulse">Open full report card</span>
+          </span>
         </button>
 
         <div>
