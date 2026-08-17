@@ -1103,7 +1103,7 @@ export default function SeasonSimulatorPage() {
               <OutcomeMatrix teams={teamAnalytics} />
             </div>
 
-            <section>
+            <section id="report-cards">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FF8A6D]">Team report cards</p>
