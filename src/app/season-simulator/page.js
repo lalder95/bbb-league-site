@@ -24,6 +24,7 @@ const ADMIN_FIELD_HELP = {
 
 const SIMULATION_BATCH_SIZE = 20;
 const SIMULATION_BATCH_ATTEMPTS = 3;
+const SIMULATION_CACHE_VERSION = 2;
 
 
 function formatPercent(value) {
@@ -60,7 +61,7 @@ async function readApiJson(response, label = 'Request') {
 }
 
 function getSimulationCacheKey(leagueId) {
-  return `season-simulator-cache:${String(leagueId || '')}`;
+  return `season-simulator-cache:v${SIMULATION_CACHE_VERSION}:${String(leagueId || '')}`;
 }
 
 function readSimulationCache(leagueId) {
@@ -148,8 +149,12 @@ function mergeSimulationAggregation(accumulator, aggregation) {
     if (!accumulator.teams.has(key)) {
       accumulator.teams.set(key, {
         rosterId: row.rosterId,
+        ownerId: row.ownerId,
         teamName: row.teamName,
         displayName: row.displayName,
+        userName: row.userName || row.displayName,
+        avatar: row.avatar || '',
+        division: row.division ?? null,
         simulations: 0,
         winsTotal: 0,
         winsSquaredTotal: 0,
@@ -158,12 +163,20 @@ function mergeSimulationAggregation(accumulator, aggregation) {
         pointsForTotal: 0,
         pointsForSquaredTotal: 0,
         pointsAgainstTotal: 0,
+        weeklyScoreTotal: 0,
+        weeklyScoreSquaredTotal: 0,
+        weeklyScoreCount: 0,
+        weeklyMarginTotal: 0,
+        weeklyMarginCount: 0,
         playoffAppearances: 0,
         championships: 0,
         firstPickCount: 0,
         finishTotal: 0,
         recordCounts: new Map(),
         slotStats: new Map(),
+        depthStats: new Map(),
+        positionGroupStats: new Map(),
+        headToHead: new Map(),
       });
     }
 
@@ -177,6 +190,11 @@ function mergeSimulationAggregation(accumulator, aggregation) {
       'pointsForTotal',
       'pointsForSquaredTotal',
       'pointsAgainstTotal',
+      'weeklyScoreTotal',
+      'weeklyScoreSquaredTotal',
+      'weeklyScoreCount',
+      'weeklyMarginTotal',
+      'weeklyMarginCount',
       'playoffAppearances',
       'championships',
       'firstPickCount',
@@ -200,6 +218,51 @@ function mergeSimulationAggregation(accumulator, aggregation) {
       bucket.appearances += Number(slotRow.appearances || 0);
       bucket.pointsTotal += Number(slotRow.pointsTotal || 0);
     }
+
+    for (const depthRow of row.depthStats || []) {
+      const position = String(depthRow.position || 'BENCH');
+      if (!team.depthStats.has(position)) {
+        team.depthStats.set(position, { position, weeks: 0, pointsTotal: 0, playerCountTotal: 0 });
+      }
+      const bucket = team.depthStats.get(position);
+      bucket.weeks += Number(depthRow.weeks || 0);
+      bucket.pointsTotal += Number(depthRow.pointsTotal || 0);
+      bucket.playerCountTotal += Number(depthRow.playerCountTotal || 0);
+    }
+
+    for (const playerRow of row.positionGroupStats || []) {
+      const playerId = String(playerRow.playerId || '');
+      if (!playerId) continue;
+      if (!team.positionGroupStats.has(playerId)) {
+        team.positionGroupStats.set(playerId, {
+          playerId,
+          name: playerRow.name || playerId,
+          nflTeam: playerRow.nflTeam || '',
+          position: playerRow.position || 'UNK',
+          rosterWeeks: 0,
+          projectionWeeks: 0,
+          projectedPointsTotal: 0,
+          starterWeeks: 0,
+        });
+      }
+      const bucket = team.positionGroupStats.get(playerId);
+      bucket.rosterWeeks += Number(playerRow.rosterWeeks || 0);
+      bucket.projectionWeeks += Number(playerRow.projectionWeeks || 0);
+      bucket.projectedPointsTotal += Number(playerRow.projectedPointsTotal || 0);
+      bucket.starterWeeks += Number(playerRow.starterWeeks || 0);
+    }
+
+    for (const h2hRow of row.headToHead || []) {
+      const opponentRosterId = String(h2hRow.opponentRosterId || '');
+      if (!opponentRosterId) continue;
+      if (!team.headToHead.has(opponentRosterId)) {
+        team.headToHead.set(opponentRosterId, { opponentRosterId: h2hRow.opponentRosterId, comparisons: 0, wins: 0, ties: 0 });
+      }
+      const bucket = team.headToHead.get(opponentRosterId);
+      bucket.comparisons += Number(h2hRow.comparisons || 0);
+      bucket.wins += Number(h2hRow.wins || 0);
+      bucket.ties += Number(h2hRow.ties || 0);
+    }
   }
 
   return batchSimulations;
@@ -211,19 +274,28 @@ function finalizeSimulationResult(meta, accumulator) {
       const divisor = Math.max(1, team.simulations);
       const averagePointsFor = team.pointsForTotal / divisor;
       const averagePointsAgainst = team.pointsAgainstTotal / divisor;
+      const weeklyDivisor = Math.max(1, team.weeklyScoreCount);
+      const marginDivisor = Math.max(1, team.weeklyMarginCount);
 
       return {
         rosterId: team.rosterId,
+        ownerId: team.ownerId,
         teamName: team.teamName,
         displayName: team.displayName,
+        userName: team.userName || team.displayName,
+        avatar: team.avatar || '',
+        division: team.division ?? null,
         averageWins: Number((team.winsTotal / divisor).toFixed(2)),
         averageLosses: Number((team.lossesTotal / divisor).toFixed(2)),
         averageTies: Number((team.tiesTotal / divisor).toFixed(2)),
         averagePointsFor: Number(averagePointsFor.toFixed(2)),
         averagePointsAgainst: Number(averagePointsAgainst.toFixed(2)),
-        averageMargin: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
+        seasonPointDifferential: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
+        averageWeeklyScore: Number((team.weeklyScoreTotal / weeklyDivisor).toFixed(2)),
+        averageWeeklyMargin: Number((team.weeklyMarginTotal / marginDivisor).toFixed(2)),
+        averageMargin: Number((team.weeklyMarginTotal / marginDivisor).toFixed(2)),
         pointsForVolatility: Number(
-          populationStdDevFromTotals(team.pointsForTotal, team.pointsForSquaredTotal, divisor).toFixed(2)
+          populationStdDevFromTotals(team.weeklyScoreTotal, team.weeklyScoreSquaredTotal, weeklyDivisor).toFixed(2)
         ),
         winsVolatility: Number(
           populationStdDevFromTotals(team.winsTotal, team.winsSquaredTotal, divisor).toFixed(2)
@@ -239,6 +311,27 @@ function finalizeSimulationResult(meta, accumulator) {
             avgPoints: Number((slot.pointsTotal / Math.max(1, slot.appearances)).toFixed(2)),
           }))
           .sort((left, right) => right.avgPoints - left.avgPoints || left.slot.localeCompare(right.slot)),
+        depthAverages: Array.from(team.depthStats.values())
+          .map((row) => ({
+            position: row.position,
+            avgPoints: Number((row.pointsTotal / Math.max(1, row.weeks)).toFixed(2)),
+            avgPlayers: Number((row.playerCountTotal / Math.max(1, row.weeks)).toFixed(2)),
+            weeks: row.weeks,
+          }))
+          .sort((left, right) => left.position.localeCompare(right.position)),
+        positionGroupPlayers: Array.from(team.positionGroupStats.values())
+          .map((row) => ({
+            ...row,
+            avgProjectedPoints: Number((row.projectedPointsTotal / Math.max(1, row.projectionWeeks)).toFixed(2)),
+            starterRate: Number(((row.starterWeeks / Math.max(1, row.rosterWeeks)) * 100).toFixed(1)),
+          }))
+          .sort((left, right) => left.position.localeCompare(right.position) || right.avgProjectedPoints - left.avgProjectedPoints),
+        headToHead: Array.from(team.headToHead.values())
+          .map((row) => ({
+            ...row,
+            winOdds: Number((((row.wins + (row.ties * 0.5)) / Math.max(1, row.comparisons)) * 100).toFixed(2)),
+          }))
+          .sort((left, right) => Number(left.opponentRosterId) - Number(right.opponentRosterId)),
         recordDistribution: Array.from(team.recordCounts.entries())
           .sort((left, right) => right[1] - left[1])
           .slice(0, 5)
