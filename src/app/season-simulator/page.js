@@ -4,8 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import AdminToolModal from '../admin/components/AdminToolModal';
 import RosterTradeModal from './components/RosterTradeModal';
-import TeamReportCardModal from './components/TeamReportCardModal';
-import { exportSeasonSimulatorPdf } from './utils/seasonSimulatorPdfExport';
 import { downloadCSV, formatNullableForCSV } from '@/utils/csvUtils';
 
 const DEFAULT_ADMIN_CONFIG = {
@@ -24,7 +22,6 @@ const ADMIN_FIELD_HELP = {
 
 const SIMULATION_BATCH_SIZE = 20;
 const SIMULATION_BATCH_ATTEMPTS = 3;
-const SIMULATION_CACHE_VERSION = 2;
 
 
 function formatPercent(value) {
@@ -60,64 +57,6 @@ async function readApiJson(response, label = 'Request') {
   }
 }
 
-function getSimulationCacheKey(leagueId) {
-  return `season-simulator-cache:v${SIMULATION_CACHE_VERSION}:${String(leagueId || '')}`;
-}
-
-function readSimulationCache(leagueId) {
-  if (typeof window === 'undefined' || !leagueId) return null;
-
-  try {
-    const raw = window.localStorage.getItem(getSimulationCacheKey(leagueId));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    if (!parsed || String(parsed.leagueId) !== String(leagueId)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function writeSimulationCache(leagueId, cache) {
-  if (typeof window === 'undefined' || !leagueId) return;
-
-  try {
-    window.localStorage.setItem(
-      getSimulationCacheKey(leagueId),
-      JSON.stringify({
-        leagueId: String(leagueId),
-        updatedAt: new Date().toISOString(),
-        ...cache,
-      })
-    );
-  } catch {
-    // Ignore storage quota / privacy mode failures.
-  }
-}
-
-function normalizeCachedRosterTrades(rosterTrades = []) {
-  if (!Array.isArray(rosterTrades)) return [];
-
-  return rosterTrades
-    .map((trade) => ({
-      fromRosterId: Number(trade?.fromRosterId),
-      toRosterId: Number(trade?.toRosterId),
-      fromTeamName: String(trade?.fromTeamName || ''),
-      toTeamName: String(trade?.toTeamName || ''),
-      asset: trade?.asset && typeof trade.asset === 'object'
-        ? {
-            assetType: String(trade.asset.assetType || 'player'),
-            playerId: String(trade.asset.playerId || ''),
-            playerName: String(trade.asset.playerName || trade.asset.playerId || ''),
-            position: String(trade.asset.position || 'UNK'),
-            nflTeam: String(trade.asset.nflTeam || ''),
-          }
-        : null,
-    }))
-    .filter((trade) => Number.isFinite(trade.fromRosterId) && Number.isFinite(trade.toRosterId) && trade.asset?.playerId);
-}
-
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -149,12 +88,8 @@ function mergeSimulationAggregation(accumulator, aggregation) {
     if (!accumulator.teams.has(key)) {
       accumulator.teams.set(key, {
         rosterId: row.rosterId,
-        ownerId: row.ownerId,
         teamName: row.teamName,
         displayName: row.displayName,
-        userName: row.userName || row.displayName,
-        avatar: row.avatar || '',
-        division: row.division ?? null,
         simulations: 0,
         winsTotal: 0,
         winsSquaredTotal: 0,
@@ -163,20 +98,12 @@ function mergeSimulationAggregation(accumulator, aggregation) {
         pointsForTotal: 0,
         pointsForSquaredTotal: 0,
         pointsAgainstTotal: 0,
-        weeklyScoreTotal: 0,
-        weeklyScoreSquaredTotal: 0,
-        weeklyScoreCount: 0,
-        weeklyMarginTotal: 0,
-        weeklyMarginCount: 0,
         playoffAppearances: 0,
         championships: 0,
         firstPickCount: 0,
         finishTotal: 0,
         recordCounts: new Map(),
         slotStats: new Map(),
-        depthStats: new Map(),
-        positionGroupStats: new Map(),
-        headToHead: new Map(),
       });
     }
 
@@ -190,11 +117,6 @@ function mergeSimulationAggregation(accumulator, aggregation) {
       'pointsForTotal',
       'pointsForSquaredTotal',
       'pointsAgainstTotal',
-      'weeklyScoreTotal',
-      'weeklyScoreSquaredTotal',
-      'weeklyScoreCount',
-      'weeklyMarginTotal',
-      'weeklyMarginCount',
       'playoffAppearances',
       'championships',
       'firstPickCount',
@@ -218,51 +140,6 @@ function mergeSimulationAggregation(accumulator, aggregation) {
       bucket.appearances += Number(slotRow.appearances || 0);
       bucket.pointsTotal += Number(slotRow.pointsTotal || 0);
     }
-
-    for (const depthRow of row.depthStats || []) {
-      const position = String(depthRow.position || 'BENCH');
-      if (!team.depthStats.has(position)) {
-        team.depthStats.set(position, { position, weeks: 0, pointsTotal: 0, playerCountTotal: 0 });
-      }
-      const bucket = team.depthStats.get(position);
-      bucket.weeks += Number(depthRow.weeks || 0);
-      bucket.pointsTotal += Number(depthRow.pointsTotal || 0);
-      bucket.playerCountTotal += Number(depthRow.playerCountTotal || 0);
-    }
-
-    for (const playerRow of row.positionGroupStats || []) {
-      const playerId = String(playerRow.playerId || '');
-      if (!playerId) continue;
-      if (!team.positionGroupStats.has(playerId)) {
-        team.positionGroupStats.set(playerId, {
-          playerId,
-          name: playerRow.name || playerId,
-          nflTeam: playerRow.nflTeam || '',
-          position: playerRow.position || 'UNK',
-          rosterWeeks: 0,
-          projectionWeeks: 0,
-          projectedPointsTotal: 0,
-          starterWeeks: 0,
-        });
-      }
-      const bucket = team.positionGroupStats.get(playerId);
-      bucket.rosterWeeks += Number(playerRow.rosterWeeks || 0);
-      bucket.projectionWeeks += Number(playerRow.projectionWeeks || 0);
-      bucket.projectedPointsTotal += Number(playerRow.projectedPointsTotal || 0);
-      bucket.starterWeeks += Number(playerRow.starterWeeks || 0);
-    }
-
-    for (const h2hRow of row.headToHead || []) {
-      const opponentRosterId = String(h2hRow.opponentRosterId || '');
-      if (!opponentRosterId) continue;
-      if (!team.headToHead.has(opponentRosterId)) {
-        team.headToHead.set(opponentRosterId, { opponentRosterId: h2hRow.opponentRosterId, comparisons: 0, wins: 0, ties: 0 });
-      }
-      const bucket = team.headToHead.get(opponentRosterId);
-      bucket.comparisons += Number(h2hRow.comparisons || 0);
-      bucket.wins += Number(h2hRow.wins || 0);
-      bucket.ties += Number(h2hRow.ties || 0);
-    }
   }
 
   return batchSimulations;
@@ -274,28 +151,19 @@ function finalizeSimulationResult(meta, accumulator) {
       const divisor = Math.max(1, team.simulations);
       const averagePointsFor = team.pointsForTotal / divisor;
       const averagePointsAgainst = team.pointsAgainstTotal / divisor;
-      const weeklyDivisor = Math.max(1, team.weeklyScoreCount);
-      const marginDivisor = Math.max(1, team.weeklyMarginCount);
 
       return {
         rosterId: team.rosterId,
-        ownerId: team.ownerId,
         teamName: team.teamName,
         displayName: team.displayName,
-        userName: team.userName || team.displayName,
-        avatar: team.avatar || '',
-        division: team.division ?? null,
         averageWins: Number((team.winsTotal / divisor).toFixed(2)),
         averageLosses: Number((team.lossesTotal / divisor).toFixed(2)),
         averageTies: Number((team.tiesTotal / divisor).toFixed(2)),
         averagePointsFor: Number(averagePointsFor.toFixed(2)),
         averagePointsAgainst: Number(averagePointsAgainst.toFixed(2)),
-        seasonPointDifferential: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
-        averageWeeklyScore: Number((team.weeklyScoreTotal / weeklyDivisor).toFixed(2)),
-        averageWeeklyMargin: Number((team.weeklyMarginTotal / marginDivisor).toFixed(2)),
-        averageMargin: Number((team.weeklyMarginTotal / marginDivisor).toFixed(2)),
+        averageMargin: Number((averagePointsFor - averagePointsAgainst).toFixed(2)),
         pointsForVolatility: Number(
-          populationStdDevFromTotals(team.weeklyScoreTotal, team.weeklyScoreSquaredTotal, weeklyDivisor).toFixed(2)
+          populationStdDevFromTotals(team.pointsForTotal, team.pointsForSquaredTotal, divisor).toFixed(2)
         ),
         winsVolatility: Number(
           populationStdDevFromTotals(team.winsTotal, team.winsSquaredTotal, divisor).toFixed(2)
@@ -311,27 +179,6 @@ function finalizeSimulationResult(meta, accumulator) {
             avgPoints: Number((slot.pointsTotal / Math.max(1, slot.appearances)).toFixed(2)),
           }))
           .sort((left, right) => right.avgPoints - left.avgPoints || left.slot.localeCompare(right.slot)),
-        depthAverages: Array.from(team.depthStats.values())
-          .map((row) => ({
-            position: row.position,
-            avgPoints: Number((row.pointsTotal / Math.max(1, row.weeks)).toFixed(2)),
-            avgPlayers: Number((row.playerCountTotal / Math.max(1, row.weeks)).toFixed(2)),
-            weeks: row.weeks,
-          }))
-          .sort((left, right) => left.position.localeCompare(right.position)),
-        positionGroupPlayers: Array.from(team.positionGroupStats.values())
-          .map((row) => ({
-            ...row,
-            avgProjectedPoints: Number((row.projectedPointsTotal / Math.max(1, row.projectionWeeks)).toFixed(2)),
-            starterRate: Number(((row.starterWeeks / Math.max(1, row.rosterWeeks)) * 100).toFixed(1)),
-          }))
-          .sort((left, right) => left.position.localeCompare(right.position) || right.avgProjectedPoints - left.avgProjectedPoints),
-        headToHead: Array.from(team.headToHead.values())
-          .map((row) => ({
-            ...row,
-            winOdds: Number((((row.wins + (row.ties * 0.5)) / Math.max(1, row.comparisons)) * 100).toFixed(2)),
-          }))
-          .sort((left, right) => Number(left.opponentRosterId) - Number(right.opponentRosterId)),
         recordDistribution: Array.from(team.recordCounts.entries())
           .sort((left, right) => right[1] - left[1])
           .slice(0, 5)
@@ -499,7 +346,7 @@ function OutcomeMatrix({ teams = [] }) {
   );
 }
 
-function TeamOutlookCard({ team, index, onOpenReportCard }) {
+function TeamOutlookCard({ team, index }) {
   return (
     <article className="overflow-hidden rounded-3xl border border-white/10 bg-[#0A1D2B]">
       <div className="border-b border-white/10 p-4 sm:p-5">
@@ -532,17 +379,6 @@ function TeamOutlookCard({ team, index, onOpenReportCard }) {
       </div>
 
       <div className="space-y-4 p-4 sm:p-5">
-        <button
-          type="button"
-          onClick={() => onOpenReportCard?.(team)}
-          className="w-full rounded-xl border border-[#FF4B1F]/35 bg-[#FF4B1F]/10 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition hover:border-[#FF4B1F]/55 hover:bg-[#FF4B1F]/16"
-        >
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#FF4B1F] shadow-[0_0_10px_rgba(255,75,31,0.7)] motion-safe:animate-pulse" />
-            <span className="motion-safe:animate-pulse">Open full report card</span>
-          </span>
-        </button>
-
         <div>
           <div className="mb-2 flex items-center justify-between text-xs">
             <span className="font-bold uppercase tracking-[0.13em] text-white/35">Playoff probability</span>
@@ -626,10 +462,6 @@ export default function SeasonSimulatorPage() {
   const [simulationProgress, setSimulationProgress] = useState({ completed: 0, total: 0, retry: 0, batchSize: SIMULATION_BATCH_SIZE });
   const [showRosterTradeModal, setShowRosterTradeModal] = useState(false);
   const [rosterTrades, setRosterTrades] = useState([]);
-  const [selectedReportTeam, setSelectedReportTeam] = useState(null);
-  const [pdfExporting, setPdfExporting] = useState(false);
-  const [pdfExportProgress, setPdfExportProgress] = useState(null);
-  const [pdfExportError, setPdfExportError] = useState('');
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminConfig, setAdminConfig] = useState(DEFAULT_ADMIN_CONFIG);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -638,7 +470,6 @@ export default function SeasonSimulatorPage() {
   const [settingsSuccess, setSettingsSuccess] = useState('');
   const lastSavedSettingsRef = useRef('');
   const settingsSuccessTimerRef = useRef(null);
-  const simulationCacheHydratedRef = useRef(false);
 
   const slotLabels = useMemo(() => buildSlotLabels(leagueInfo?.rosterPositions || []), [leagueInfo]);
 
@@ -664,18 +495,7 @@ export default function SeasonSimulatorPage() {
 
         if (cancelled) return;
         setLeagueInfo(configJson);
-
-        const cachedState = readSimulationCache(leagueJson.leagueId);
-        if (cachedState) {
-          setStartMode(cachedState.startMode || configJson.defaultStartMode || 'current');
-          setRosterTrades(normalizeCachedRosterTrades(cachedState.rosterTrades));
-          setResult(cachedState.result || null);
-        } else {
-          setStartMode(configJson.defaultStartMode || 'current');
-          setRosterTrades([]);
-          setResult(null);
-        }
-
+        setStartMode(configJson.defaultStartMode || 'current');
         const initialSettings = configJson.settings || DEFAULT_ADMIN_CONFIG;
         setAdminConfig({
           simulations: Number(initialSettings.simulations) || DEFAULT_ADMIN_CONFIG.simulations,
@@ -689,7 +509,6 @@ export default function SeasonSimulatorPage() {
           shortInjuryChance: Number(initialSettings.shortInjuryChance) || DEFAULT_ADMIN_CONFIG.shortInjuryChance,
           longInjuryChance: Number(initialSettings.longInjuryChance) || DEFAULT_ADMIN_CONFIG.longInjuryChance,
         });
-        simulationCacheHydratedRef.current = true;
         setSettingsLoaded(true);
       } catch (error) {
         if (!cancelled) {
@@ -755,16 +574,6 @@ export default function SeasonSimulatorPage() {
       clearTimeout(settingsSuccessTimerRef.current);
     }
   }, []);
-
-  useEffect(() => {
-    if (!simulationCacheHydratedRef.current || !leagueInfo?.leagueId) return;
-
-    writeSimulationCache(leagueInfo.leagueId, {
-      startMode,
-      rosterTrades,
-      result,
-    });
-  }, [leagueInfo?.leagueId, result, rosterTrades, startMode]);
 
   const rawRunRows = useMemo(() => {
     if (!Array.isArray(result?.teamSummaries)) return [];
@@ -1015,39 +824,6 @@ export default function SeasonSimulatorPage() {
     downloadCSV(rawRunRows, `season-simulator-summary-${today}.csv`);
   }
 
-  function openReportCard(team) {
-    setSelectedReportTeam(team || null);
-  }
-
-  function closeReportCard() {
-    setSelectedReportTeam(null);
-  }
-
-  async function exportReportCardsPdf() {
-    if (!result || !teamAnalytics.length || pdfExporting) return;
-
-    setPdfExportError('');
-    setPdfExporting(true);
-    setPdfExportProgress({ phase: 'prepare', current: 0, total: teamAnalytics.length + 1, label: 'Preparing PDF export' });
-
-    try {
-      await exportSeasonSimulatorPdf({
-        leagueInfo,
-        result,
-        teams: teamAnalytics,
-        rosters: leagueInfo?.rosters || [],
-        slotLabels,
-        startMode,
-        onProgress: setPdfExportProgress,
-      });
-    } catch (error) {
-      setPdfExportError(error?.message || 'Failed to export report cards PDF');
-    } finally {
-      setPdfExporting(false);
-      setTimeout(() => setPdfExportProgress(null), 1200);
-    }
-  }
-
   if (loadingLeague || status === 'loading') {
     return (
       <main className="min-h-screen bg-[#001A2B] text-white">
@@ -1246,43 +1022,17 @@ export default function SeasonSimulatorPage() {
               <OutcomeMatrix teams={teamAnalytics} />
             </div>
 
-            <section id="report-cards">
+            <section>
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FF8A6D]">Team report cards</p>
                   <h2 className="mt-1 text-2xl font-black text-white">Strengths, weaknesses & risk</h2>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-white/50">Automatically derived from aggregate scoring, lineup-slot production, finish distributions, playoff odds, title odds, and downside risk.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex">
                   <button type="button" onClick={exportSummaryCsv} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/[0.08] sm:text-sm">Team CSV</button>
-                  <button
-                    type="button"
-                    onClick={exportReportCardsPdf}
-                    disabled={pdfExporting || !teamAnalytics.length}
-                    className="min-h-10 rounded-xl border border-[#FF4B1F]/30 bg-[#FF4B1F]/12 px-3 py-2 text-xs font-bold text-white transition hover:bg-[#FF4B1F]/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
-                  >
-                    {pdfExporting ? 'Exporting PDF…' : 'Export report cards PDF'}
-                  </button>
                 </div>
               </div>
-
-              {pdfExportError ? (
-                <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                  {pdfExportError}
-                </div>
-              ) : null}
-
-              {pdfExporting && pdfExportProgress ? (
-                <div className="mb-4 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2 text-xs text-white/60">
-                    <span>{pdfExportProgress.label || 'Exporting PDF'}</span>
-                    <span>{Math.min(pdfExportProgress.current || 0, pdfExportProgress.total || 0)}/{pdfExportProgress.total || 0}</span>
-                  </div>
-                  <div className="mt-2">
-                    <ProgressBar value={pdfExportProgress.current || 0} max={Math.max(1, pdfExportProgress.total || 1)} height="h-1.5" tone="warning" />
-                  </div>
-                </div>
-              ) : null}
 
               {isAdmin ? (
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/55">
@@ -1292,14 +1042,7 @@ export default function SeasonSimulatorPage() {
               ) : null}
 
               <div className="grid gap-4 lg:grid-cols-2">
-                {teamAnalytics.map((team, index) => (
-                  <TeamOutlookCard
-                    key={team.rosterId || team.teamName}
-                    team={team}
-                    index={index}
-                    onOpenReportCard={openReportCard}
-                  />
-                ))}
+                {teamAnalytics.map((team, index) => <TeamOutlookCard key={team.rosterId || team.teamName} team={team} index={index} />)}
               </div>
             </section>
 
@@ -1344,16 +1087,6 @@ export default function SeasonSimulatorPage() {
 
           </section>
         ) : null}      </div>
-
-      <TeamReportCardModal
-        isOpen={Boolean(selectedReportTeam)}
-        team={selectedReportTeam}
-        teams={teamAnalytics}
-        rosters={leagueInfo?.rosters || []}
-        slotLabels={slotLabels}
-        simulations={result?.simulations || 0}
-        onClose={closeReportCard}
-      />
 
       <RosterTradeModal
         isOpen={showRosterTradeModal}
