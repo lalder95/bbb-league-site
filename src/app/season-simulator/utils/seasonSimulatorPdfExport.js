@@ -262,11 +262,11 @@ function drawPdfHeader(doc, leagueName, subtitle) {
 }
 
 function drawSummaryPage(doc, context) {
-  const { teams, reportData, divisionMap, leagueName, season, currentWeek, simulations, startMode } = context;
+  const { teams, reportData, divisionMap, leagueName, season, currentWeek, simulatedFromWeek, simulations, startMode } = context;
   drawPdfHeader(
     doc,
     leagueName,
-    `${season || ''} season | Week ${currentWeek || '-'} | ${Number(simulations || 0).toLocaleString()} simulated seasons | ${startMode === 'full' ? 'Full-season rerun' : 'From current week'}`
+    `${season || ''} season | Week ${simulatedFromWeek || currentWeek || '-'} | ${Number(simulations || 0).toLocaleString()} simulated seasons | ${startMode === 'full' ? 'Full-season rerun' : 'From current week'}`
   );
 
   const byChamp = [...teams].sort((a, b) => number(b.championshipOdds) - number(a.championshipOdds));
@@ -528,6 +528,7 @@ export async function exportSeasonSimulatorPdf({
     leagueName,
     season: result?.season || leagueInfo?.season,
     currentWeek: result?.currentWeek || leagueInfo?.currentWeek,
+    simulatedFromWeek: result?.simulatedFromWeek || (result?.startMode === 'full' ? 1 : (result?.currentWeek || leagueInfo?.currentWeek)),
     simulations: result?.simulations || 0,
     startMode: result?.startMode || startMode,
   };

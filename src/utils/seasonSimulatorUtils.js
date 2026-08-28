@@ -957,6 +957,15 @@ function buildTeamSummaries(totals, simulations) {
             count,
             odds: Number(((count / divisor) * 100).toFixed(2)),
           })),
+        headToHead: Array.from(team.headToHead.values())
+          .map((row) => ({
+            opponentRosterId: row.opponentRosterId,
+            comparisons: row.comparisons,
+            wins: row.wins,
+            ties: row.ties,
+            winOdds: Number((((row.wins + row.ties * 0.5) / Math.max(1, row.comparisons)) * 100).toFixed(2)),
+          }))
+          .sort((left, right) => Number(left.opponentRosterId) - Number(right.opponentRosterId)),
       };
     })
     .sort((left, right) => left.averageFinish - right.averageFinish);
@@ -1303,6 +1312,7 @@ export async function runSeasonSimulation({
     season: bundle.season,
     leagueName: bundle.league?.name || 'Unknown League',
     currentWeek: bundle.currentWeek,
+    simulatedFromWeek: weekStart,
     startMode: activeStartMode,
     simulations,
     playoffWeekStart: bundle.playoffWeekStart,

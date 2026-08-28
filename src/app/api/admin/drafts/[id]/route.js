@@ -1,6 +1,8 @@
 import dbConnect from '@/lib/dbConnect';
 import mongoose from 'mongoose';
 
+export const dynamic = 'force-dynamic';
+
 const playerSchema = new mongoose.Schema({
   playerId: Number,
   playerName: String,

@@ -61,13 +61,25 @@ async function getFooterTradeCounterData() {
   }
 
   try {
-    const season = String(new Date().getFullYear());
     const headerStore = await headers();
     const host = headerStore.get('x-forwarded-host') || headerStore.get('host');
 
     if (!host) return fallback;
 
     const protocol = headerStore.get('x-forwarded-proto') || (process.env.NODE_ENV === 'development' ? 'http' : 'https');
+    const leagueResponse = await fetch(`${protocol}://${host}/api/sleeper/bbb-league-id`, {
+      next: { revalidate: 3600 },
+    });
+
+    let season = String(new Date().getFullYear());
+    if (leagueResponse.ok) {
+      const leaguePayload = await leagueResponse.json();
+      const resolvedSeason = Number(leaguePayload?.season);
+      if (Number.isFinite(resolvedSeason) && resolvedSeason > 0) {
+        season = String(resolvedSeason);
+      }
+    }
+
     const response = await fetch(`${protocol}://${host}/api/history/trades?season=${encodeURIComponent(season)}`, {
       next: { revalidate: 3600 },
     });

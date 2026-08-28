@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
 import mongoose from 'mongoose';
+
+export const dynamic = 'force-dynamic';
 import fs from 'fs';
 import path from 'path';
 

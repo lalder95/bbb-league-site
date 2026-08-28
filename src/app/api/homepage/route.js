@@ -13,6 +13,7 @@ import {
 } from '@/utils/homepagePhases';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const USER_ID = '456973480269705216';
 const DEFAULT_ROOKIE_DRAFT_ROUNDS = 5;
