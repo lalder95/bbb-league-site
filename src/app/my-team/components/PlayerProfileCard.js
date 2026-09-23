@@ -1421,6 +1421,21 @@ export default function PlayerProfileCard({
       { length: Math.max(0, controlThroughYear - timelineStartYear + 1) },
       (_, index) => timelineStartYear + index
     );
+    const timelineYearSalaryMap = new Map();
+    activeContractRows.forEach((entry) => {
+      const status = String(entry.status).toLowerCase();
+      const baseYear = status === 'future'
+        ? Number(entry.contractStartYear) || 0
+        : timelineStartYear;
+      if (!baseYear) return;
+
+      [entry.curYear, entry.year2, entry.year3, entry.year4].forEach((salary, offset) => {
+        const numericSalary = Number(salary) || 0;
+        if (numericSalary <= 0) return;
+        const year = baseYear + offset;
+        timelineYearSalaryMap.set(year, (timelineYearSalaryMap.get(year) || 0) + numericSalary);
+      });
+    });
 
     return (
       <div className="flex min-h-full flex-col gap-6">
@@ -1505,9 +1520,12 @@ export default function PlayerProfileCard({
             <div className="mt-0.5">
               <div className="grid gap-0.5 text-[0.58rem] font-bold uppercase tracking-[0.16em] text-white/45" style={{ gridTemplateColumns: `repeat(${timelineYears.length}, minmax(0, 1fr))` }}>
                 {timelineYears.map((year) => (
-                  <div key={year} className="flex flex-col items-center gap-0.5">
+                  <div key={year} className="flex flex-col items-center gap-[0.125rem] text-center leading-none">
                     <span className="h-1 w-px bg-white/12" aria-hidden="true" />
                     <span>{year}</span>
+                    <span className="text-[0.5rem] font-black uppercase tracking-[0.14em] text-white/28">
+                      {timelineYearSalaryMap.has(year) ? formatSalary(timelineYearSalaryMap.get(year)) : '-'}
+                    </span>
                   </div>
                 ))}
               </div>

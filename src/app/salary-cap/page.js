@@ -670,23 +670,27 @@ export default function SalaryCap() {
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
-        <div className="mb-3 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => setIncludeRookieObligations((current) => !current)}
-            className={`px-3 py-1.5 rounded text-sm font-semibold transition-colors border ${includeRookieObligations ? 'bg-[#FF4B1F] text-white border-[#FF4B1F] hover:bg-[#e03e0f]' : 'bg-white/5 text-white/80 border-white/10 hover:border-[#FF4B1F]/40 hover:bg-white/10'}`}
-          >
-            {includeRookieObligations ? 'Rookie Obligations On' : 'Rookie Obligations Off'}
-          </button>
-          <span className="text-xs text-white/60">Exports all teams in current sort order</span>
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            disabled={sortedTeams.length === 0}
-            className="px-3 py-1.5 rounded bg-[#FF4B1F] text-white text-sm font-semibold hover:bg-[#e03e0f] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Export CSV
-          </button>
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIncludeRookieObligations((current) => !current)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide transition-colors ${includeRookieObligations ? 'bg-[#FF4B1F] text-white border-[#FF4B1F] hover:bg-[#e03e0f]' : 'bg-white/5 text-white/80 border-white/10 hover:border-[#FF4B1F]/40 hover:bg-white/10'}`}
+            >
+              {includeRookieObligations ? 'Rookie On' : 'Rookie Off'}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 sm:justify-end">
+            <span className="text-xs text-white/60">Exports all teams in current sort order</span>
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              disabled={sortedTeams.length === 0}
+              className="rounded-full bg-[#FF4B1F] px-3 py-1 text-xs font-semibold text-white hover:bg-[#e03e0f] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto rounded-lg border border-white/10 shadow-xl bg-black/20">
           <table className="w-full border-collapse">
