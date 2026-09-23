@@ -43,7 +43,7 @@ function TimelineRow({ row, yearKeys, color, isDraftPick = false }) {
     : row.playerName;
 
   return (
-    <div className="grid grid-cols-[minmax(170px,1fr)_repeat(4,minmax(44px,0.52fr))] gap-2">
+    <div className="grid grid-cols-[minmax(145px,1fr)_repeat(4,minmax(37px,0.44fr))] gap-2">
       <div className="flex min-h-12 items-center rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="inline-flex h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
@@ -117,7 +117,7 @@ export default function TeamTimelineModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000814]/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#031b2c] shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+      <div className="flex max-h-[92vh] w-full max-w-[54rem] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#031b2c] shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
         <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-[linear-gradient(135deg,rgba(255,75,31,0.16),rgba(255,255,255,0.02))] px-5 py-4 md:px-6">
           <div>
             <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[#FFB087]">Salary Cap Timeline</div>
@@ -145,8 +145,8 @@ export default function TeamTimelineModal({
           </div>
 
           <div className="overflow-x-auto">
-            <div className="min-w-[720px] space-y-4">
-              <div className="grid grid-cols-[minmax(170px,1fr)_repeat(4,minmax(44px,0.52fr))] gap-2">
+            <div className="min-w-[612px] space-y-4">
+              <div className="grid grid-cols-[minmax(145px,1fr)_repeat(4,minmax(37px,0.44fr))] gap-2">
                 <div className="px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white/35">Position / Player</div>
                 {yearLabels.map((yearLabel) => (
                   <div key={yearLabel} className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2 text-center text-sm font-black text-white">
