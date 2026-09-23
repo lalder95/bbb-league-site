@@ -1417,26 +1417,30 @@ export default function PlayerProfileCard({
         endYear,
       };
     });
+    const timelineYears = Array.from(
+      { length: Math.max(0, controlThroughYear - timelineStartYear + 1) },
+      (_, index) => timelineStartYear + index
+    );
 
     return (
       <div className="flex min-h-full flex-col gap-6">
         <div className={isMobile ? 'mx-auto w-[85%]' : ''}>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-3">
           {summaryCards.map((item) => {
             const Icon = item.icon;
             return (
               <div
                 key={item.label}
-                className="relative overflow-hidden rounded-[1.15rem] border border-white/10 bg-black/20 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                className="relative overflow-hidden rounded-[1.15rem] border border-white/10 bg-black/20 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
               >
                 <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[#f7a37c] opacity-30">
-                  <Icon className="h-12 w-12" strokeWidth={1.8} aria-hidden="true" />
+                  <Icon className="h-10 w-10" strokeWidth={1.8} aria-hidden="true" />
                 </span>
                 <div className="relative z-10 text-center">
-                  <p className="text-[0.68rem] font-bold uppercase tracking-[0.28em] text-white/55">
+                  <p className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-white/55">
                     {item.label}
                   </p>
-                  <p className="mt-4 text-xl font-black uppercase tracking-[0.06em] text-white">{item.value}</p>
+                  <p className="mt-2 text-lg font-black uppercase tracking-[0.06em] text-white">{item.value}</p>
                 </div>
               </div>
             );
@@ -1445,19 +1449,19 @@ export default function PlayerProfileCard({
         </div>
 
         <div className={isMobile ? 'mx-auto w-[85%]' : ''}>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-3">
           {eligibilityCards.map((item) => {
             const Icon = item.active ? ShieldCheck : ShieldAlert;
             return (
               <div
                 key={item.label}
-                className={`relative overflow-hidden rounded-[1.15rem] border px-4 py-2.5 ${item.active ? 'border-emerald-400/35 bg-emerald-500/10' : 'border-red-400/35 bg-black/20'}`}
+                className={`relative overflow-hidden rounded-[1.15rem] border px-3 py-2 ${item.active ? 'border-emerald-400/35 bg-emerald-500/10' : 'border-red-400/35 bg-black/20'}`}
               >
                 <span className={`pointer-events-none absolute inset-0 flex items-center justify-center opacity-30 ${item.active ? 'text-emerald-200' : 'text-red-200'}`}>
-                  <Icon className="h-12 w-12" strokeWidth={1.9} aria-hidden="true" />
+                  <Icon className="h-10 w-10" strokeWidth={1.9} aria-hidden="true" />
                 </span>
-                <div className="relative z-10 rounded-xl bg-[#08111d]/72 px-2 py-1.5 text-center backdrop-blur-[1px]">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/90 [text-shadow:0_1px_0_rgba(0,0,0,0.35)]">{item.label}</p>
+                <div className="relative z-10 rounded-xl bg-[#08111d]/72 px-2 py-1 text-center backdrop-blur-[1px]">
+                  <p className="text-[0.62rem] font-black uppercase tracking-[0.24em] text-white/90 [text-shadow:0_1px_0_rgba(0,0,0,0.35)]">{item.label}</p>
                 </div>
               </div>
             );
@@ -1465,37 +1469,50 @@ export default function PlayerProfileCard({
         </div>
         </div>
 
-        <div className="rounded-[1.25rem] border border-white/10 bg-black/20 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-          <div className="flex items-center justify-between gap-3">
+        <div className="rounded-[1.25rem] border border-white/10 bg-black/20 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="flex items-center justify-between gap-2">
             <div>
-              <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/55">
+              <p className="text-[0.62rem] font-black uppercase tracking-[0.24em] text-white/55">
                 Control timeline
               </p>
-              <p className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-white/35">
+              <p className="mt-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-white/35">
                 {currentSeason} to {controlThroughYear}
               </p>
             </div>
-            <p className="text-sm font-black uppercase tracking-[0.08em] text-white/86">
+            <p className="text-xs font-black uppercase tracking-[0.08em] text-white/86">
               {totalControlYears} years
             </p>
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-full border border-white/10 bg-[#08111d] p-1">
-            <div className="flex h-9 w-full gap-1">
+          <div className="mt-2 overflow-hidden rounded-full border border-white/10 bg-[#08111d] p-0.5">
+            <div className="flex h-8 w-full gap-0.5">
               {controlSegmentsWithYears.map((segment) => (
                 <div
                   key={segment.label}
-                  className={`flex h-full items-center justify-center rounded-full bg-gradient-to-r px-2 text-center ${segment.color}`}
-                  style={{ width: `${(segment.years / totalControlYears) * 100}%` }}
+                  className={`flex h-full items-center justify-center rounded-full bg-gradient-to-r px-1.5 text-center ${segment.color}`}
+                  style={{ width: totalControlYears > 0 ? `${(segment.years / totalControlYears) * 100}%` : '0%' }}
                   title={`${segment.label}: ${segment.years} year${segment.years === 1 ? '' : 's'} (${segment.startYear}${segment.endYear !== segment.startYear ? `-${segment.endYear}` : ''})`}
                 >
-                  <span className="truncate text-[0.62rem] font-black uppercase tracking-[0.18em] text-[#04111d]">
+                  <span className="truncate text-[0.58rem] font-black uppercase tracking-[0.16em] text-[#04111d]">
                     {segment.shortLabel}
                   </span>
                 </div>
               ))}
             </div>
           </div>
+
+          {timelineYears.length > 0 && (
+            <div className="mt-0.5">
+              <div className="grid gap-0.5 text-[0.58rem] font-bold uppercase tracking-[0.16em] text-white/45" style={{ gridTemplateColumns: `repeat(${timelineYears.length}, minmax(0, 1fr))` }}>
+                {timelineYears.map((year) => (
+                  <div key={year} className="flex flex-col items-center gap-0.5">
+                    <span className="h-1 w-px bg-white/12" aria-hidden="true" />
+                    <span>{year}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
       </div>

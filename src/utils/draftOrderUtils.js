@@ -151,7 +151,30 @@ export function buildDraftOrder({ rosters, maxpfMap, winnersBracket }) {
     if (pick < 7) break; // only 6 playoff picks
   }
 
-  return [...nonPlayoffPicks, ...playoffPicks];
+  const combined = [...nonPlayoffPicks, ...playoffPicks];
+  const bySlot = new Map(combined.map((entry) => [Number(entry.slot), entry]));
+
+  [7, 8].forEach((slot) => {
+    const partnerSlot = slot === 7 ? 8 : 7;
+    const current = bySlot.get(slot);
+    const partner = bySlot.get(partnerSlot);
+    if (current && partner) {
+      current.slot = partnerSlot;
+      partner.slot = slot;
+    }
+  });
+
+  [9, 10].forEach((slot) => {
+    const partnerSlot = slot === 9 ? 10 : 9;
+    const current = bySlot.get(slot);
+    const partner = bySlot.get(partnerSlot);
+    if (current && partner) {
+      current.slot = partnerSlot;
+      partner.slot = slot;
+    }
+  });
+
+  return combined.sort((left, right) => Number(left.slot) - Number(right.slot));
 }
 
 export default buildDraftOrder;

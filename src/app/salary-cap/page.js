@@ -1,5 +1,6 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { estimateDraftPositions, getTeamName } from '@/utils/draftUtils';
 import { downloadCSV, formatNullableForCSV } from '../../utils/csvUtils';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
@@ -13,8 +14,15 @@ export default function SalaryCap() {
   const [leagueSeason, setLeagueSeason] = useState(null);
   const [contractYearOverride, setContractYearOverride] = useState(null);
   const [teamAvatars, setTeamAvatars] = useState({});
+  const [users, setUsers] = useState([]);
+  const [rosters, setRosters] = useState([]);
+  const [tradedPicks, setTradedPicks] = useState([]);
+  const [draftOrder, setDraftOrder] = useState([]);
+  const [draftInfo, setDraftInfo] = useState(null);
+  const [draftYearToShow, setDraftYearToShow] = useState(null);
   const [contracts, setContracts] = useState([]);
   const [modalInfo, setModalInfo] = useState(null);
+  const [includeRookieObligations, setIncludeRookieObligations] = useState(false);
 
   useEffect(() => {
     function handleResize() {
@@ -117,25 +125,152 @@ export default function SalaryCap() {
     findBBBLeague();
   }, []);
 
-  // Fetch team avatars using detected leagueId
+  // Fetch draft data and team avatars using detected leagueId
   useEffect(() => {
     if (!leagueId) return;
-    async function fetchAvatars() {
+
+    let cancelled = false;
+
+    async function fetchLeagueData() {
       try {
-        const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
-        const users = await res.json();
-        if (!users || !Array.isArray(users)) return;
+        const [usersResponse, rostersResponse, tradedPicksResponse, draftsResponse] = await Promise.all([
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/drafts`),
+        ]);
+
+        if (!usersResponse.ok) throw new Error('Failed to fetch users');
+        if (!rostersResponse.ok) throw new Error('Failed to fetch rosters');
+        if (!tradedPicksResponse.ok) throw new Error('Failed to fetch traded picks');
+        if (!draftsResponse.ok) throw new Error('Failed to fetch drafts');
+
+        const usersData = await usersResponse.json();
+        const rostersData = await rostersResponse.json();
+        const tradedPicksData = await tradedPicksResponse.json();
+        const draftsData = await draftsResponse.json();
+
+        if (cancelled) return;
+
+        setUsers(Array.isArray(usersData) ? usersData : []);
+        setRosters(Array.isArray(rostersData) ? rostersData : []);
+        setTradedPicks(Array.isArray(tradedPicksData) ? tradedPicksData : []);
+
         const avatarMap = {};
-        users.forEach(user => {
+        (Array.isArray(usersData) ? usersData : []).forEach((user) => {
           avatarMap[user.display_name] = user.avatar;
         });
         setTeamAvatars(avatarMap);
+
+        const getLeagueYear = async () => {
+          const yrFromState = Number(leagueSeason);
+          if (Number.isFinite(yrFromState) && yrFromState > 2000) return yrFromState;
+          try {
+            const seasonResponse = await fetch('https://api.sleeper.app/v1/state/nfl');
+            if (seasonResponse.ok) {
+              const seasonState = await seasonResponse.json();
+              const yr = Number(seasonState?.season);
+              if (Number.isFinite(yr) && yr > 2000) {
+                setLeagueSeason(String(yr));
+                return yr;
+              }
+            }
+          } catch {
+            // ignore
+          }
+          return new Date().getFullYear();
+        };
+
+        const pickActiveDraft = (drafts) => {
+          if (!Array.isArray(drafts) || drafts.length === 0) return null;
+
+          const nonComplete = drafts.filter((draft) => draft?.status && draft.status !== 'complete');
+          if (nonComplete.length === 0) return null;
+
+          const statusPriority = {
+            drafting: 0,
+            in_progress: 1,
+            paused: 2,
+            pre_draft: 3,
+            upcoming: 4,
+          };
+
+          return nonComplete
+            .slice()
+            .sort((left, right) => {
+              const leftPriority = statusPriority[String(left.status)] ?? 99;
+              const rightPriority = statusPriority[String(right.status)] ?? 99;
+              if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+              return Number(right.start_time || 0) - Number(left.start_time || 0);
+            })[0];
+        };
+
+        const activeDraft = pickActiveDraft(draftsData);
+        const leagueYear = await getLeagueYear();
+        const hasNonCompleteDraft = Array.isArray(draftsData) && draftsData.some((draft) => draft?.status && draft.status !== 'complete');
+        const draftYear = hasNonCompleteDraft ? leagueYear : leagueYear + 1;
+
+        setDraftYearToShow(draftYear);
+        setDraftInfo(activeDraft || { draft_year: draftYear });
+
+        try {
+          const orderRes = await fetch(`/api/debug/draft-order?leagueId=${leagueId}`, { cache: 'no-store' });
+          if (orderRes.ok) {
+            const orderJson = await orderRes.json();
+            const orderEntries = Array.isArray(orderJson?.draft_order) ? orderJson.draft_order : [];
+            const normalizedOrder = orderEntries
+              .map((entry) => ({
+                slot: Number(entry.slot),
+                rosterId: Number(entry.roster_id ?? entry.current_roster_id ?? entry.original_roster_id),
+                originalRosterId: Number(entry.original_roster_id ?? entry.roster_id ?? entry.current_roster_id),
+              }))
+              .filter((entry) => Number.isFinite(entry.slot) && Number.isFinite(entry.rosterId))
+              .sort((left, right) => left.slot - right.slot);
+            setDraftOrder(normalizedOrder);
+          } else if (activeDraft?.draft_order) {
+            const draftOrderArray = Object.entries(activeDraft.draft_order).map(([userId, slot]) => {
+              const roster = rostersData.find((entry) => Number(entry.roster_id) === Number(userId));
+              return {
+                slot: Number(slot),
+                rosterId: Number(roster?.roster_id ?? userId),
+                originalRosterId: Number(roster?.roster_id ?? userId),
+              };
+            });
+            setDraftOrder(draftOrderArray.sort((left, right) => left.slot - right.slot));
+          } else {
+            setDraftOrder([]);
+          }
+        } catch {
+          if (activeDraft?.draft_order) {
+            const draftOrderArray = Object.entries(activeDraft.draft_order).map(([userId, slot]) => {
+              const roster = rostersData.find((entry) => Number(entry.roster_id) === Number(userId));
+              return {
+                slot: Number(slot),
+                rosterId: Number(roster?.roster_id ?? userId),
+                originalRosterId: Number(roster?.roster_id ?? userId),
+              };
+            });
+            setDraftOrder(draftOrderArray.sort((left, right) => left.slot - right.slot));
+          }
+        }
       } catch (e) {
-        // Optionally handle error
+        if (!cancelled) {
+          setUsers([]);
+          setRosters([]);
+          setTradedPicks([]);
+          setDraftOrder([]);
+          setDraftInfo(null);
+          setDraftYearToShow(null);
+          setTeamAvatars({});
+        }
       }
     }
-    fetchAvatars();
-  }, [leagueId]);
+    fetchLeagueData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leagueId, leagueSeason]);
 
   useEffect(() => {
     async function fetchData() {
@@ -258,6 +393,71 @@ export default function SalaryCap() {
     fetchData();
   }, []);
 
+  const standingsRows = useMemo(() => {
+    return (rosters || [])
+      .map((roster) => {
+        const user = (users || []).find((entry) => entry.user_id === roster.owner_id);
+        return {
+          rosterId: roster.roster_id,
+          teamName: user?.display_name || user?.team_name || `Team ${roster.roster_id}`,
+          avatar: user?.avatar || null,
+          wins: Number(roster.settings?.wins) || 0,
+          losses: Number(roster.settings?.losses) || 0,
+          ties: Number(roster.settings?.ties) || 0,
+          pointsFor: Number(roster.settings?.fpts) || 0,
+          pointsAgainst: Number(roster.settings?.fpts_against) || 0,
+        };
+      })
+      .sort((left, right) => {
+        if (left.wins !== right.wins) return right.wins - left.wins;
+        if (left.pointsFor !== right.pointsFor) return right.pointsFor - left.pointsFor;
+        return Number(left.rosterId) - Number(right.rosterId);
+      });
+  }, [rosters, users]);
+
+  const getTeamNameForRoster = useMemo(() => {
+    return (rosterId) => getTeamName(rosterId, rosters, users);
+  }, [rosters, users]);
+
+  const rookieTeamPicks = useMemo(() => {
+    if (!rosters.length || !draftInfo) return new Map();
+
+    const estimatedDraftOrder = Array.isArray(draftOrder)
+      ? draftOrder
+      : [];
+
+    const teamPicks = estimateDraftPositions(
+      rosters,
+      tradedPicks,
+      draftInfo,
+      estimatedDraftOrder,
+      getTeamNameForRoster,
+      draftYearToShow,
+      standingsRows,
+    );
+
+    return new Map(Object.entries(teamPicks || {}).map(([teamName, picks]) => [teamName, picks?.currentPicks || []]));
+  }, [rosters, tradedPicks, draftInfo, draftOrder, getTeamNameForRoster, draftYearToShow, standingsRows]);
+
+  const getTeamRookieObligation = (teamName, yearKey) => {
+    if (!includeRookieObligations) return 0;
+
+    const teamPicks = rookieTeamPicks.get(teamName);
+    if (!Array.isArray(teamPicks) || teamPicks.length === 0) return 0;
+
+    return teamPicks.reduce((sum, pick) => {
+      const salary = Number(pick?.salary) || 0;
+      const round = Number(pick?.round) || 0;
+
+      if (yearKey === 'curYear') return sum;
+      if (yearKey === 'year2') return sum + salary;
+      if (yearKey === 'year3' || yearKey === 'year4') {
+        return sum + (round <= 3 ? salary : 0);
+      }
+      return sum;
+    }, 0);
+  };
+
   const handleSort = (key) => {
     setSortConfig({
       key,
@@ -265,7 +465,26 @@ export default function SalaryCap() {
     });
   };
 
-  const sortedTeams = [...teams].sort((a, b) => {
+  const displayTeams = useMemo(() => {
+    return teams.map((team) => {
+      if (!includeRookieObligations) return team;
+
+      const curYearRookie = getTeamRookieObligation(team.team, 'curYear');
+      const year2Rookie = getTeamRookieObligation(team.team, 'year2');
+      const year3Rookie = getTeamRookieObligation(team.team, 'year3');
+      const year4Rookie = getTeamRookieObligation(team.team, 'year4');
+
+      return {
+        ...team,
+        curYear: { ...team.curYear, rookie: curYearRookie, remaining: team.curYear.remaining - curYearRookie },
+        year2: { ...team.year2, rookie: year2Rookie, remaining: team.year2.remaining - year2Rookie },
+        year3: { ...team.year3, rookie: year3Rookie, remaining: team.year3.remaining - year3Rookie },
+        year4: { ...team.year4, rookie: year4Rookie, remaining: team.year4.remaining - year4Rookie },
+      };
+    });
+  }, [teams, includeRookieObligations, rookieTeamPicks]);
+
+  const sortedTeams = [...displayTeams].sort((a, b) => {
     const aVal = sortConfig.key === 'team' ? a[sortConfig.key] : a[sortConfig.key].remaining;
     const bVal = sortConfig.key === 'team' ? b[sortConfig.key] : b[sortConfig.key].remaining;
     
@@ -387,7 +606,9 @@ export default function SalaryCap() {
       })
       .map(status => ({ status, players: grouped[status] }));
 
-    setModalInfo({ team, yearKey, groups: orderedGroups });
+    const rookiePicks = rookieTeamPicks.get(team) || [];
+
+    setModalInfo({ team, yearKey, groups: orderedGroups, rookiePicks });
   };
 
   // Helper to close modal
@@ -414,6 +635,9 @@ export default function SalaryCap() {
               <div className="text-green-400">Active Cap: {formatCapSpace(data.active)}</div>
               <div className="text-red-400">Dead Cap: {formatCapSpace(data.dead)}</div>
               <div className="text-yellow-400">Fines: {formatCapSpace(data.fines)}</div>
+              {includeRookieObligations && (data.rookie || 0) > 0 && (
+                <div className="text-blue-300">Rookie Cap: {formatCapSpace(data.rookie)}</div>
+              )}
               <div className="border-t border-gray-700 mt-1 pt-1">
                 Remaining: {formatCapSpace(data.remaining)}
               </div>
@@ -447,6 +671,13 @@ export default function SalaryCap() {
 
       <div className="max-w-7xl mx-auto p-6">
         <div className="mb-3 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setIncludeRookieObligations((current) => !current)}
+            className={`px-3 py-1.5 rounded text-sm font-semibold transition-colors border ${includeRookieObligations ? 'bg-[#FF4B1F] text-white border-[#FF4B1F] hover:bg-[#e03e0f]' : 'bg-white/5 text-white/80 border-white/10 hover:border-[#FF4B1F]/40 hover:bg-white/10'}`}
+          >
+            {includeRookieObligations ? 'Rookie Obligations On' : 'Rookie Obligations Off'}
+          </button>
           <span className="text-xs text-white/60">Exports all teams in current sort order</span>
           <button
             type="button"
@@ -592,6 +823,35 @@ export default function SalaryCap() {
                 </div>
               ))
             )}
+
+            {modalInfo.rookiePicks && modalInfo.rookiePicks.length > 0 && (
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <div className="font-semibold text-lg text-white mb-2">Draft Picks</div>
+                <div className="overflow-x-auto rounded-lg border border-white/10 bg-black/20">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 text-white/60">
+                        <th className="px-3 py-2 text-left">Pick</th>
+                        <th className="px-3 py-2 text-left">Origin</th>
+                        <th className="px-3 py-2 text-left">Round</th>
+                        <th className="px-3 py-2 text-right">Salary</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modalInfo.rookiePicks.map((pick, index) => (
+                        <tr key={`${pick.pickNumber || index}-${index}`} className="border-b border-white/5 last:border-0">
+                          <td className="px-3 py-2">{pick.pickNumber || '--'}</td>
+                          <td className="px-3 py-2 text-white/70">{pick.originalOwner === modalInfo.team ? 'Own pick' : `Via ${pick.originalOwner}`}</td>
+                          <td className="px-3 py-2">{pick.round || '--'}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-emerald-300">{formatCapSpace(pick.salary || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-end mt-4">
               <button
                 className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-[#ff6a3c] font-semibold"

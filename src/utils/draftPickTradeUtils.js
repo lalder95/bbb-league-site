@@ -1,4 +1,9 @@
 import draftPickKtcMatrix from '@/data/draft-pick-ktc-matrix.json';
+import {
+  getRookieContractYears,
+  getRookieDeadMoneyRate,
+  getRookieSalary,
+} from '@/utils/rookieSalaryScale';
 
 export const DRAFT_PICK_BUCKETS = ['early', 'mid', 'late'];
 export const DEFAULT_FUTURE_PICK_BUCKET = 'mid';
@@ -63,17 +68,19 @@ export const getDraftPickKtcValue = (round, bucket) => {
   return Number.isFinite(value) ? value : 0;
 };
 
-export const getDraftPickSalary = (round, bucket) => {
+export const getDraftPickSalary = (round, bucket, pickPosition) => {
   const numericRound = Number(round);
-  const normalizedBucket = String(bucket || '').toLowerCase();
 
-  if (numericRound === 1) {
-    return ROUND_ONE_BUCKET_SALARIES[normalizedBucket] ?? ROUND_ONE_BUCKET_SALARIES.late;
+  if (Number.isFinite(Number(pickPosition)) && Number(pickPosition) > 0) {
+    return getRookieSalary(numericRound, pickPosition);
   }
 
-  if (numericRound === 2) return 4;
-  if (numericRound === 3) return 2;
-  if (numericRound >= 4 && numericRound <= 7) return 1;
+  if (numericRound >= 1 && numericRound <= 7) {
+    const normalizedBucket = String(bucket || '').toLowerCase();
+    const bucketFallbackPosition = normalizedBucket === 'early' ? 1 : normalizedBucket === 'mid' ? 6 : 12;
+    return getRookieSalary(numericRound, bucketFallbackPosition);
+  }
+
   return 0;
 };
 
@@ -181,9 +188,12 @@ export const createDraftPickAsset = ({
 }) => {
   const bucket = bucketOverride || getDraftPickBucket(pickPosition);
   const ktcValue = getDraftPickKtcValue(round, bucket);
-  const rookieSalary = getDraftPickSalary(round, bucket);
+  const rookieSalary = getDraftPickSalary(round, bucket, pickPosition);
+  const rookieYears = getRookieContractYears(round);
   const numericSeason = Number(season);
-  const finalYear = Number.isFinite(numericSeason) ? String(numericSeason + 2) : '-';
+  const finalYear = Number.isFinite(numericSeason)
+    ? String(numericSeason + Math.max(rookieYears, 1) - 1)
+    : '-';
   const pickNumber = formatDraftPickNumber(round, pickPosition);
 
   return {
@@ -205,18 +215,19 @@ export const createDraftPickAsset = ({
     position: 'PICK',
     contractType: 'Rookie Pick',
     contractFinalYear: finalYear,
+    contractYears: rookieYears,
     age: '',
     nflTeam: '',
     ktcValue,
     pickSalary: rookieSalary,
     curYear: 0,
     year2: rookieSalary,
-    year3: rookieSalary,
-    year4: rookieSalary,
+    year3: rookieYears >= 2 ? rookieSalary : 0,
+    year4: rookieYears >= 3 ? rookieSalary : 0,
     deadCurYear: 0,
-    deadYear2: 0,
-    deadYear3: 0,
-    deadYear4: 0,
+    deadYear2: rookieYears >= 1 ? Math.round(rookieSalary * getRookieDeadMoneyRate(round) / 100) : 0,
+    deadYear3: rookieYears >= 2 ? Math.round(rookieSalary * getRookieDeadMoneyRate(round) / 100) : 0,
+    deadYear4: rookieYears >= 3 ? Math.round(rookieSalary * getRookieDeadMoneyRate(round) / 100) : 0,
     rfaEligible: false,
     franchiseTagEligible: false,
   };

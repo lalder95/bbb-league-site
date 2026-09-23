@@ -38,13 +38,13 @@ const DraftOrder = ({ draftInfo, draftOrder }) => {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={entry.avatarUrl}
-                          alt={`${entry.teamName} avatar`}
+                          alt={`${entry.originalTeamName || entry.teamName} avatar`}
                           className="h-8 w-8 rounded-full border border-white/20"
                         />
                       ) : (
                         <div className="h-8 w-8 rounded-full bg-white/10 border border-white/20" />
                       )}
-                      <span>{entry.teamName}</span>
+                      <span>{entry.originalTeamName || entry.teamName}</span>
                     </td>
                     <td className="py-3">{typeof entry.maxpf === 'number' ? entry.maxpf.toFixed(2) : '-'}</td>
                   </tr>

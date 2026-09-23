@@ -43,6 +43,57 @@ export default function DraftDataProvider({ children }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const standingsRows = useMemo(() => {
+    return (rosters || [])
+      .map((roster) => {
+        const user = (users || []).find((entry) => entry.user_id === roster.owner_id);
+        return {
+          rosterId: roster.roster_id,
+          teamName: user?.display_name || user?.team_name || `Team ${roster.roster_id}`,
+          avatar: user?.avatar || null,
+          wins: Number(roster.settings?.wins) || 0,
+          losses: Number(roster.settings?.losses) || 0,
+          ties: Number(roster.settings?.ties) || 0,
+          pointsFor: Number(roster.settings?.fpts) || 0,
+          pointsAgainst: Number(roster.settings?.fpts_against) || 0,
+        };
+      })
+      .sort((left, right) => {
+        if (left.wins !== right.wins) return right.wins - left.wins;
+        if (left.pointsFor !== right.pointsFor) return right.pointsFor - left.pointsFor;
+        return Number(left.rosterId) - Number(right.rosterId);
+      });
+  }, [rosters, users]);
+
+  const buildDraftOrderEntries = (orderRows, rostersArg = rosters, usersArg = users) => {
+    return (Array.isArray(orderRows) ? orderRows : [])
+      .map((entry) => {
+        const currentRosterId = Number(entry.roster_id ?? entry.current_roster_id ?? entry.original_roster_id);
+        const originalRosterId = Number(entry.original_roster_id ?? entry.roster_id ?? entry.current_roster_id);
+        const currentRoster = (rostersArg || []).find((roster) => Number(roster.roster_id) === currentRosterId) || null;
+        const originalRoster = (rostersArg || []).find((roster) => Number(roster.roster_id) === originalRosterId) || null;
+        const currentUser = (usersArg || []).find((user) => user.user_id === currentRoster?.owner_id) || null;
+        const originalUser = (usersArg || []).find((user) => user.user_id === originalRoster?.owner_id) || null;
+
+        return {
+          slot: Number(entry.slot),
+          rosterId: currentRosterId,
+          originalRosterId,
+          teamName: originalUser?.display_name || originalUser?.team_name || `Team ${originalRosterId}`,
+          originalTeamName: originalUser?.display_name || originalUser?.team_name || `Team ${originalRosterId}`,
+          currentTeamName: currentUser?.display_name || currentUser?.team_name || `Team ${currentRosterId}`,
+          avatarUrl: originalUser?.avatar ? `https://sleepercdn.com/avatars/thumbs/${originalUser.avatar}` : null,
+          currentAvatarUrl: currentUser?.avatar ? `https://sleepercdn.com/avatars/thumbs/${currentUser.avatar}` : null,
+          maxpf: typeof entry.maxpf === 'number' ? entry.maxpf : undefined,
+          wins: typeof entry.wins === 'number' ? entry.wins : Number(currentRoster?.settings?.wins) || 0,
+          losses: typeof entry.losses === 'number' ? entry.losses : Number(currentRoster?.settings?.losses) || 0,
+          ties: typeof entry.ties === 'number' ? entry.ties : Number(currentRoster?.settings?.ties) || 0,
+          fpts: typeof entry.fpts === 'number' ? entry.fpts : Number(currentRoster?.fpts) || 0,
+        };
+      })
+      .sort((left, right) => Number(left.slot) - Number(right.slot));
+  };
+
   // First, find the correct BBB league
   useEffect(() => {
     async function findBBBLeague() {
@@ -235,19 +286,47 @@ export default function DraftDataProvider({ children }) {
             // expected pre-draft
           }
 
-          // Process the draft order
-          if (activeDraft.draft_order) {
-            const draftOrderArray = Object.entries(activeDraft.draft_order).map(
-              ([userId, slot]) => ({
-                userId,
-                slot,
-                teamName:
-                  usersData.find((u) => u.user_id === userId)?.display_name || 'Unknown Team',
-                rosterId: rostersData.find((r) => r.owner_id === userId)?.roster_id,
-              })
-            );
-            const sortedDraftOrder = draftOrderArray.sort((a, b) => a.slot - b.slot);
-            setDraftOrder(sortedDraftOrder);
+          // Prefer the calculated order so we can keep original-owner metadata.
+          try {
+            const orderRes = await fetch(`/api/debug/draft-order?leagueId=${leagueId}`, { cache: 'no-store' });
+            if (orderRes.ok) {
+              const orderJson = await orderRes.json();
+              setDraftOrder(buildDraftOrderEntries(orderJson?.draft_order || [], rostersData, usersData));
+            } else if (activeDraft.draft_order) {
+              const draftOrderArray = Object.entries(activeDraft.draft_order).map(([userId, slot]) => {
+                const roster = rostersData.find((r) => r.owner_id === userId);
+                const user = usersData.find((u) => u.user_id === userId);
+                return {
+                  slot,
+                  rosterId: roster?.roster_id,
+                  originalRosterId: roster?.roster_id,
+                  teamName: user?.display_name || user?.team_name || 'Unknown Team',
+                  originalTeamName: user?.display_name || user?.team_name || 'Unknown Team',
+                  currentTeamName: user?.display_name || user?.team_name || 'Unknown Team',
+                  avatarUrl: user?.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
+                  currentAvatarUrl: user?.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
+                };
+              });
+              setDraftOrder(draftOrderArray.sort((a, b) => a.slot - b.slot));
+            }
+          } catch {
+            if (activeDraft.draft_order) {
+              const draftOrderArray = Object.entries(activeDraft.draft_order).map(([userId, slot]) => {
+                const roster = rostersData.find((r) => r.owner_id === userId);
+                const user = usersData.find((u) => u.user_id === userId);
+                return {
+                  slot,
+                  rosterId: roster?.roster_id,
+                  originalRosterId: roster?.roster_id,
+                  teamName: user?.display_name || user?.team_name || 'Unknown Team',
+                  originalTeamName: user?.display_name || user?.team_name || 'Unknown Team',
+                  currentTeamName: user?.display_name || user?.team_name || 'Unknown Team',
+                  avatarUrl: user?.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
+                  currentAvatarUrl: user?.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
+                };
+              });
+              setDraftOrder(draftOrderArray.sort((a, b) => a.slot - b.slot));
+            }
           }
         } else {
           setDraftInfo({
@@ -261,16 +340,7 @@ export default function DraftDataProvider({ children }) {
             });
             if (resp.ok) {
               const json = await resp.json();
-              const uiOrder = (json.draft_order || [])
-                .map((e) => ({
-                  slot: e.slot,
-                  rosterId: e.roster_id,
-                  userId: e.owner_id,
-                  teamName: e.teamName || 'Unknown Team',
-                  maxpf: typeof e.maxpf === 'number' ? e.maxpf : undefined,
-                  avatarUrl: e.avatarUrl || null,
-                }))
-                .sort((a, b) => a.slot - b.slot);
+              const uiOrder = buildDraftOrderEntries(json.draft_order || [], rostersData, usersData);
               setDraftOrder(uiOrder);
             }
           } catch {
@@ -322,6 +392,7 @@ export default function DraftDataProvider({ children }) {
       rosters,
       users,
       draftOrder,
+      standingsRows,
       isMobile,
       draftYearToShow,
       getTeamName: getTeamNameWrapper,
@@ -338,6 +409,7 @@ export default function DraftDataProvider({ children }) {
       rosters,
       users,
       draftOrder,
+      standingsRows,
       isMobile,
       draftYearToShow,
       getTeamNameWrapper,

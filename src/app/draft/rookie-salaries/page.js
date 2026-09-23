@@ -6,7 +6,7 @@ import RookieSalaries from '@/components/draft/RookieSalaries';
 import { useDraftData } from '../components/DraftDataProvider';
 
 export default function RookieSalariesPage() {
-  const { rosters, tradedPicks, draftInfo, draftOrder, getTeamName, isMobile, draftYearToShow } =
+  const { rosters, tradedPicks, draftInfo, draftOrder, standingsRows, getTeamName, isMobile, draftYearToShow } =
     useDraftData();
 
   return (
@@ -16,6 +16,7 @@ export default function RookieSalariesPage() {
         tradedPicks={tradedPicks}
         draftInfo={draftInfo}
         draftOrder={draftOrder}
+        standingsRows={standingsRows}
         getTeamName={getTeamName}
         isMobile={isMobile}
         draftYearToShow={draftYearToShow}

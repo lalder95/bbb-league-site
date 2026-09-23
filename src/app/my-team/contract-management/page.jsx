@@ -6,6 +6,7 @@ import PlayerProfileCard from '../components/PlayerProfileCard';
 import EligiblePlayerCard from './EligiblePlayerCard';
 import FranchiseTagCard from './FranchiseTagCard';
 import RFATagCard from './RFATagCard';
+import Image from 'next/image';
 
 export default function ContractManagementPage() {
   const { data: session, status } = useSession();
@@ -82,7 +83,6 @@ export default function ContractManagementPage() {
         session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL)
   );
   const [adminControlsCollapsed, setAdminControlsCollapsed] = useState(true);
-  const [adminToolsOpen, setAdminToolsOpen] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [selectedTeamName, setSelectedTeamName] = useState('');
 
@@ -843,26 +843,19 @@ export default function ContractManagementPage() {
     setCapModalInfo({ yearIdx, label, groups: orderedGroups, teamNameForUI });
   }
 
-  // Dashboard summary metrics
-  const currentSalaryCommitment = yearSalaries[0] || 0;
-  const currentDeadCap = yearDead[0] || 0;
-  const currentFines = yearFines[0] || 0;
-  const currentCapUsed = currentSalaryCommitment + currentDeadCap + currentFines;
-  const currentCapSpace = CAP - currentCapUsed;
-  const activeContractCount = myContractsAll.filter(p => p.status === 'Active' || p.status === 'Future').length;
-
   // Safe gating after all hooks are declared
   if (status === 'loading' || status === 'unauthenticated') {
     return null;
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-14 sm:px-6 lg:px-8">
+    <div className="w-full flex flex-col items-center px-3 sm:px-0">
       {/* Player profile modal */}
       {(typeof selectedProfilePlayerId === 'string' || typeof selectedProfilePlayerId === 'number') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setSelectedProfilePlayerId(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setSelectedProfilePlayerId(null)}>
           <div className="bg-transparent p-0 rounded-lg shadow-2xl relative" onClick={e => e.stopPropagation()}>
-            <PlayerProfileCard playerId={selectedProfilePlayerId} imageExtension="png"
+            <PlayerProfileCard
+              playerId={selectedProfilePlayerId}
               expanded={true}
               className="w-56 h-80 sm:w-72 sm:h-[26rem] md:w-80 md:h-[30rem] max-w-full max-h-[90vh]"
               teamName={teamNameForUI}
@@ -873,310 +866,14 @@ export default function ContractManagementPage() {
         </div>
       )}
 
-      {/* Admin Tools modal */}
-      {isAdmin && adminToolsOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={() => setAdminToolsOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-tools-title"
-            className="w-full max-w-4xl overflow-hidden rounded-3xl border border-yellow-400/20 bg-[#081521] shadow-[0_30px_100px_rgba(0,0,0,0.55)]"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-5 sm:px-6">
-              <div>
-                <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-yellow-300/70">Administrator</div>
-                <h2 id="admin-tools-title" className="text-2xl font-black text-white">Admin Tools</h2>
-                <p className="mt-1 text-sm text-white/45">Administrative contract-management actions that are hidden from normal league members.</p>
-              </div>
-              <button
-                type="button"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-xl text-white/70 transition hover:bg-white/10 hover:text-white"
-                onClick={() => setAdminToolsOpen(false)}
-                aria-label="Close Admin Tools"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="max-h-[78vh] overflow-y-auto p-5 sm:p-6">
-              <section className="overflow-hidden rounded-2xl border border-[#FFA726]/20 bg-[#FFA726]/[0.045]">
-                <div className="border-b border-[#FFA726]/15 px-4 py-4 sm:px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#FFA726]/15 text-lg font-black text-[#FFC46B]">!</div>
-                    <div>
-                      <h3 className="font-black text-white">Assign Holdout Player</h3>
-                      <p className="mt-0.5 text-xs text-white/45">Manually assign a player, team, and Year 1 holdout offer.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-5">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Player</label>
-                      <select
-                        className="w-full rounded-lg border border-white/10 bg-[#0D202E] px-3 py-2.5 text-sm font-semibold text-white outline-none [color-scheme:dark] focus:border-[#FFA726]/70 focus:ring-2 focus:ring-[#FFA726]/15"
-                        value={adminHoldoutPlayerId}
-                        onChange={e => setAdminHoldoutPlayerId(e.target.value)}
-                      >
-                        <option value="">Select player…</option>
-                        {allPlayersForAdminHoldouts.map(p => (
-                          <option key={p.playerId} value={p.playerId}>
-                            {p.playerName} (#{p.playerId})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Assigned Team</label>
-                      <select
-                        className="w-full rounded-lg border border-white/10 bg-[#0D202E] px-3 py-2.5 text-sm font-semibold text-white outline-none [color-scheme:dark] focus:border-[#FFA726]/70 focus:ring-2 focus:ring-[#FFA726]/15"
-                        value={adminHoldoutAssignedTeam}
-                        onChange={e => setAdminHoldoutAssignedTeam(e.target.value)}
-                      >
-                        <option value="">Select team…</option>
-                        {allTeamNames.map(team => (
-                          <option key={team} value={team}>{team}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Offer · Year 1 ($)</label>
-                      <input
-                        className="w-full rounded-lg border border-white/10 bg-[#0D202E] px-3 py-2.5 text-sm font-semibold text-white outline-none placeholder:text-white/25 focus:border-[#FFA726]/70 focus:ring-2 focus:ring-[#FFA726]/15"
-                        type="number"
-                        inputMode="decimal"
-                        step="0.1"
-                        min="0"
-                        placeholder="e.g. 12.5"
-                        value={adminHoldoutOfferYear1}
-                        onChange={e => setAdminHoldoutOfferYear1(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Admin Notes <span className="normal-case tracking-normal text-white/25">(optional)</span></label>
-                      <input
-                        className="w-full rounded-lg border border-white/10 bg-[#0D202E] px-3 py-2.5 text-sm font-semibold text-white outline-none placeholder:text-white/25 focus:border-[#FFA726]/70 focus:ring-2 focus:ring-[#FFA726]/15"
-                        type="text"
-                        placeholder="Notes"
-                        value={adminHoldoutNotes}
-                        onChange={e => setAdminHoldoutNotes(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-h-[20px] text-sm">
-                      {adminHoldoutAssignMsg ? <div className="font-semibold text-emerald-300">{adminHoldoutAssignMsg}</div> : null}
-                      {adminHoldoutAssignError ? <div className="font-semibold text-red-300">{adminHoldoutAssignError}</div> : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-[#FFA726] px-5 py-2.5 text-sm font-black text-[#07141D] shadow-[0_8px_20px_rgba(255,167,38,0.15)] transition hover:bg-[#ffb84d] disabled:cursor-not-allowed disabled:opacity-45"
-                      disabled={
-                        !adminHoldoutPlayerId ||
-                        !adminHoldoutAssignedTeam ||
-                        !(Number(adminHoldoutOfferYear1) > 0) ||
-                        adminHoldoutAssignLoading
-                      }
-                      onClick={async () => {
-                        const selected = allPlayersForAdminHoldouts.find(p => p.playerId === String(adminHoldoutPlayerId));
-                        if (!selected) {
-                          setAdminHoldoutAssignError('Please select a valid player.');
-                          return;
-                        }
-
-                        const offerYear1 = Number(adminHoldoutOfferYear1);
-                        if (!(offerYear1 > 0)) {
-                          setAdminHoldoutAssignError('Please enter a valid Year 1 offer amount.');
-                          return;
-                        }
-
-                        const confirmMsg = `Assign ${selected.playerName} (#${selected.playerId}) to ${adminHoldoutAssignedTeam} for $${offerYear1.toFixed(1)} (Year 1)?`;
-                        if (!window.confirm(confirmMsg)) return;
-
-                        setAdminHoldoutAssignLoading(true);
-                        setAdminHoldoutAssignMsg('');
-                        setAdminHoldoutAssignError('');
-                        try {
-                          const res = await fetch('/api/admin/holdout-assignments', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              playerId: selected.playerId,
-                              playerName: selected.playerName,
-                              assignedTeam: adminHoldoutAssignedTeam,
-                              offerYear1,
-                              adminNotes: adminHoldoutNotes,
-                            }),
-                          });
-                          const data = await res.json();
-                          if (!res.ok) throw new Error(data.error || 'Failed to save holdout assignment');
-
-                          setAdminHoldoutAssignMsg('Holdout assignment saved!');
-                          setAdminHoldoutNotes('');
-                          setAdminHoldoutOfferYear1('');
-
-                          if (teamNameForUI) await refreshHoldoutAssignmentsForTeam(teamNameForUI);
-                        } catch (err) {
-                          setAdminHoldoutAssignError(err.message);
-                        } finally {
-                          setAdminHoldoutAssignLoading(false);
-                        }
-                      }}
-                    >
-                      {adminHoldoutAssignLoading ? 'Saving…' : 'Assign Holdout'}
-                    </button>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Contract dashboard header */}
-      <section className="mb-6 overflow-hidden rounded-3xl border border-white/10 bg-[#091521]/90 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-        <div className="relative overflow-hidden px-5 py-6 sm:px-7 sm:py-7">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[#FF4B1F]/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-[#1FDDFF]/10 blur-3xl" />
-
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-[#FF4B1F]/30 bg-[#FF4B1F]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#FF8A68]">
-                  Contract Office
-                </span>
-                {isAdmin && isAdminMode && (
-                  <span className="rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-yellow-300">
-                    Admin acting mode
-                  </span>
-                )}
-              </div>
-              <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">Contract Management</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55 sm:text-base">
-                Review your cap position, manage offseason contract actions, and finalize eligible player decisions from one workspace.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-stretch gap-2 text-sm">
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAdminHoldoutAssignMsg('');
-                    setAdminHoldoutAssignError('');
-                    setAdminToolsOpen(true);
-                  }}
-                  className="group rounded-xl border border-yellow-400/20 bg-yellow-400/[0.07] px-3.5 py-2.5 text-left transition hover:border-yellow-300/35 hover:bg-yellow-400/10"
-                >
-                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-yellow-300/60">Administrator</div>
-                  <div className="mt-0.5 flex items-center gap-2 font-bold text-yellow-200">
-                    Admin Tools <span className="transition-transform group-hover:translate-x-0.5">→</span>
-                  </div>
-                </button>
-              )}
-              <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5">
-                <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">Team</div>
-                <div className="mt-0.5 max-w-[240px] truncate font-bold text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</div>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5">
-                <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">League Year</div>
-                <div className="mt-0.5 font-bold text-white">{curYear}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 border-t border-white/10 bg-black/15 lg:grid-cols-5">
-          <button type="button" onClick={() => openCapModal(0)} className="group p-4 text-left transition hover:bg-white/[0.04] sm:p-5 lg:border-r lg:border-white/10">
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">Cap Space</div>
-            <div className={`mt-1 text-2xl font-black tabular-nums ${currentCapSpace < 0 ? 'text-red-400' : 'text-emerald-300'}`}>${currentCapSpace.toFixed(1)}</div>
-            <div className="mt-1 text-xs text-white/35 group-hover:text-white/55">View current-year breakdown →</div>
-          </button>
-          <div className="border-l border-white/10 p-4 sm:p-5 lg:border-l-0 lg:border-r">
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">Active Salary</div>
-            <div className="mt-1 text-2xl font-black tabular-nums text-white">${currentSalaryCommitment.toFixed(1)}</div>
-            <div className="mt-1 text-xs text-white/35">{activeContractCount} active / future deals</div>
-          </div>
-          <div className="border-t border-white/10 p-4 sm:p-5 lg:border-t-0 lg:border-r">
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">Dead Cap</div>
-            <div className="mt-1 text-2xl font-black tabular-nums text-white">${currentDeadCap.toFixed(1)}</div>
-            <div className="mt-1 text-xs text-white/35">Current league year</div>
-          </div>
-          <div className="border-l border-t border-white/10 p-4 sm:p-5 lg:border-l-0 lg:border-t-0 lg:border-r">
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">Team Fines</div>
-            <div className="mt-1 text-2xl font-black tabular-nums text-white">${currentFines.toFixed(1)}</div>
-            <div className="mt-1 text-xs text-white/35">Included in cap usage</div>
-          </div>
-          <div className="col-span-2 border-t border-white/10 p-4 sm:p-5 lg:col-span-1 lg:border-t-0">
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">Cap Used</div>
-            <div className="mt-1 text-2xl font-black tabular-nums text-white">${currentCapUsed.toFixed(1)}</div>
-            <div className="mt-1 text-xs text-white/35">of ${CAP.toFixed(1)}</div>
-          </div>
-        </div>
-      </section>
-
-      {/* Offseason action launcher */}
-      <section className="mb-6">
-        <div className="mb-3 flex items-end justify-between gap-4 px-1">
-          <div>
-            <h2 className="text-sm font-black uppercase tracking-[0.18em] text-white/75">Offseason Actions</h2>
-            <p className="mt-1 text-xs text-white/40">Open a work area below to review eligible players and finalize actions.</p>
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <button type="button" onClick={() => setExtensionsCollapsed(v => !v)} className={`group rounded-2xl border p-4 text-left transition ${!extensionsCollapsed ? 'border-[#FF4B1F]/50 bg-[#FF4B1F]/10' : 'border-white/10 bg-[#0B1622]/80 hover:border-[#FF4B1F]/30 hover:bg-white/[0.04]'}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#FF4B1F]/15 text-lg text-[#FF7652]">↗</div>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${extWindowActive ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-white/10 bg-white/5 text-white/40'}`}>{extWindowActive ? 'Open' : 'Closed'}</span>
-            </div>
-            <div className="mt-3 font-bold text-white">Extensions</div>
-            <div className="mt-0.5 text-xs text-white/45">{eligiblePlayersSorted.length} eligible player{eligiblePlayersSorted.length === 1 ? '' : 's'}</div>
-          </button>
-
-          <button type="button" onClick={() => setFranchiseCollapsed(v => !v)} className={`group rounded-2xl border p-4 text-left transition ${!franchiseCollapsed ? 'border-[#1FDDFF]/50 bg-[#1FDDFF]/10' : 'border-white/10 bg-[#0B1622]/80 hover:border-[#1FDDFF]/30 hover:bg-white/[0.04]'}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#1FDDFF]/10 text-lg text-[#6DEAFF]">★</div>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${franchiseWindowActive ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-white/10 bg-white/5 text-white/40'}`}>{franchiseWindowActive ? 'Open' : 'Closed'}</span>
-            </div>
-            <div className="mt-3 font-bold text-white">Franchise Tag</div>
-            <div className="mt-0.5 text-xs text-white/45">{hasFranchiseTagThisYearForTeam ? 'Tag already used' : `${franchiseEligiblePlayersSorted.length} eligible player${franchiseEligiblePlayersSorted.length === 1 ? '' : 's'}`}</div>
-          </button>
-
-          <button type="button" onClick={() => setRfaCollapsed(v => !v)} className={`group rounded-2xl border p-4 text-left transition ${!rfaCollapsed ? 'border-[#9bffb7]/50 bg-[#9bffb7]/10' : 'border-white/10 bg-[#0B1622]/80 hover:border-[#9bffb7]/30 hover:bg-white/[0.04]'}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#9bffb7]/10 text-lg text-[#9bffb7]">R</div>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${rfaWindowActive ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-white/10 bg-white/5 text-white/40'}`}>{rfaWindowActive ? 'Open' : 'Closed'}</span>
-            </div>
-            <div className="mt-3 font-bold text-white">RFA Tag</div>
-            <div className="mt-0.5 text-xs text-white/45">{hasRfaTagThisYearForTeam ? 'Tag already used' : `${rfaEligiblePlayersSorted.length} eligible player${rfaEligiblePlayersSorted.length === 1 ? '' : 's'}`}</div>
-          </button>
-
-          <button type="button" onClick={() => setHoldoutsCollapsed(v => !v)} className={`group rounded-2xl border p-4 text-left transition ${!holdoutsCollapsed ? 'border-[#FFA726]/50 bg-[#FFA726]/10' : 'border-white/10 bg-[#0B1622]/80 hover:border-[#FFA726]/30 hover:bg-white/[0.04]'}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#FFA726]/10 text-lg text-[#FFC46B]">!</div>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${holdoutsWindowActive ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-white/10 bg-white/5 text-white/40'}`}>{holdoutsWindowActive ? 'Open' : 'Closed'}</span>
-            </div>
-            <div className="mt-3 font-bold text-white">Holdouts</div>
-            <div className="mt-0.5 text-xs text-white/45">{holdoutAssignments.length} assigned · {holdoutEligiblePlayersSorted.length} eligible</div>
-          </button>
-        </div>
-      </section>
+      <h2 className="text-2xl font-bold mb-6 text-white text-center">Contract Management</h2>
 
       {/* Admin Controls */}
       {isAdmin && (
-        <div className="mb-6 w-full overflow-hidden rounded-2xl border border-yellow-400/15 bg-[#0B1622]/90 shadow-[0_18px_55px_rgba(0,0,0,0.20)]">
+        <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-4">
           <button
             type="button"
-            className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-white/[0.035] sm:px-6 sm:py-5"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
             aria-expanded={!adminControlsCollapsed}
             onClick={() => setAdminControlsCollapsed(v => !v)}
           >
@@ -1187,7 +884,7 @@ export default function ContractManagementPage() {
           </button>
 
           {!adminControlsCollapsed && (
-            <div className="border-t border-white/10 px-5 pb-6 pt-5 sm:px-6 sm:pb-7">
+            <div className="px-5 pb-5 pt-1">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <label className="flex items-center gap-2 text-white/80">
                   <input
@@ -1218,7 +915,7 @@ export default function ContractManagementPage() {
                 When Admin Mode is enabled, you can select any team and finalize extensions on their behalf.
               </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-black/15 p-4 sm:p-5">
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
                 {!isAdminMode && (
                   <div className="mb-3 text-xs text-yellow-300">
                     Enable Admin Mode to change the shared contract year.
@@ -1235,12 +932,12 @@ export default function ContractManagementPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-3">
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                     <div className="text-xs uppercase tracking-wide text-white/50">Detected League Year</div>
                     <div className="mt-1 text-lg font-semibold text-white">{parseSeasonYear(seasonYear) ?? 'Unknown'}</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-3">
+                  <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                     <div className="text-xs uppercase tracking-wide text-white/50">Saved Override</div>
                     <div className="mt-1 text-lg font-semibold text-white">{parseSeasonYear(contractYearOverride) ?? 'Default'}</div>
                   </div>
@@ -1263,7 +960,7 @@ export default function ContractManagementPage() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      className="px-4 py-2 bg-[#FF4B1F] text-white rounded-lg font-bold transition hover:bg-orange-600 disabled:opacity-50"
+                      className="px-4 py-2 bg-[#FF4B1F] text-white rounded font-semibold hover:bg-orange-600 disabled:opacity-50"
                       disabled={
                         !isAdminMode ||
                         contractYearSettingsLoading ||
@@ -1300,10 +997,10 @@ export default function ContractManagementPage() {
       )}
 
       {/* Contract Extensions (collapsible) */}
-      <div className="mb-6 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0B1622]/90 shadow-[0_18px_55px_rgba(0,0,0,0.20)]">
+      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-10">
         <button
           type="button"
-          className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-white/[0.035] sm:px-6 sm:py-5"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
           aria-expanded={!extensionsCollapsed}
           onClick={() => setExtensionsCollapsed(v => !v)}
         >
@@ -1326,23 +1023,23 @@ export default function ContractManagementPage() {
         </button>
 
         {!extensionsCollapsed && (
-          <div className="border-t border-white/10 px-5 pb-6 pt-5 sm:px-6 sm:pb-7">
-            <div className="mb-5 max-w-4xl text-sm leading-6 text-white/55 sm:text-[15px]">
+          <div className="px-5 pb-5 pt-1">
+            <div className="mb-6 text-white/80 text-base">
               Extend players on expiring base contracts (not entering RFA). Simulate different extension scenarios and see the impact on your cap space.
             </div>
             <div className="mb-4 text-white/70 font-semibold">
               Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
 
-            <div className="mb-7">
-              <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-white/70">Simulated Cap Usage</h4>
-              <table className="w-full overflow-hidden rounded-xl border border-white/10 bg-black/15 text-center text-sm">
+            <div className="mb-8">
+              <h4 className="font-semibold text-white mb-2">Simulated Cap Usage</h4>
+              <table className="w-full text-center border border-white/10 rounded bg-white/5 mb-2">
                 <thead>
                   <tr>
-                    <th className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Year</th>
-                    <th className="border-l border-white/10 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Cap Space Before</th>
-                    <th className="border-l border-white/10 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Extension Cost</th>
-                    <th className="border-l border-white/10 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Cap Space After</th>
+                    <th className="p-2 text-white/80">Year</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space Before</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Extension Cost</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space After</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1361,15 +1058,15 @@ export default function ContractManagementPage() {
                     const capSpaceBefore = CAP - capUsed;
                     const capSpaceAfter = capSpaceBefore - (i === 0 ? 0 : extensionCost);
                     return (
-                      <tr key={i} className="cursor-pointer border-t border-white/[0.06] transition hover:bg-white/[0.035]" onClick={() => openCapModal(i)}>
-                        <td className="px-3 py-3">{curYear + i}</td>
-                        <td className={`border-l border-white/10 px-3 py-3 font-bold ${capSpaceBefore < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                      <tr key={i} className="cursor-pointer hover:bg-white/10" onClick={() => openCapModal(i)}>
+                        <td className="p-2">{curYear + i}</td>
+                        <td className={`p-2 border-l border-white/10 font-bold ${capSpaceBefore < 0 ? 'text-red-400' : 'text-green-400'}`}>
                           {capSpaceBefore.toFixed(1)}
                         </td>
-                        <td className="border-l border-white/10 px-3 py-3 text-blue-300 font-semibold">
+                        <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">
                           {i === 0 ? '-' : `$${extensionCost.toFixed(1)}`}
                         </td>
-                        <td className={`border-l border-white/10 px-3 py-3 font-bold ${capSpaceAfter < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        <td className={`p-2 border-l border-white/10 font-bold ${capSpaceAfter < 0 ? 'text-red-400' : 'text-green-400'}`}>
                           {i === 0 ? '-' : capSpaceAfter.toFixed(1)}
                         </td>
                       </tr>
@@ -1382,7 +1079,7 @@ export default function ContractManagementPage() {
 
             {/* Eligible list */}
             <div>
-              <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-white/70">Eligible Players</h4>
+              <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
               {!isExtensionWindowOpen() && !(isAdmin && isAdminMode) && (
                 <div className="text-yellow-400 text-xs mb-3">
                   Extensions can only be finalized between May 1st and August 31st.
@@ -1406,21 +1103,21 @@ export default function ContractManagementPage() {
                       }
                       const showFinalize = !ext.deny && ext.years > 0 && extWindowActive;
                       return (
-                        <div key={player.playerId} className="overflow-hidden rounded-2xl border border-white/10 bg-[#0A1824] shadow-[0_12px_35px_rgba(0,0,0,0.18)]">
-                          <div className="flex items-center gap-3 border-b border-white/10 bg-[#0D1D2A] px-4 py-3.5 sm:px-5">
+                        <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
+                          <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
                             <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
-                              <PlayerProfileCard playerId={player.playerId} imageExtension="png" expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                              <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                             </button>
                             <div className="min-w-0">
                               <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
-                                <div className="text-lg font-bold leading-6 text-white truncate">{player.playerName}</div>
+                                <div className="text-white font-bold text-2xl leading-7 truncate">{player.playerName}</div>
                               </button>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
 
                           {showLogicChecks && (
-                            <div className="border-b border-white/10 bg-[#0A1824] px-4 py-3.5 sm:px-5">
+                            <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10">
                               <div className="text-white/70 text-sm font-semibold">Logic checks</div>
                               <div className="mt-2 text-xs text-white/70 space-y-1">
                                 {buildExtensionLogicChecks(player).map(check => (
@@ -1436,15 +1133,15 @@ export default function ContractManagementPage() {
                             </div>
                           )}
 
-                          <div className="border-b border-white/10 bg-[#0A1824] px-4 py-3.5 sm:px-5 grid grid-cols-2 gap-4">
+                          <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
                             <div>
                               <div className="text-white/70 text-sm">Current Salary</div>
-                              <div className="mt-1 text-2xl font-black tabular-nums text-white">${parseFloat(player.curYear).toFixed(1)}</div>
+                              <div className="text-white font-semibold text-3xl mt-1">${parseFloat(player.curYear).toFixed(1)}</div>
                             </div>
                             <div>
                               <div className="text-white/70 text-sm">Extension</div>
                               <select
-                                className="mt-1 w-full bg-white text-[#0B1722] rounded-lg border border-white/15 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
+                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
                                 value={ext.years}
                                 onChange={e => {
                                   const val = e.target.value;
@@ -1472,7 +1169,7 @@ export default function ContractManagementPage() {
                             </div>
                           </div>
 
-                          <div className="bg-[#0A1824] px-4 py-3.5 sm:px-5">
+                          <div className="px-5 py-4 bg-[#0C1B26]">
                             <div className="text-white/70 text-sm">Simulated Years</div>
                             <div className="mt-2 text-lg">
                               {ext.deny || !ext.years ? (
@@ -1489,10 +1186,10 @@ export default function ContractManagementPage() {
                             </div>
                           </div>
 
-                          <div className="bg-[#0A1824] px-4 pb-4 sm:px-5 sm:pb-5">
+                          <div className="px-5 pb-5 bg-[#0C1B26]">
                             {showFinalize && pendingExtension && pendingExtension.player.playerId === player.playerId && (
                               <button
-                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-lg font-bold shadow-sm transition hover:bg-orange-600"
+                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
                                 disabled={finalizeLoading || (!isExtensionWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
                                   // Build value list for confirmation
@@ -1716,8 +1413,8 @@ export default function ContractManagementPage() {
 
       {/* Cap modal */}
       {capModalInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#0B1622] p-5 shadow-2xl sm:p-6" tabIndex={-1} role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#1a2233] rounded-lg shadow-2xl p-6 w-full max-w-md relative max-h-[90vh] overflow-y-auto" tabIndex={-1} role="dialog" aria-modal="true">
             <button
               className="absolute top-2 right-2 text-white hover:text-[#FF4B1F] text-2xl font-bold focus:outline-none"
               onClick={() => setCapModalInfo(null)}
@@ -1726,7 +1423,7 @@ export default function ContractManagementPage() {
             >
               ×
             </button>
-            <h2 className="mb-5 pr-8 text-xl font-black text-white">
+            <h2 className="text-xl font-bold mb-2 text-[#FF4B1F]">
               {(capModalInfo.teamNameForUI || teamNameForUI)} – {capModalInfo.label} Contracts
             </h2>
             {!capModalInfo.groups || capModalInfo.groups.length === 0 ? (
@@ -1757,7 +1454,7 @@ export default function ContractManagementPage() {
               ))
             )}
             <div className="flex justify-end mt-4">
-              <button className="px-4 py-2 bg-[#FF4B1F] text-white rounded-lg font-bold transition hover:bg-[#ff6a3c]" onClick={() => setCapModalInfo(null)}>
+              <button className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-[#ff6a3c] font-semibold" onClick={() => setCapModalInfo(null)}>
                 Close
               </button>
             </div>
@@ -1766,10 +1463,10 @@ export default function ContractManagementPage() {
       )}
 
       {/* Franchise Tags (collapsible) */}
-      <div className="mb-6 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0B1622]/90 shadow-[0_18px_55px_rgba(0,0,0,0.20)]">
+      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-10">
         <button
           type="button"
-          className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-white/[0.035] sm:px-6 sm:py-5"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
           aria-expanded={!franchiseCollapsed}
           onClick={() => setFranchiseCollapsed(v => !v)}
         >
@@ -1792,24 +1489,24 @@ export default function ContractManagementPage() {
         </button>
 
         {!franchiseCollapsed && (
-          <div className="border-t border-white/10 px-5 pb-6 pt-5 sm:px-6 sm:pb-7">
-            <div className="mb-5 max-w-4xl text-sm leading-6 text-white/55 sm:text-[15px]">
+          <div className="px-5 pb-5 pt-1">
+            <div className="mb-6 text-white/80 text-base">
               Apply one-year franchise tags during the tag window. Tag value is the higher of: (a) the average of the top 10 active contracts at the player's position (any contract type), or (b) the player's current salary + 10%.
             </div>
-            <div className="mb-5 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-white/45">
+            <div className="mb-2 text-white/70 text-sm">
               Window: Feb 1 — Mar 31. League Year: <span className="text-[#1FDDFF]">{curYear}</span>. Team:{' '}
               <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
 
-            <div className="mb-7">
-              <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-white/70">Simulated Cap Usage</h4>
-              <table className="w-full overflow-hidden rounded-xl border border-white/10 bg-black/15 text-center text-sm">
+            <div className="mb-8">
+              <h4 className="font-semibold text-white mb-2">Simulated Cap Usage</h4>
+              <table className="w-full text-center border border-white/10 rounded bg-white/5 mb-2">
                 <thead>
                   <tr>
-                    <th className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Year</th>
-                    <th className="border-l border-white/10 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Cap Used</th>
-                    <th className="border-l border-white/10 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Tag Cost</th>
-                    <th className="border-l border-white/10 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white/40">Cap Space</th>
+                    <th className="p-2 text-white/80">Year</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Used</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Tag Cost</th>
+                    <th className="p-2 text-white/80 border-l border-white/10">Cap Space</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1835,10 +1532,10 @@ export default function ContractManagementPage() {
                     const capSpace = CAP - (baseCap + tagCost);
                     return (
                       <tr key={i}>
-                        <td className="px-3 py-3">{curYear + i}</td>
-                        <td className="border-l border-white/10 px-3 py-3">${baseCap.toFixed(1)}</td>
-                        <td className="border-l border-white/10 px-3 py-3 text-blue-300 font-semibold">{tagCost === 0 ? '-' : `$${tagCost.toFixed(1)}`}</td>
-                        <td className={`border-l border-white/10 px-3 py-3 font-bold ${capSpace < 0 ? 'text-red-400' : 'text-green-400'}`}>{capSpace.toFixed(1)}</td>
+                        <td className="p-2">{curYear + i}</td>
+                        <td className="p-2 border-l border-white/10">${baseCap.toFixed(1)}</td>
+                        <td className="p-2 border-l border-white/10 text-blue-300 font-semibold">{tagCost === 0 ? '-' : `$${tagCost.toFixed(1)}`}</td>
+                        <td className={`p-2 border-l border-white/10 font-bold ${capSpace < 0 ? 'text-red-400' : 'text-green-400'}`}>{capSpace.toFixed(1)}</td>
                       </tr>
                     );
                   })}
@@ -1848,7 +1545,7 @@ export default function ContractManagementPage() {
             </div>
 
             <div>
-              <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-white/70">Eligible Players</h4>
+              <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
               {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
                 <div className="text-yellow-400 text-xs mb-3">Tags can only be applied between Feb 1st and March 31st.</div>
               )}
@@ -1866,21 +1563,21 @@ export default function ContractManagementPage() {
                       const choice = franchiseTagChoices[player.playerId] || { apply: false };
                       const showFinalize = choice.apply && !hasFranchiseTagThisYearForTeam && franchiseWindowActive;
                       return (
-                        <div key={player.playerId} className="overflow-hidden rounded-2xl border border-white/10 bg-[#0A1824] shadow-[0_12px_35px_rgba(0,0,0,0.18)]">
-                          <div className="flex items-center gap-3 border-b border-white/10 bg-[#0D1D2A] px-4 py-3.5 sm:px-5">
+                        <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
+                          <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
                             <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
-                              <PlayerProfileCard playerId={player.playerId} imageExtension="png" expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                              <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                             </button>
                             <div className="min-w-0">
                               <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
-                                <div className="text-lg font-bold leading-6 text-white break-words whitespace-normal">{player.playerName}</div>
+                                <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
                               </button>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
 
                           {showLogicChecks && (
-                            <div className="border-b border-white/10 bg-[#0A1824] px-4 py-3.5 sm:px-5">
+                            <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10">
                               <div className="text-white/70 text-sm font-semibold">Logic checks</div>
                               <div className="mt-2 text-xs text-white/70 space-y-1">
                                 {buildFranchiseLogicChecks(player).map(check => (
@@ -1895,16 +1592,16 @@ export default function ContractManagementPage() {
                               </div>
                             </div>
                           )}
-                          <div className="border-b border-white/10 bg-[#0A1824] px-4 py-3.5 sm:px-5 grid grid-cols-2 gap-4">
+                          <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
                             <div>
                               <div className="text-white/70 text-sm">Tag Value</div>
-                              <div className="mt-1 text-2xl font-black tabular-nums text-white">${tagValue.toFixed(1)}</div>
+                              <div className="text-white font-semibold text-3xl mt-1">${tagValue.toFixed(1)}</div>
                               <div className="text-white/60 text-xs">1-year contract</div>
                             </div>
                             <div>
                               <div className="text-white/70 text-sm">Apply Tag</div>
                               <select
-                                className="mt-1 w-full bg-white text-[#0B1722] rounded-lg border border-white/15 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
+                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
                                 value={choice.apply ? 'apply' : 'none'}
                                 onChange={e => {
                                   const apply = e.target.value === 'apply';
@@ -1919,10 +1616,10 @@ export default function ContractManagementPage() {
                               </select>
                             </div>
                           </div>
-                          <div className="bg-[#0A1824] px-4 pb-4 sm:px-5 sm:pb-5">
+                          <div className="px-5 pb-5 bg-[#0C1B26]">
                             {showFinalize && pendingFranchiseTag && pendingFranchiseTag.player.playerId === player.playerId && (
                               <button
-                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-lg font-bold shadow-sm transition hover:bg-orange-600"
+                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow"
                                 disabled={finalizeLoading || hasFranchiseTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
                                   const confirmMsg = `Are you sure you want to apply your Franchise Tag to ${player.playerName} at $${tagValue.toFixed(1)}? This will be your only use of the Franchise Tag this offseason, and cannot be undone.`;
@@ -2101,10 +1798,10 @@ export default function ContractManagementPage() {
       </div>
 
       {/* RFA Tags (collapsible) */}
-      <div className="mb-6 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0B1622]/90 shadow-[0_18px_55px_rgba(0,0,0,0.20)]">
+      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-10">
         <button
           type="button"
-          className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-white/[0.035] sm:px-6 sm:py-5"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
           aria-expanded={!rfaCollapsed}
           onClick={() => setRfaCollapsed(v => !v)}
         >
@@ -2127,11 +1824,11 @@ export default function ContractManagementPage() {
         </button>
 
         {!rfaCollapsed && (
-          <div className="border-t border-white/10 px-5 pb-6 pt-5 sm:px-6 sm:pb-7">
-            <div className="mb-5 max-w-4xl text-sm leading-6 text-white/55 sm:text-[15px]">
+          <div className="px-5 pb-5 pt-1">
+            <div className="mb-6 text-white/80 text-base">
               Convert a player's current contract to RFA status. Eligible players are on active Waiver/FA contracts and not already RFA. Limit: 1 player per team per year.
             </div>
-            <div className="mb-5 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-white/45">
+            <div className="mb-2 text-white/70 text-sm">
               Window: Feb 1 — Mar 31. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
 
@@ -2140,7 +1837,7 @@ export default function ContractManagementPage() {
             )}
 
             <div>
-              <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-white/70">Eligible Players</h4>
+              <h4 className="font-semibold text-white mb-2">Eligible Players</h4>
               {!isFranchiseWindowOpen() && !(isAdmin && isAdminMode) && (
                 <div className="text-yellow-400 text-xs mb-3">RFA tags can only be applied between Feb 1st and March 31st.</div>
               )}
@@ -2154,21 +1851,21 @@ export default function ContractManagementPage() {
                       const choice = rfaTagChoices[player.playerId] || { apply: false };
                       const showFinalize = choice.apply && !hasRfaTagThisYearForTeam && rfaWindowActive;
                       return (
-                        <div key={player.playerId} className="overflow-hidden rounded-2xl border border-white/10 bg-[#0A1824] shadow-[0_12px_35px_rgba(0,0,0,0.18)]">
-                          <div className="flex items-center gap-3 border-b border-white/10 bg-[#0D1D2A] px-4 py-3.5 sm:px-5">
+                        <div key={player.playerId} className="bg-[#0C1B26] border border-white/10 rounded-3xl shadow-xl overflow-hidden">
+                          <div className="flex items-center gap-3 px-5 py-4 bg-[#0E2233] border-b border-white/10">
                             <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
-                              <PlayerProfileCard playerId={player.playerId} imageExtension="png" expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                              <PlayerProfileCard playerId={player.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                             </button>
                             <div className="min-w-0">
                               <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(player.playerId)}>
-                                <div className="text-lg font-bold leading-6 text-white break-words whitespace-normal">{player.playerName}</div>
+                                <div className="text-white font-bold text-2xl leading-7 break-words whitespace-normal">{player.playerName}</div>
                               </button>
                               <div className="text-white/70 text-sm">Age: {player.age ?? '-'}</div>
                             </div>
                           </div>
 
                           {showLogicChecks && (
-                            <div className="border-b border-white/10 bg-[#0A1824] px-4 py-3.5 sm:px-5">
+                            <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10">
                               <div className="text-white/70 text-sm font-semibold">Logic checks</div>
                               <div className="mt-2 text-xs text-white/70 space-y-1">
                                 {buildRfaLogicChecks(player).map(check => (
@@ -2183,16 +1880,16 @@ export default function ContractManagementPage() {
                               </div>
                             </div>
                           )}
-                          <div className="border-b border-white/10 bg-[#0A1824] px-4 py-3.5 sm:px-5 grid grid-cols-2 gap-4">
+                          <div className="px-5 py-4 bg-[#0C1B26] border-b border-white/10 grid grid-cols-2 gap-4">
                             <div>
                               <div className="text-white/70 text-sm">Current Contract</div>
-                              <div className="mt-1 text-2xl font-black tabular-nums text-white">{player.contractType}</div>
+                              <div className="text-white font-semibold text-3xl mt-1">{player.contractType}</div>
                               <div className="text-white/60 text-xs">RFA Tag sets RFA? to TRUE</div>
                             </div>
                             <div>
                               <div className="text-white/70 text-sm">Apply RFA Tag</div>
                               <select
-                                className="mt-1 w-full bg-white text-[#0B1722] rounded-lg border border-white/15 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
+                                className="mt-1 w-full bg-white text-[#0B1722] rounded-xl px-3 py-2 border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF4B1F] focus:border-[#FF4B1F]"
                                 value={choice.apply ? 'apply' : 'none'}
                                 onChange={e => {
                                   const apply = e.target.value === 'apply';
@@ -2206,10 +1903,10 @@ export default function ContractManagementPage() {
                               </select>
                             </div>
                           </div>
-                          <div className="bg-[#0A1824] px-4 pb-4 sm:px-5 sm:pb-5">
+                          <div className="px-5 pb-5 bg-[#0C1B26]">
                             {showFinalize && pendingRfaTag && pendingRfaTag.player.playerId === player.playerId && (
                               <button
-                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-lg font-bold shadow-sm transition hover:bg-orange-600 disabled:opacity-50"
+                                className="w-full px-4 py-3 bg-[#FF4B1F] text-white rounded-xl hover:bg-orange-600 font-semibold text-lg shadow disabled:opacity-50"
                                 disabled={finalizeLoading || hasRfaTagThisYearForTeam || (!isFranchiseWindowOpen() && !(isAdmin && isAdminMode))}
                                 onClick={async () => {
                                   const confirmMsg = `Are you sure you want to apply your RFA Tag to ${player.playerName}? This will be your only use of the RFA tag this offseason, and cannot be undone.`;
@@ -2383,18 +2080,11 @@ export default function ContractManagementPage() {
         )}
       </div>
 
-      {(finalizeMsg || finalizeError) && (
-        <div className={`mb-6 flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-sm shadow-lg ${finalizeError ? 'border-red-400/25 bg-red-400/10 text-red-200' : 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'}`} role="status">
-          <div className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-xs font-black ${finalizeError ? 'bg-red-400/20' : 'bg-emerald-400/20'}`}>{finalizeError ? '!' : '✓'}</div>
-          <div>{finalizeError || finalizeMsg}</div>
-        </div>
-      )}
-
       {/* Holdouts (collapsible) */}
-      <div className="mb-6 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0B1622]/90 shadow-[0_18px_55px_rgba(0,0,0,0.20)]">
+      <div className="w-full max-w-3xl bg-black/30 rounded-xl border border-white/10 shadow-lg mb-10">
         <button
           type="button"
-          className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-white/[0.035] sm:px-6 sm:py-5"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 rounded-t-xl"
           aria-expanded={!holdoutsCollapsed}
           onClick={() => setHoldoutsCollapsed(v => !v)}
         >
@@ -2417,16 +2107,139 @@ export default function ContractManagementPage() {
         </button>
 
         {!holdoutsCollapsed && (
-          <div className="border-t border-white/10 px-5 pb-6 pt-5 sm:px-6 sm:pb-7">
-            <div className="mb-5 max-w-4xl text-sm leading-6 text-white/55 sm:text-[15px]">
+          <div className="px-5 pb-5 pt-1">
+            <div className="mb-6 text-white/80 text-base">
               Manage eligible holdout players based on <span className="font-semibold">previous season</span> performance (see Holdouts page for criteria). Options: Apply a Holdout RFA Tag (does not count against normal RFA tag limit) or grant a Holdout Extension starting the year after their current contract's final season. Year 1 of a Holdout Extension is the average of the top 20 active contracts at the player's position from the previous season; later years escalate +10% (rounded up to $0.1). <span className="text-white/60 text-xs">(Assumption: annual 10% escalation for years 2-3. Metrics shown reflect {currentSeason}).</span>
             </div>
-            <div className="mb-5 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-white/45">
+            <div className="mb-2 text-white/70 text-sm">
               Window: Apr 1 — Apr 30. Team: <span className="text-[#1FDDFF]">{teamNameForUI || 'Unknown'}</span>
             </div>
 
+            {isAdmin && (
+              <div className="mb-6 p-4 bg-black/20 rounded-xl border border-white/10">
+                <div className="text-yellow-300 font-semibold mb-2">Admin: Assign Holdout Player</div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Player</label>
+                    <select
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      value={adminHoldoutPlayerId}
+                      onChange={e => setAdminHoldoutPlayerId(e.target.value)}
+                    >
+                      <option value="">Select player…</option>
+                      {allPlayersForAdminHoldouts.map(p => (
+                        <option key={p.playerId} value={p.playerId}>
+                          {p.playerName} (#{p.playerId})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Assigned Team</label>
+                    <select
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      value={adminHoldoutAssignedTeam}
+                      onChange={e => setAdminHoldoutAssignedTeam(e.target.value)}
+                    >
+                      <option value="">Select team…</option>
+                      {allTeamNames.map(team => (
+                        <option key={team} value={team}>
+                          {team}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Offer (Year 1 $)</label>
+                    <input
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      min="0"
+                      placeholder="e.g. 12.5"
+                      value={adminHoldoutOfferYear1}
+                      onChange={e => setAdminHoldoutOfferYear1(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-xs mb-1">Admin Notes (optional)</label>
+                    <input
+                      className="w-full bg-white text-[#0B1722] rounded px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFA726]"
+                      type="text"
+                      placeholder="Notes"
+                      value={adminHoldoutNotes}
+                      onChange={e => setAdminHoldoutNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    className="px-4 py-2 bg-[#FFA726] text-[#0B1722] rounded font-semibold hover:bg-[#ffb247] disabled:opacity-50"
+                    disabled={
+                      !adminHoldoutPlayerId ||
+                      !adminHoldoutAssignedTeam ||
+                      !(Number(adminHoldoutOfferYear1) > 0) ||
+                      adminHoldoutAssignLoading
+                    }
+                    onClick={async () => {
+                      const selected = allPlayersForAdminHoldouts.find(p => p.playerId === String(adminHoldoutPlayerId));
+                      if (!selected) {
+                        setAdminHoldoutAssignError('Please select a valid player.');
+                        return;
+                      }
+
+                      const offerYear1 = Number(adminHoldoutOfferYear1);
+                      if (!(offerYear1 > 0)) {
+                        setAdminHoldoutAssignError('Please enter a valid Year 1 offer amount.');
+                        return;
+                      }
+                      const confirmMsg = `Assign ${selected.playerName} (#${selected.playerId}) to ${adminHoldoutAssignedTeam} for $${offerYear1.toFixed(1)} (Year 1)?`;
+                      if (!window.confirm(confirmMsg)) return;
+
+                      setAdminHoldoutAssignLoading(true);
+                      setAdminHoldoutAssignMsg('');
+                      setAdminHoldoutAssignError('');
+                      try {
+                        const res = await fetch('/api/admin/holdout-assignments', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            playerId: selected.playerId,
+                            playerName: selected.playerName,
+                            assignedTeam: adminHoldoutAssignedTeam,
+                            offerYear1,
+                            adminNotes: adminHoldoutNotes,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Failed to save holdout assignment');
+                        setAdminHoldoutAssignMsg('Holdout assignment saved!');
+                        setAdminHoldoutNotes('');
+                        setAdminHoldoutOfferYear1('');
+
+                        // Refresh assignments so the team list updates immediately
+                        if (teamNameForUI) await refreshHoldoutAssignmentsForTeam(teamNameForUI);
+                      } catch (err) {
+                        setAdminHoldoutAssignError(err.message);
+                      } finally {
+                        setAdminHoldoutAssignLoading(false);
+                      }
+                    }}
+                  >
+                    {adminHoldoutAssignLoading ? 'Saving…' : 'Assign'}
+                  </button>
+                  {adminHoldoutAssignMsg ? <div className="text-green-400 text-sm">{adminHoldoutAssignMsg}</div> : null}
+                  {adminHoldoutAssignError ? <div className="text-red-400 text-sm">{adminHoldoutAssignError}</div> : null}
+                </div>
+              </div>
+            )}
+
             <div className="mb-6">
-              <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-white/70">Assigned Holdouts</h4>
+              <h4 className="font-semibold text-white mb-2">Assigned Holdouts</h4>
               {holdoutAssignmentsLoading ? (
                 <div className="text-white/60 italic">Loading assignments…</div>
               ) : holdoutAssignmentsError ? (
@@ -2470,10 +2283,10 @@ export default function ContractManagementPage() {
                       draftStatus === 'ACCEPTED' ? computeSalaries(draftYears) : [];
 
                     return (
-                      <div key={String(a._id || a.playerId)} className="rounded-2xl border border-white/10 bg-[#0A1824] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.16)] sm:p-5">
+                      <div key={String(a._id || a.playerId)} className="bg-[#0C1B26] border border-white/10 rounded-xl p-4 shadow">
                       <div className="flex items-center gap-3">
                         <button type="button" className="shrink-0 cursor-pointer" onClick={() => setSelectedProfilePlayerId(a.playerId)}>
-                          <PlayerProfileCard playerId={a.playerId} imageExtension="png" expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
+                          <PlayerProfileCard playerId={a.playerId} expanded={false} avatarOnly className="w-10 h-10 rounded-md overflow-hidden shadow" />
                         </button>
                         <div className="min-w-0">
                           <button type="button" className="text-left hover:underline cursor-pointer" onClick={() => setSelectedProfilePlayerId(a.playerId)}>
@@ -2558,7 +2371,7 @@ export default function ContractManagementPage() {
                         </div>
 
                         <button
-                          className="px-4 py-2 bg-[#1FDDFF] text-[#0B1722] rounded-lg font-bold transition hover:bg-[#37e8ff] disabled:opacity-50"
+                          className="px-4 py-2 bg-[#1FDDFF] text-[#0B1722] rounded font-semibold hover:bg-[#37e8ff] disabled:opacity-50"
                           disabled={
                             decisionLocked ||
                             !draftStatus ||

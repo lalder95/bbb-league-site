@@ -13,7 +13,6 @@ import {
 } from '@/utils/homepagePhases';
 
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
 
 const USER_ID = '456973480269705216';
 const DEFAULT_ROOKIE_DRAFT_ROUNDS = 5;
@@ -671,7 +670,7 @@ function buildPromotionDelegation(divisionData) {
   return entries;
 }
 
-async function buildRookieObligations({ leagueId, rosters, users, draftOrderResult, latestMockDraft }) {
+async function buildRookieObligations({ leagueId, rosters, users, standingsRows, draftOrderResult, latestMockDraft }) {
   const [tradedPicks, drafts, fallbackDraftOrderResult] = await Promise.all([
     fetchJsonSafe(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`, []),
     fetchJsonSafe(`https://api.sleeper.app/v1/league/${leagueId}/drafts`, []),
@@ -695,6 +694,7 @@ async function buildRookieObligations({ leagueId, rosters, users, draftOrderResu
     draftOrder,
     getTeamName,
     targetSeason,
+    standingsRows,
   );
 
   const latestMockByPickNumber = new Map(
@@ -931,6 +931,7 @@ export async function GET(request) {
       leagueId,
       rosters,
       users,
+      standingsRows: standingsData.rows,
       draftOrderResult,
       latestMockDraft,
     });

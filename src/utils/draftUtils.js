@@ -1,6 +1,8 @@
 // src/utils/draftUtils.js
 // Helper functions for draft-related components
 
+import { getRookieSalary as getRookieSalaryFromScale } from '@/utils/rookieSalaryScale';
+
 /**
  * Get team name by roster_id
  */
@@ -33,37 +35,26 @@ export const getTeamName = (rosterId, rosters, users) => {
   /**
    * Get rookie salary based on pick number
    */
-  export const getRookieSalary = (round, pickPosition) => {
-    // First round has specific values based on pick position
-    if (round === 1) {
-      if (pickPosition === 1) return 14;
-      if (pickPosition >= 2 && pickPosition <= 3) return 12;
-      if (pickPosition >= 4 && pickPosition <= 6) return 10;
-      if (pickPosition >= 7 && pickPosition <= 9) return 8;
-      if (pickPosition >= 10) return 6;
-    }
-    // Second round
-    else if (round === 2) {
-      return 4;
-    }
-    // Third round
-    else if (round === 3) {
-      return 2;
-    }
-    // Fourth through seventh rounds
-    else if (round >= 4 && round <= 7) {
-      return 1;
-    }
-    // Default case for any other rounds
-    else {
-      return 0;
-    }
-  };
+  export const getRookieSalary = (round, pickPosition) => getRookieSalaryFromScale(round, pickPosition);
   
   /**
    * Determine pick position based on roster_id and draft order
    */
-  export const getPickPositionInRound = (round, rosterId, draftOrder) => {
+  export const getPickPositionInRound = (round, rosterId, draftOrder, standingsRows = []) => {
+    if (Array.isArray(standingsRows) && standingsRows.length > 0) {
+      const standingsSortedWorstToBest = standingsRows
+        .slice()
+        .sort((left, right) => {
+          if (left.wins !== right.wins) return left.wins - right.wins;
+          if (left.pointsFor !== right.pointsFor) return left.pointsFor - right.pointsFor;
+          return Number(left.rosterId) - Number(right.rosterId);
+        });
+      const standingsPosition = standingsSortedWorstToBest.findIndex((item) => Number(item.rosterId) === Number(rosterId)) + 1;
+      if (standingsPosition > 0) {
+        return standingsPosition;
+      }
+    }
+
     // If we have a draft order, use it
     if (draftOrder.length > 0) {
       const position = draftOrder.findIndex(item => item.rosterId === parseInt(rosterId)) + 1;
@@ -77,7 +68,7 @@ export const getTeamName = (rosterId, rosters, users) => {
   /**
    * Estimate draft positions and salaries
    */
-  export const estimateDraftPositions = (rosters, tradedPicks, draftInfo, draftOrder, getTeamNameFn, targetSeason) => {
+  export const estimateDraftPositions = (rosters, tradedPicks, draftInfo, draftOrder, getTeamNameFn, targetSeason, standingsRows = []) => {
     // Group picks by team
     const teamPicks = {};
     // Determine which draft season to use for pick ownership
@@ -105,7 +96,7 @@ export const getTeamName = (rosterId, rosters, users) => {
       
       for (let round = 1; round <= rounds; round++) {
         // Get pick position based on draft order (for first round primarily)
-        const pickPosition = getPickPositionInRound(round, roster.roster_id, draftOrder);
+        const pickPosition = getPickPositionInRound(round, roster.roster_id, draftOrder, standingsRows);
         
         // Format pick number for display (e.g. "1.01")
         const pickNumber = formatPickNumber(round, pickPosition);
