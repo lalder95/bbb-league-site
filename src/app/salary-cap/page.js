@@ -1,9 +1,192 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
+import Papa from 'papaparse';
 import { estimateDraftPositions, getTeamName } from '@/utils/draftUtils';
 import { downloadCSV, formatNullableForCSV } from '../../utils/csvUtils';
+import TeamTimelineModal from './components/TeamTimelineModal';
 
 const USER_ID = '456973480269705216'; // Your Sleeper user ID
+const YEAR_KEYS = ['curYear', 'year2', 'year3', 'year4'];
+const POSITION_ORDER = ['QB', 'RB', 'WR', 'TE', 'Other'];
+const POSITION_COLOR_MAP = {
+  QB: '#ef4444',
+  RB: '#3b82f6',
+  WR: '#22c55e',
+  TE: '#a855f7',
+  Other: '#f97316',
+  'Draft Pick': '#fbbf24',
+};
+
+function toNumber(value) {
+  const parsed = Number.parseFloat(String(value ?? '').replace(/[$,]/g, '').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizePosition(position) {
+  const normalized = String(position || '').trim().toUpperCase();
+  if (normalized === 'QBS') return 'QB';
+  if (normalized === 'RBS') return 'RB';
+  if (normalized === 'WRS') return 'WR';
+  if (normalized === 'TES') return 'TE';
+  return normalized;
+}
+
+function getPositionGroup(position) {
+  const normalized = normalizePosition(position);
+  return POSITION_ORDER.includes(normalized) ? normalized : 'Other';
+}
+
+function getYearAmount(contract, yearKey) {
+  if (!contract) return 0;
+  const isDeadCap = !['Active', 'Future'].includes(contract.status);
+  const salaryFieldMap = {
+    curYear: isDeadCap ? 'deadCurYear' : 'curYear',
+    year2: isDeadCap ? 'deadYear2' : 'year2',
+    year3: isDeadCap ? 'deadYear3' : 'year3',
+    year4: isDeadCap ? 'deadYear4' : 'year4',
+  };
+
+  return toNumber(contract[salaryFieldMap[yearKey]]);
+}
+
+function getDraftPickYearAmount(pick, capYear) {
+  const salary = toNumber(pick?.salary);
+  const pickSeason = Number(pick?.season);
+  const resolvedCapYear = Number(capYear);
+
+  if (!Number.isFinite(salary) || !Number.isFinite(pickSeason) || !Number.isFinite(resolvedCapYear)) return 0;
+  if (resolvedCapYear < pickSeason || resolvedCapYear > pickSeason + 2) return 0;
+
+  const yearOffset = resolvedCapYear - pickSeason;
+  const multiplier = yearOffset === 0 ? 1 : yearOffset === 1 ? 1.1 : 1.21;
+
+  return Math.round(salary * multiplier * 10) / 10;
+}
+
+function formatPickLabel(pick) {
+  const season = Number(pick?.season);
+  const pickNumber = pick?.pickNumber || '--';
+
+  if (!Number.isFinite(season)) return String(pickNumber);
+  return `${season} ${pickNumber}`;
+}
+
+function getCapYearForYearKey(yearKey, contractYearOverride, leagueSeason) {
+  const baseYear = contractYearOverride || leagueSeason || new Date().getFullYear();
+  const yearOffsetMap = {
+    curYear: 0,
+    year2: 1,
+    year3: 2,
+    year4: 3,
+  };
+
+  return baseYear + (yearOffsetMap[yearKey] || 0);
+}
+
+function getDraftPickYearAmountForYearKey(pick, yearKey, contractYearOverride, leagueSeason) {
+  return getDraftPickYearAmount(pick, getCapYearForYearKey(yearKey, contractYearOverride, leagueSeason));
+}
+
+function buildTeamTimelineData({ teamName, contracts, rookiePicks, yearLabels, contractYearOverride, leagueSeason }) {
+  const byGroup = POSITION_ORDER.reduce((acc, position) => {
+    acc[position] = [];
+    return acc;
+  }, {});
+
+  const teamContracts = (contracts || [])
+    .filter((contract) => contract.team === teamName)
+    .filter((contract) => ['Active', 'Future'].includes(contract.status))
+    .map((contract) => {
+      const positionGroup = getPositionGroup(contract.position);
+      const yearAmounts = YEAR_KEYS.reduce((acc, yearKey) => {
+        acc[yearKey] = getYearAmount(contract, yearKey);
+        return acc;
+      }, {});
+      const totalCommitment = YEAR_KEYS.reduce((sum, yearKey) => sum + yearAmounts[yearKey], 0);
+
+      return {
+        playerName: contract.playerName,
+        position: normalizePosition(contract.position) || 'Other',
+        positionGroup,
+        status: contract.status,
+        yearAmounts,
+        totalCommitment,
+      };
+    })
+    .filter((entry) => entry.totalCommitment > 0)
+    .reduce((acc, entry) => {
+      const dedupeKey = entry.playerName;
+      const existing = acc.byPlayer.get(dedupeKey);
+
+      if (existing) {
+        YEAR_KEYS.forEach((yearKey) => {
+          existing.yearAmounts[yearKey] += entry.yearAmounts[yearKey];
+        });
+        existing.totalCommitment += entry.totalCommitment;
+        if (!existing.positionGroup || existing.positionGroup === 'Other') {
+          existing.positionGroup = entry.positionGroup;
+        }
+      } else {
+        acc.byPlayer.set(dedupeKey, {
+          playerName: entry.playerName,
+          position: entry.position,
+          positionGroup: entry.positionGroup,
+          status: entry.status,
+          yearAmounts: { ...entry.yearAmounts },
+          totalCommitment: entry.totalCommitment,
+        });
+      }
+
+      return acc;
+    }, { byPlayer: new Map() });
+
+  const dedupedContracts = Array.from(teamContracts.byPlayer.values())
+    .sort((left, right) => right.totalCommitment - left.totalCommitment || left.playerName.localeCompare(right.playerName));
+
+  dedupedContracts.forEach((entry) => {
+    byGroup[entry.positionGroup].push(entry);
+  });
+
+  const positionGroups = POSITION_ORDER.map((position) => ({
+    key: position,
+    label: position,
+    color: POSITION_COLOR_MAP[position],
+    rows: byGroup[position],
+  }));
+
+  const draftPickRows = (rookiePicks || [])
+    .map((pick) => {
+      const yearAmounts = YEAR_KEYS.reduce((acc, yearKey) => {
+        acc[yearKey] = getDraftPickYearAmountForYearKey(pick, yearKey, contractYearOverride, leagueSeason);
+        return acc;
+      }, {});
+      const totalCommitment = YEAR_KEYS.reduce((sum, yearKey) => sum + yearAmounts[yearKey], 0);
+
+      return {
+        season: pick.season,
+        pickNumber: pick.pickNumber,
+        displayLabel: formatPickLabel(pick),
+        originalOwner: pick.originalOwner,
+        round: pick.round,
+        isOwnPick: pick.originalOwner === teamName,
+        yearAmounts,
+        totalCommitment,
+      };
+    })
+    .filter((pick) => pick.totalCommitment > 0)
+    .sort((left, right) => (
+      Number(left.season) - Number(right.season)
+    ) || (
+      Number(left.round) - Number(right.round)
+    ) || String(left.pickNumber || '').localeCompare(String(right.pickNumber || '')));
+
+  return {
+    teamName,
+    yearLabels,
+    positionGroups,
+    draftPickRows,
+  };
+}
 
 export default function SalaryCap() {
   const [teams, setTeams] = useState([]);
@@ -22,6 +205,7 @@ export default function SalaryCap() {
   const [draftYearToShow, setDraftYearToShow] = useState(null);
   const [contracts, setContracts] = useState([]);
   const [modalInfo, setModalInfo] = useState(null);
+  const [timelineModalInfo, setTimelineModalInfo] = useState(null);
   const [includeRookieObligations, setIncludeRookieObligations] = useState(false);
 
   useEffect(() => {
@@ -283,31 +467,33 @@ export default function SalaryCap() {
         const finesResponse = await fetch('https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_TeamFines.csv');
         const finesText = await finesResponse.text();
         
-        // Parse contracts
-        const contractRows = contractsText.split('\n');
-        // Parse contracts (update this in your fetchData useEffect)
-        const parsedContracts = contractRows.slice(1)
-          .filter(row => row.trim())
-          .map(row => {
-            const values = row.split(',');
-            const status = values[14];
-            // Always parse both salary and dead columns for all years
+        const parsedCsv = Papa.parse(contractsText, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (header) => String(header || '').trim(),
+        });
+
+        const parsedContracts = (Array.isArray(parsedCsv.data) ? parsedCsv.data : [])
+          .map((row) => {
+            const status = String(row?.Status || '').trim();
             return {
-              playerName: values[1],
-              contractType: values[2],
-              team: values[33],
+              playerName: String(row?.['Player Name'] || '').trim(),
+              contractType: String(row?.['Contract Type'] || '').trim(),
+              position: String(row?.Position || '').trim(),
+              team: String(row?.TeamDisplayName || '').trim(),
               status,
               isActive: status === 'Active',
-              curYear: parseFloat(values[15]) || 0,
-              year2: parseFloat(values[16]) || 0,
-              year3: parseFloat(values[17]) || 0,
-              year4: parseFloat(values[18]) || 0,
-              deadCurYear: parseFloat(values[24]) || 0,
-              deadYear2: parseFloat(values[25]) || 0,
-              deadYear3: parseFloat(values[26]) || 0,
-              deadYear4: parseFloat(values[27]) || 0,
+              curYear: toNumber(row?.['Relative Year 1 Salary']),
+              year2: toNumber(row?.['Relative Year 2 Salary']),
+              year3: toNumber(row?.['Relative Year 3 Salary']),
+              year4: toNumber(row?.['Relative Year 4 Salary']),
+              deadCurYear: toNumber(row?.['Relative Year 1 Dead']),
+              deadYear2: toNumber(row?.['Relative Year 2 Dead']),
+              deadYear3: toNumber(row?.['Relative Year 3 Dead']),
+              deadYear4: toNumber(row?.['Relative Year 4 Dead']),
             };
-          });
+          })
+          .filter((contract) => contract.playerName && contract.team);
         setContracts(parsedContracts);
 
         // Log dead cap contracts
@@ -419,42 +605,56 @@ export default function SalaryCap() {
     return (rosterId) => getTeamName(rosterId, rosters, users);
   }, [rosters, users]);
 
-  const rookieTeamPicks = useMemo(() => {
+  const rookiePickSeasons = useMemo(() => {
+    const seasons = new Set();
+    if (Number.isFinite(Number(draftYearToShow))) seasons.add(Number(draftYearToShow));
+    (tradedPicks || []).forEach((pick) => {
+      const season = Number(pick?.season);
+      if (Number.isFinite(season)) seasons.add(season);
+    });
+    return Array.from(seasons).sort((left, right) => left - right);
+  }, [tradedPicks, draftYearToShow]);
+
+  const rookieTeamPicksBySeason = useMemo(() => {
     if (!rosters.length || !draftInfo) return new Map();
 
-    const estimatedDraftOrder = Array.isArray(draftOrder)
-      ? draftOrder
-      : [];
+    const estimatedDraftOrder = Array.isArray(draftOrder) ? draftOrder : [];
+    const bySeason = new Map();
 
-    const teamPicks = estimateDraftPositions(
-      rosters,
-      tradedPicks,
-      draftInfo,
-      estimatedDraftOrder,
-      getTeamNameForRoster,
-      draftYearToShow,
-      standingsRows,
-    );
+    rookiePickSeasons.forEach((season) => {
+      const teamPicks = estimateDraftPositions(
+        rosters,
+        tradedPicks,
+        draftInfo,
+        estimatedDraftOrder,
+        getTeamNameForRoster,
+        season,
+        standingsRows,
+      );
 
-    return new Map(Object.entries(teamPicks || {}).map(([teamName, picks]) => [teamName, picks?.currentPicks || []]));
-  }, [rosters, tradedPicks, draftInfo, draftOrder, getTeamNameForRoster, draftYearToShow, standingsRows]);
+      bySeason.set(
+        season,
+        new Map(Object.entries(teamPicks || {}).map(([teamName, picks]) => [teamName, (picks?.currentPicks || []).map((pick) => ({ ...pick, season }))]))
+      );
+    });
+
+    return bySeason;
+  }, [rosters, tradedPicks, draftInfo, draftOrder, getTeamNameForRoster, rookiePickSeasons, standingsRows]);
+
+  const getTeamDraftPicks = useMemo(() => {
+    return (teamName) => rookiePickSeasons.flatMap((season) => rookieTeamPicksBySeason.get(season)?.get(teamName) || []);
+  }, [rookiePickSeasons, rookieTeamPicksBySeason]);
 
   const getTeamRookieObligation = (teamName, yearKey) => {
     if (!includeRookieObligations) return 0;
 
-    const teamPicks = rookieTeamPicks.get(teamName);
+    const teamPicks = getTeamDraftPicks(teamName);
     if (!Array.isArray(teamPicks) || teamPicks.length === 0) return 0;
 
-    return teamPicks.reduce((sum, pick) => {
-      const salary = Number(pick?.salary) || 0;
-      const round = Number(pick?.round) || 0;
+    const capYear = getCapYearForYearKey(yearKey, contractYearOverride, leagueSeason);
 
-      if (yearKey === 'curYear') return sum;
-      if (yearKey === 'year2') return sum + salary;
-      if (yearKey === 'year3' || yearKey === 'year4') {
-        return sum + (round <= 3 ? salary : 0);
-      }
-      return sum;
+    return teamPicks.reduce((sum, pick) => {
+      return sum + getDraftPickYearAmount(pick, capYear);
     }, 0);
   };
 
@@ -464,6 +664,21 @@ export default function SalaryCap() {
       direction: sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc'
     });
   };
+
+  const openTeamTimelineModal = (teamName) => {
+    const yearLabels = YEAR_KEYS.map((yearKey) => getCapYearLabel(yearKey));
+    const rookiePicks = getTeamDraftPicks(teamName);
+    setTimelineModalInfo(buildTeamTimelineData({
+      teamName,
+      contracts,
+      rookiePicks,
+      yearLabels,
+      contractYearOverride,
+      leagueSeason,
+    }));
+  };
+
+  const closeTeamTimelineModal = () => setTimelineModalInfo(null);
 
   const displayTeams = useMemo(() => {
     return teams.map((team) => {
@@ -482,7 +697,7 @@ export default function SalaryCap() {
         year4: { ...team.year4, rookie: year4Rookie, remaining: team.year4.remaining - year4Rookie },
       };
     });
-  }, [teams, includeRookieObligations, rookieTeamPicks]);
+  }, [teams, includeRookieObligations, getTeamDraftPicks, contractYearOverride, leagueSeason]);
 
   const sortedTeams = [...displayTeams].sort((a, b) => {
     const aVal = sortConfig.key === 'team' ? a[sortConfig.key] : a[sortConfig.key].remaining;
@@ -565,6 +780,7 @@ export default function SalaryCap() {
       year4: { salary: 'year4', dead: 'deadYear4' },
     };
     const { salary, dead } = yearMap[yearKey];
+    const selectedCapYear = getCapYearForYearKey(yearKey, contractYearOverride, leagueSeason);
 
     // Collect all contracts for this team for this year, using correct salary logic
     const players = contracts
@@ -606,7 +822,16 @@ export default function SalaryCap() {
       })
       .map(status => ({ status, players: grouped[status] }));
 
-    const rookiePicks = rookieTeamPicks.get(team) || [];
+    const rookiePicks = getTeamDraftPicks(team)
+      .filter((pick) => {
+        const season = Number(pick?.season);
+        return Number.isFinite(season) && season <= selectedCapYear && season >= selectedCapYear - 2;
+      })
+      .sort((left, right) => (
+        Number(left.season) - Number(right.season)
+      ) || (
+        Number(left.round) - Number(right.round)
+      ) || String(left.pickNumber || '').localeCompare(String(right.pickNumber || '')));
 
     setModalInfo({ team, yearKey, groups: orderedGroups, rookiePicks });
   };
@@ -742,16 +967,22 @@ export default function SalaryCap() {
                   className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
                 >
                   <td className="p-3 font-medium flex items-center gap-2">
-                    {teamAvatars[team.team] ? (
-                      <img
-                        src={`https://sleepercdn.com/avatars/${teamAvatars[team.team]}`}
-                        alt={team.team}
-                        className="w-5 h-5 rounded-full mr-2"
-                      />
-                    ) : (
-                      <span className="w-5 h-5 rounded-full bg-white/10 mr-2 inline-block"></span>
-                    )}
-                    {team.team}
+                    <button
+                      type="button"
+                      onClick={() => openTeamTimelineModal(team.team)}
+                      className="flex items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-white/5 hover:text-[#FFB087] focus:outline-none focus:ring-2 focus:ring-[#FF4B1F]/60"
+                    >
+                      {teamAvatars[team.team] ? (
+                        <img
+                          src={`https://sleepercdn.com/avatars/${teamAvatars[team.team]}`}
+                          alt={team.team}
+                          className="w-5 h-5 rounded-full"
+                        />
+                      ) : (
+                        <span className="w-5 h-5 rounded-full bg-white/10 inline-block"></span>
+                      )}
+                      <span className="font-medium">{team.team}</span>
+                    </button>
                   </td>
                   <CapSpaceCell 
                     data={team.curYear} 
@@ -779,6 +1010,18 @@ export default function SalaryCap() {
           </table>
         </div>
       </div>
+
+      {timelineModalInfo && (
+        <TeamTimelineModal
+          isOpen={Boolean(timelineModalInfo)}
+          teamName={timelineModalInfo.teamName}
+          yearLabels={timelineModalInfo.yearLabels}
+          positionGroups={timelineModalInfo.positionGroups}
+          draftPickRows={timelineModalInfo.draftPickRows}
+          colorMap={POSITION_COLOR_MAP}
+          onClose={closeTeamTimelineModal}
+        />
+      )}
 
       {/* Modal for player contracts */}
       {modalInfo && (
@@ -837,7 +1080,7 @@ export default function SalaryCap() {
                       <tr className="border-b border-white/10 text-white/60">
                         <th className="px-3 py-2 text-left">Pick</th>
                         <th className="px-3 py-2 text-left">Origin</th>
-                        <th className="px-3 py-2 text-left">Round</th>
+                        <th className="px-3 py-2 text-left">Year</th>
                         <th className="px-3 py-2 text-right">Salary</th>
                       </tr>
                     </thead>
@@ -846,7 +1089,7 @@ export default function SalaryCap() {
                         <tr key={`${pick.pickNumber || index}-${index}`} className="border-b border-white/5 last:border-0">
                           <td className="px-3 py-2">{pick.pickNumber || '--'}</td>
                           <td className="px-3 py-2 text-white/70">{pick.originalOwner === modalInfo.team ? 'Own pick' : `Via ${pick.originalOwner}`}</td>
-                          <td className="px-3 py-2">{pick.round || '--'}</td>
+                          <td className="px-3 py-2">{pick.season || '--'}</td>
                           <td className="px-3 py-2 text-right font-semibold text-emerald-300">{formatCapSpace(pick.salary || 0)}</td>
                         </tr>
                       ))}
