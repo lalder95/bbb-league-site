@@ -180,6 +180,7 @@ export default function Navigation() {
         { href: '/rules', label: 'Rules' },
         { href: '/media', label: 'Media' },
         { href: '/offseason', label: 'Offseason' },
+        { href: '/season-simulator', label: 'Season Simulator' },
         { href: '/trade', label: 'Trade Calculator' },
         { href: '/trade-block', label: 'Trade Block' }
       ]
