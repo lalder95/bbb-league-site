@@ -50,7 +50,7 @@ function ensureVapidConfigured() {
  * @param {{ title: string, message: string, link?: string, type?: string, prefKey?: string }} options
  * @returns {Promise<{ success: boolean, notificationId?: string, error?: string }>}
  */
-export async function createNotification(userId, { title, message, link = null, type = 'system', prefKey = null } = {}) {
+export async function createNotification(userId, { title, message, link = null, type = 'system', prefKey = null, dedupeKey = null } = {}) {
   if (!userId || !title || !message) {
     return { success: false, error: 'userId, title, and message are required' };
   }
@@ -68,7 +68,7 @@ export async function createNotification(userId, { title, message, link = null, 
     }
   }
 
-  const result = await createNotificationRecord({ userId, title, message, link, type });
+  const result = await createNotificationRecord({ userId, title, message, link, type, dedupeKey });
   if (!result.success) return result;
 
   const { notificationId } = result;

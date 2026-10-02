@@ -932,15 +932,23 @@ async function getNotificationsCollection() {
   return db.collection('notifications');
 }
 
-export async function createNotificationRecord({ userId, title, message, link = null, type = 'system' }) {
+export async function createNotificationRecord({ userId, title, message, link = null, type = 'system', dedupeKey = null }) {
   try {
     const col = await getNotificationsCollection();
+    if (dedupeKey) {
+      const existing = await col.findOne({ userId, dedupeKey });
+      if (existing) {
+        return { success: true, skipped: true, notificationId: existing._id.toString() };
+      }
+    }
+
     const doc = {
       userId,
       title,
       message,
       link,
       type,
+      dedupeKey,
       read: false,
       pushed: false,
       createdAt: new Date(),
