@@ -18,8 +18,8 @@ export async function middleware(request) {
     secret: process.env.NEXTAUTH_SECRET,
   });
   
-  // If it's a public path and the user is logged in, redirect to callbackUrl (if present) or home page
-  if (isPublicPath && token) {
+  // Logged-in users should only leave the login page; shared trade URLs must remain accessible.
+  if (path === '/login' && token) {
     const cb = request.nextUrl.searchParams.get('callbackUrl');
     if (cb) {
       try {

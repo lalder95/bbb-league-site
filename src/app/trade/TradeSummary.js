@@ -255,6 +255,27 @@ const TradeSummary = ({
   const [autoMessage, setAutoMessage] = useState('');
   const [autoSendTick, setAutoSendTick] = useState(0);
 
+  const tradeProposal = useMemo(() => ({
+    participants: (participants || [])
+      .filter((participant) => participant?.team)
+      .map((participant) => ({
+        team: participant.team,
+        assets: (participant.selectedPlayers || []).map((asset) => (isDraftPickAsset(asset)
+          ? {
+              k: 'pk',
+              s: String(asset.season || ''),
+              r: Number(asset.round) || 0,
+              o: String(asset.originalTeam || ''),
+              d: String(asset.toTeam || ''),
+            }
+          : {
+              k: 'pl',
+              i: String(asset.id || asset.playerId || ''),
+              d: String(asset.toTeam || ''),
+            })),
+      })),
+  }), [participants]);
+
   useEffect(() => {
     let cancelled = false;
     async function fetchPlayerData() {
@@ -921,10 +942,10 @@ const TradeSummary = ({
                   leagueWeek={null}
                   leagueYear={currentSeason || null}
                   activeTab="Assistant GM"
-                  supplementalSystemPrompt={assistantContext}
                   autoMessage={autoMessage}
                   autoSendTrigger={autoSendTick}
                   autoStartNewConversation={true}
+                  tradeProposal={tradeProposal}
                 />
               </div>
             )}

@@ -14,7 +14,7 @@ function isAuthorizedSession(session) {
 
 function serializeSettings(settings) {
   return {
-    model: settings?.model || 'gpt-4o',
+    model: settings?.model || 'gpt-6.1-sol',
     updatedAt: settings?.updatedAt instanceof Date ? settings.updatedAt.toISOString() : settings?.updatedAt || null,
     updatedBy: settings?.updatedBy || null,
   };

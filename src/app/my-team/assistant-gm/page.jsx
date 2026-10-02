@@ -19,6 +19,7 @@ export default function AssistantGMPage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [debugMode, setDebugMode] = useState(false);
 
   // League + rosters + week/year
   const [leagueId, setLeagueId] = useState(null);
@@ -42,6 +43,20 @@ export default function AssistantGMPage() {
       window.location.href = "/login";
     }
   }, [status]);
+
+  useEffect(() => {
+    if (session?.user?.role !== 'admin') {
+      setDebugMode(false);
+      return;
+    }
+    setDebugMode(window.localStorage.getItem('assistantGMAdminDebug') === 'true');
+  }, [session?.user?.role]);
+
+  useEffect(() => {
+    if (session?.user?.role === 'admin') {
+      window.localStorage.setItem('assistantGMAdminDebug', String(debugMode));
+    }
+  }, [debugMode, session?.user?.role]);
 
   useEffect(() => {
     async function fetchPlayerData() {
@@ -410,6 +425,16 @@ export default function AssistantGMPage() {
                 <label className="block text-white/80 mb-2 font-semibold">Strategy Notes</label>
                 <textarea className="w-full p-3 rounded bg-white/5 border border-white/10 text-white resize-none h-24" value={strategyNotes} onChange={e => setStrategyNotes(e.target.value)} placeholder="Enter your strategy notes here..." />
               </div>
+              {session?.user?.role === 'admin' && (
+                <label className="mb-6 flex cursor-pointer items-center gap-3 rounded border border-amber-300/20 bg-amber-500/10 p-3 text-sm text-amber-100">
+                  <input
+                    type="checkbox"
+                    checked={debugMode}
+                    onChange={(event) => setDebugMode(event.target.checked)}
+                  />
+                  Show AI request debug trace for this session
+                </label>
+              )}
               <div className="flex flex-col items-center">
                 <button
                   className="px-4 py-2 bg-[#FF4B1F] text-white rounded hover:bg-orange-600 font-semibold"
@@ -462,6 +487,7 @@ export default function AssistantGMPage() {
                 leagueWeek={leagueWeek}
                 leagueYear={leagueYear}
                 activeTab="Assistant GM"
+                debugMode={debugMode}
               />
             </div>
           </div>

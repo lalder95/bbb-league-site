@@ -329,10 +329,12 @@ export async function getAssistantGMSettings() {
   try {
     const col = await getAppSettingsCollection();
     const doc = await col.findOne({ key: 'assistantGM' });
+    const configuredModel = typeof doc?.model === 'string' ? doc.model.trim() : '';
+    const model = configuredModel === 'gpt-5.4-mini' ? 'gpt-6.1-sol' : (configuredModel || 'gpt-6.1-sol');
     return {
       success: true,
       settings: {
-        model: typeof doc?.model === 'string' && doc.model.trim() ? doc.model.trim() : 'gpt-4o',
+        model,
         updatedAt: doc?.updatedAt || null,
         updatedBy: doc?.updatedBy || null,
       },
@@ -347,6 +349,9 @@ export async function updateAssistantGMSettings({ model, updatedBy }) {
     const normalizedModel = typeof model === 'string' ? model.trim() : '';
     if (!normalizedModel) {
       return { success: false, error: 'model is required' };
+    }
+    if (normalizedModel === 'gpt-5.4-mini') {
+      return { success: false, error: 'gpt-5.4-mini is deprecated; use gpt-6.1-sol instead' };
     }
 
     const col = await getAppSettingsCollection();

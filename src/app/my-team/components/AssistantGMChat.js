@@ -16,6 +16,68 @@ function formatPickString(pick, rosters, users) {
   return `${pick.season} Round ${pick.round} (from ${original})`;
 }
 
+function formatTradeAsset(asset) {
+  if (asset?.playerName) return asset.playerName;
+  if (asset?.name) return asset.name;
+  if (isDraftPickAsset(asset) || asset?.season) {
+    return `${asset?.season || '?'} Round ${asset?.round || '?'}${asset?.originalTeam ? ` (${asset.originalTeam}'s)` : ''}`;
+  }
+  return 'Unknown asset';
+}
+
+function VerifiedTradeCard({ evaluation }) {
+  if (!evaluation) return null;
+  const baseSeason = Number(evaluation.baseSeason) || new Date().getFullYear();
+  const capYears = [
+    ['curYear', baseSeason],
+    ['year2', baseSeason + 1],
+    ['year3', baseSeason + 2],
+    ['year4', baseSeason + 3],
+  ];
+
+  return (
+    <section className={`mb-3 overflow-hidden rounded border text-sm shadow-sm ${evaluation.valid ? 'border-sky-100 bg-[#b9e4ff] text-[#082033]' : 'border-red-200 bg-red-100 text-red-950'}`}>
+      <header className="flex items-center justify-between border-b border-sky-900/15 px-3 py-2">
+        <span className="font-bold">Verified Trade Proposal</span>
+        <span className={`rounded px-2 py-0.5 text-xs font-bold ${evaluation.valid ? 'bg-emerald-700 text-white' : 'bg-red-700 text-white'}`}>
+          {evaluation.valid ? 'Cap Valid' : 'Needs Changes'}
+        </span>
+      </header>
+      <div className="p-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+        {(evaluation.participants || []).map((participant) => (
+          <div key={participant.team} className="rounded border border-sky-900/15 bg-white/60 p-2">
+            <div className="font-semibold">{participant.team}</div>
+            <div className="mt-1 text-xs font-bold uppercase text-sky-900/70">Gives</div>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {(participant.assets || []).length > 0
+                ? participant.assets.map((asset, index) => (
+                  <span key={`${participant.team}-${index}`} className="rounded bg-sky-900/10 px-1.5 py-0.5 text-xs font-medium">
+                    {formatTradeAsset(asset)}
+                  </span>
+                ))
+                : <span className="text-xs">No assets</span>}
+            </div>
+          </div>
+        ))}
+        </div>
+        {(evaluation.errors || []).map((entry, index) => <div key={`error-${index}`} className="mt-2 rounded bg-red-200 px-2 py-1 text-red-950">{entry.message}</div>)}
+        {(evaluation.warnings || []).map((entry, index) => <div key={`warning-${index}`} className="mt-2 rounded bg-amber-100 px-2 py-1 text-amber-950">{entry.team} has ${Number(entry.remaining).toFixed(1)} of cap room in {entry.yearKey === 'curYear' ? baseSeason : baseSeason + Number(entry.yearKey.replace('year', '')) - 1}.</div>)}
+        <div className="mt-3 text-xs font-bold uppercase text-sky-900/70">Cap Space After Trade</div>
+        <div className="mt-1 grid grid-cols-2 gap-2">
+        {Object.entries(evaluation.impactsByTeam || {}).map(([team, impact]) => (
+          <div key={team} className="rounded border border-sky-900/15 bg-white/60 p-2">
+            <div className="font-semibold">{team}</div>
+            {capYears.map(([yearKey, year]) => <div key={yearKey}>{year}: ${Number(impact?.after?.[yearKey]?.remaining || 0).toFixed(1)}</div>)}
+          </div>
+        ))}
+        </div>
+        {evaluation.tradeUrl && <a href={evaluation.tradeUrl} className="mt-3 inline-flex items-center justify-center rounded bg-sky-800 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-900">Open in Trade Calculator</a>}
+      </div>
+    </section>
+  );
+}
+
 export default function AssistantGMChat({
   id,
   teamState,
@@ -31,10 +93,11 @@ export default function AssistantGMChat({
   myDraftPicksList: propMyDraftPicksList,
   leagueWeek,  leagueYear,
   activeTab,
-  supplementalSystemPrompt,
   autoMessage,
   autoSendTrigger,
   autoStartNewConversation = false,
+  tradeProposal = null,
+  debugMode = false,
 }) {
   const activeContractsForBudgetValue = useMemo(
     () => playerContracts.filter((p) => p?.status === 'Active'),
@@ -238,7 +301,7 @@ export default function AssistantGMChat({
     }).join('\n');
   }, [getBudgetValue, myDraftPicksList]);
 
-  const systemPrompt = useMemo(() => `You're my Assistant GM for my Budget Blitz Bowl dynasty fantasy football league. Let's keep it casual—just text me advice like a friend would. Be concise and don't write essays.
+  const legacySystemPrompt = useMemo(() => `You're my Assistant GM for my Budget Blitz Bowl dynasty fantasy football league. Let's keep it casual—just text me advice like a friend would. Be concise and don't write essays.
 
 This is a SuperFlex league, so teams can start 2 quarterbacks each week (one in the SuperFlex spot).
 
@@ -323,6 +386,10 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
     allRostersString
   ]);
 
+  void legacySystemPrompt;
+
+  // The server owns the actual instructions and league data. This only preserves local conversation shape.
+  const systemPrompt = useMemo(() => 'Assistant GM conversation. Verified trade results, when present, are authoritative.', []);
   const chatKey = `assistantGMChat_${id || 'default'}_${session?.user?.name || 'guest'}`;
   const getInitialMessages = () => [{ role: 'system', content: systemPrompt }];
   const [messages, setMessages] = useState(() => {
@@ -366,19 +433,23 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [debugTraces, setDebugTraces] = useState([]);
 
   function buildApiMessages(messageList) {
     const normalizedMessages = Array.isArray(messageList) ? messageList : [];
     const systemMessage = normalizedMessages.find((message) => message?.role === 'system') || { role: 'system', content: systemPrompt };
-    const supplementalMessage = supplementalSystemPrompt?.trim()
-      ? { role: 'system', content: supplementalSystemPrompt.trim() }
-      : null;
     const conversationMessages = normalizedMessages.filter((message) => message?.role === 'user' || message?.role === 'assistant');
     const trimmedConversation = conversationMessages.slice(-12);
-    const apiMessages = supplementalMessage
-      ? [systemMessage, supplementalMessage, ...trimmedConversation]
-      : [systemMessage, ...trimmedConversation];
+    const apiMessages = [systemMessage, ...trimmedConversation];
     return apiMessages.map(({ role, content }) => ({ role, content }));
+  }
+
+  function buildManagerSettings() {
+    return {
+      teamState,
+      assetPriority: Array.isArray(assetPriority) ? assetPriority : [],
+      strategyNotes,
+    };
   }
 
   async function sendRawMessage(content, baseMessages, options = {}) {
@@ -397,7 +468,12 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
       const res = await fetch('/api/assistant-gm-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: buildApiMessages(newMessages) }),
+        body: JSON.stringify({
+          messages: buildApiMessages(newMessages),
+          proposal: tradeProposal || undefined,
+          managerSettings: buildManagerSettings(),
+          includeDebugTrace: debugMode,
+        }),
       });
 
       const contentType = res.headers.get('content-type') || '';
@@ -419,7 +495,8 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
 
       if (contentType.includes('application/json')) {
         const data = await res.json();
-        setMessages([...newMessages, { role: 'assistant', content: data.reply || '' }]);
+        if (data.debugTrace) setDebugTraces((traces) => [...traces, data.debugTrace]);
+        setMessages([...newMessages, { role: 'assistant', content: data.reply || '', evaluation: data.evaluation || null }]);
       } else {
         const text = await res.text();
         setMessages([...newMessages, { role: 'assistant', content: text || 'Empty response' }]);
@@ -441,7 +518,20 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
   }
 
   function formatAssistantMessage(content) {
-    let formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    let formatted = String(content || '')
+      .replace(/\[[^\]]*\]\(\/trade\/share\?s=[^)]+\)/gi, '')
+      .replace(/\/trade\/share\?s=[A-Za-z0-9_-]+/g, '')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    formatted = formatted
+      .split('\n')
+      .map((line) => {
+        const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean);
+        if (cells.length < 2) return line;
+        if (cells.every((cell) => /^:?-{2,}:?$/.test(cell))) return '';
+        return cells.join('<br />');
+      })
+      .filter(Boolean)
+      .join('\n');
     const numberedRegex = /(?:^|\n)(\d+\.[\s\S]*?)(?=(?:\n\d+\.|$))/g;
     const matches = [];
     let match;
@@ -508,14 +598,17 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
         {messages.filter(m => m.role !== 'system' && !m.uiHidden).flatMap((msg, i) => {
           if (msg.role === 'assistant') {
             const parts = formatAssistantMessage(msg.content);
-            return parts.map((part, j) => (
+            return [
+              msg.evaluation && <VerifiedTradeCard key={`${i}-evaluation`} evaluation={msg.evaluation} />,
+              ...parts.map((part, j) => (
               <div key={`${i}-${j}`} className="mb-2 text-left">
                 <span
                   className="inline-block px-3 py-2 rounded bg-white/10 text-white/90"
                   dangerouslySetInnerHTML={{ __html: part }}
                 />
               </div>
-            ));
+              )),
+            ].filter(Boolean);
           } else {
             return (
               <div key={i} className="mb-2 text-right">
@@ -556,6 +649,13 @@ When I ask for advice, keep it short and practical. If you suggest a move, just 
 
         <div ref={messagesEndRef} />
       </div>
+
+      {debugMode && debugTraces.length > 0 && (
+        <details className="mb-2 rounded border border-amber-300/30 bg-amber-500/10 p-2 text-xs text-white/80">
+          <summary className="cursor-pointer font-semibold text-amber-100">Admin AI request trace ({debugTraces.length})</summary>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(debugTraces[debugTraces.length - 1], null, 2)}</pre>
+        </details>
+      )}
 
       <form onSubmit={sendMessage} className="flex flex-col sm:flex-row gap-2 mb-2">
         <input

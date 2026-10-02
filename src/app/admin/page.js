@@ -466,7 +466,7 @@ export default function AdminPage() {
   const [scheduleGenerating, setScheduleGenerating] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleResult, setScheduleResult] = useState(null);
-  const [assistantGMModel, setAssistantGMModel] = useState('gpt-4o');
+  const [assistantGMModel, setAssistantGMModel] = useState('gpt-6.1-sol');
   const [assistantGMSettingsLoading, setAssistantGMSettingsLoading] = useState(true);
   const [assistantGMSettingsSaving, setAssistantGMSettingsSaving] = useState(false);
   const [assistantGMSettingsError, setAssistantGMSettingsError] = useState('');
@@ -559,7 +559,7 @@ export default function AdminPage() {
         }
 
         if (!cancelled) {
-          setAssistantGMModel(data?.settings?.model || 'gpt-4o');
+          setAssistantGMModel(data?.settings?.model || 'gpt-6.1-sol');
           setAssistantGMSettingsMeta(data?.settings || null);
         }
       } catch (error) {
@@ -667,7 +667,7 @@ export default function AdminPage() {
           maxPicks: rounds * 12,
           trace: true,
           dryRun: false,
-          model: 'gpt-4o',
+          model: 'gpt-6.1-sol',
           title: draftTitle,
           description: draftDescription,
           progressKey: key,
@@ -1319,11 +1319,11 @@ export default function AdminPage() {
               className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm"
               value={assistantGMModel}
               onChange={(e) => setAssistantGMModel(e.target.value)}
-              placeholder="gpt-4o"
+              placeholder="gpt-6.1-sol"
               disabled={assistantGMSettingsLoading || assistantGMSettingsSaving}
             />
           </div>
-          <div className="text-xs text-white/55">Example: gpt-4o, gpt-4.1, or another model your OpenAI account supports.</div>
+          <div className="text-xs text-white/55">Recommended: gpt-6.1-sol. Enter another Responses API model your OpenAI account supports if needed.</div>
           {assistantGMSettingsMeta?.updatedAt ? (
             <div className="text-xs text-white/55">
               Last updated: {new Date(assistantGMSettingsMeta.updatedAt).toLocaleString()}
