@@ -70,6 +70,7 @@ export async function createNotification(userId, { title, message, link = null, 
 
   const result = await createNotificationRecord({ userId, title, message, link, type, dedupeKey });
   if (!result.success) return result;
+  if (result.skipped) return result;
 
   const { notificationId } = result;
 

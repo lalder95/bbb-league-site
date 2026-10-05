@@ -298,58 +298,27 @@ function buildTradeCapSummaries({ teamSummaries, players, playerCatalog, teamCap
   });
 }
 
-function buildTransactionCapSummaries({ transaction, rosterMap, playerCatalog, teamCapMap }) {
-  const adds = transaction?.adds || {};
-  const drops = transaction?.drops || {};
-  const rosterIds = new Set();
-
-  Object.values(adds).forEach((rosterId) => rosterIds.add(Number(rosterId)));
-  Object.values(drops).forEach((rosterId) => rosterIds.add(Number(rosterId)));
-
-  const teamSummaries = Array.from(rosterIds)
-    .map((rosterId) => rosterMap.get(Number(rosterId)))
-    .filter(Boolean)
-    .map((team) => ({ owner_name: team.ownerName }));
-
-  const players = Object.keys({ ...adds, ...drops }).map((playerId) => {
-    const playerInfo = playerCatalog.get(String(playerId)) || null;
-    const fromTeam = rosterMap.get(Number(drops[playerId])) || null;
-    const toTeam = rosterMap.get(Number(adds[playerId])) || null;
-    return {
-      player_id: String(playerId),
-      name: playerInfo?.playerName || `Player ${playerId}`,
-      to_owner_name: toTeam?.ownerName || 'Unknown',
-      from_owner_name: fromTeam?.ownerName || 'Unknown',
-    };
-  });
-
-  return buildTradeCapSummaries({ teamSummaries, players, playerCatalog, teamCapMap });
+function getCurrentCapOverages(teamCapMap) {
+  return Object.entries(teamCapMap || {})
+    .map(([teamName, cap]) => ({ teamName, remaining: Number(cap?.curYear?.remaining) }))
+    .filter((team) => Number.isFinite(team.remaining) && team.remaining < 0)
+    .sort((left, right) => left.remaining - right.remaining);
 }
 
-function getOverCapTeams(capSummaries) {
-  return (Array.isArray(capSummaries) ? capSummaries : []).filter((summary) => {
-    const before = Number(summary?.before?.curYearRemaining);
-    const after = Number(summary?.after?.curYearRemaining);
-    return Number.isFinite(before) && Number.isFinite(after) && before >= 0 && after < 0;
-  });
-}
-
-async function notifyLeagueOfCapViolation({ recipientIds, leagueId, transactionId, eventType, capSummaries }) {
-  const overCapTeams = getOverCapTeams(capSummaries);
+async function notifyLeagueOfDailyCapOverages({ recipientIds, leagueId, scanDate, teamCapMap }) {
+  const overCapTeams = getCurrentCapOverages(teamCapMap);
   if (!overCapTeams.length || !recipientIds.length) return { notified: false };
 
   const teamList = overCapTeams
-    .map((team) => `${team.owner_name} (${team.after.curYearRemaining.toFixed(1)} remaining)`)
+    .map((team) => `${team.teamName} ($${Math.abs(team.remaining).toFixed(1)} over)`)
     .join(', ');
 
-  const typeLabel = eventType === 'trade' ? 'Trade' : 'Roster move';
-
   return createNotificationForMany(recipientIds, {
-    title: 'Salary cap alert',
-    message: `${typeLabel} ${transactionId} pushed ${teamList} over the current-year salary cap.`,
+    title: 'Daily salary cap alert',
+    message: `Teams currently over the salary cap: ${teamList}.`,
     link: '/salary-cap',
     type: 'system',
-    dedupeKey: `sleeper-cap-alert:${leagueId}:${transactionId}`,
+    dedupeKey: `daily-sleeper-cap-alert:${leagueId}:${scanDate}`,
   });
 }
 
@@ -485,6 +454,17 @@ export async function syncSleeperTransactionsFeed() {
   const syncState = syncStateResult?.success === false ? null : syncStateResult?.state;
   const isFirstSync = !syncState;
   const processedEventKeys = new Set(Array.isArray(syncState?.processedEventKeys) ? syncState.processedEventKeys : []);
+  const capAlertScanDate = new Date().toISOString().slice(0, 10);
+  const shouldScanCap = syncState?.capAlertScanDate !== capAlertScanDate;
+
+  if (shouldScanCap) {
+    await notifyLeagueOfDailyCapOverages({
+      recipientIds,
+      leagueId,
+      scanDate: capAlertScanDate,
+      teamCapMap,
+    });
+  }
 
   let created = 0;
   let inspected = 0;
@@ -543,14 +523,6 @@ export async function syncSleeperTransactionsFeed() {
         }
         inspected += 1;
         processedEventKeys.add(sourceKey);
-
-        await notifyLeagueOfCapViolation({
-          recipientIds,
-          leagueId,
-          transactionId: tradeEvent.tradeId,
-          eventType: 'trade',
-          capSummaries: tradeEvent.capSummaries,
-        });
         continue;
       }
 
@@ -598,20 +570,6 @@ export async function syncSleeperTransactionsFeed() {
         processedEventKeys.add(sourceKey);
       }
 
-      const transactionCapSummaries = buildTransactionCapSummaries({
-        transaction,
-        rosterMap,
-        playerCatalog,
-        teamCapMap,
-      });
-
-      await notifyLeagueOfCapViolation({
-        recipientIds,
-        leagueId,
-        transactionId: String(transaction?.transaction_id || ''),
-        eventType: String(transaction?.type || '').toLowerCase(),
-        capSummaries: transactionCapSummaries,
-      });
     }
   }
 
@@ -619,6 +577,7 @@ export async function syncSleeperTransactionsFeed() {
     leagueId,
     lastSeenWeek,
     processedEventKeys: Array.from(processedEventKeys),
+    capAlertScanDate: shouldScanCap ? capAlertScanDate : syncState?.capAlertScanDate || null,
     initializedWithBackfill: true,
   });
 
