@@ -4,11 +4,11 @@
 
 import calculateSeasonMaxPF from '@/utils/maxpf';
 import { buildDraftOrder } from '@/utils/draftOrderUtils';
+import { fetchJson } from '@/lib/assistant-gm/fetch';
 
-async function fetchJson(url) {
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Failed fetch: ${url} (${res.status})`);
-  return res.json();
+function useOptionalFallback(error) {
+  if (error?.code === 'REQUEST_DEADLINE_EXCEEDED') throw error;
+  return [];
 }
 
 export async function resolveLeagueYear() {
@@ -26,17 +26,20 @@ export async function resolveLeagueYear() {
  * - default: leagueYear + 1
  * - exception: if any non-complete draft exists for the league, use leagueYear
  */
-export async function resolveTargetDraftSeason({ leagueId }) {
-  const leagueYear = await resolveLeagueYear();
+export async function resolveTargetDraftSeason({ leagueId, leagueYear: providedLeagueYear, drafts: providedDrafts } = {}) {
+  const leagueYear = Number(providedLeagueYear) > 2000 ? Number(providedLeagueYear) : await resolveLeagueYear();
   if (!leagueId) return leagueYear + 1;
 
   try {
-    const drafts = await fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/drafts`);
+    const drafts = Array.isArray(providedDrafts)
+      ? providedDrafts
+      : await fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/drafts`);
     const hasNonCompleteDraft = Array.isArray(drafts)
       ? drafts.some((d) => d?.status && d.status !== 'complete')
       : false;
     return hasNonCompleteDraft ? leagueYear : leagueYear + 1;
-  } catch {
+  } catch (error) {
+    if (error?.code === 'REQUEST_DEADLINE_EXCEEDED') throw error;
     return leagueYear + 1;
   }
 }
@@ -49,6 +52,14 @@ export async function calculateDraftOrderForLeague({
   leagueId,
   targetSeason,
   applyRoundOneTrades = true,
+  users: providedUsers,
+  rosters: providedRosters,
+  winnersBracket: providedWinnersBracket,
+  tradedPicks: providedTradedPicks,
+  league: providedLeague,
+  state: providedState,
+  deadlineAt,
+  onStageTiming,
 } = {}) {
   if (!leagueId) throw new Error('Missing leagueId');
 
@@ -58,18 +69,22 @@ export async function calculateDraftOrderForLeague({
       : await resolveTargetDraftSeason({ leagueId });
 
   const [users, rosters, winnersBracket, traded] = await Promise.all([
-    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`),
-    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
-    fetch(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : []))
-      .catch(() => []),
-    applyRoundOneTrades
-      ? fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`).catch(() => [])
+    providedUsers ? Promise.resolve(providedUsers) : fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`, { deadlineAt }),
+    providedRosters ? Promise.resolve(providedRosters) : fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, { deadlineAt }),
+    providedWinnersBracket ? Promise.resolve(providedWinnersBracket) : fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/winners_bracket`, { deadlineAt }).catch(useOptionalFallback),
+    providedTradedPicks ? Promise.resolve(providedTradedPicks) : applyRoundOneTrades
+      ? fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`, { deadlineAt }).catch(useOptionalFallback)
       : Promise.resolve([]),
   ]);
 
   // Compute MaxPF map
-  const maxpfMap = await calculateSeasonMaxPF({ leagueId });
+  const maxpfStartedAt = Date.now();
+  let maxpfMap;
+  try {
+    maxpfMap = await calculateSeasonMaxPF({ leagueId, league: providedLeague, state: providedState, deadlineAt });
+  } finally {
+    onStageTiming?.({ stage: 'maxPfMs', durationMs: Date.now() - maxpfStartedAt });
+  }
 
   // Base order (slots -> original roster_id)
   const base = buildDraftOrder({ rosters, maxpfMap, winnersBracket });

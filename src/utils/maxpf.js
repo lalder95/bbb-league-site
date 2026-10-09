@@ -1,9 +1,50 @@
 // Server-friendly MaxPF calculator utilities
 
-async function fetchJson(url) {
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Failed fetch: ${url} (${res.status})`);
-  return res.json();
+import { fetchJson } from '../lib/assistant-gm/fetch.js';
+
+const PLAYER_METADATA_TTL_MS = 6 * 60 * 60 * 1000;
+const DEFAULT_MATCHUP_CONCURRENCY = 4;
+let playerMetadataCache = null;
+let playerMetadataCacheExpiresAt = 0;
+let playerMetadataPromise = null;
+
+async function getPlayerMetadata(deadlineAt) {
+  if (playerMetadataCache && Date.now() < playerMetadataCacheExpiresAt) return playerMetadataCache;
+  if (playerMetadataPromise) return playerMetadataPromise;
+
+  playerMetadataPromise = fetchJson('https://api.sleeper.app/v1/players/nfl', { deadlineAt })
+    .then((players) => {
+      playerMetadataCache = players;
+      playerMetadataCacheExpiresAt = Date.now() + PLAYER_METADATA_TTL_MS;
+      return players;
+    })
+    .finally(() => {
+      playerMetadataPromise = null;
+    });
+  return playerMetadataPromise;
+}
+
+async function fetchMatchupsByWeek(leagueId, lastWeek, concurrency = DEFAULT_MATCHUP_CONCURRENCY, deadlineAt) {
+  const weeks = Array.from({ length: lastWeek }, (_, index) => index + 1);
+  const results = new Array(weeks.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(weeks.length || 1, Math.floor(concurrency) || DEFAULT_MATCHUP_CONCURRENCY));
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < weeks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = await fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${weeks[index]}`, { timeoutMs: 5000, deadlineAt });
+      } catch (error) {
+        if (error?.code === 'REQUEST_DEADLINE_EXCEEDED') throw error;
+        // Preserve the existing behavior of skipping unavailable matchup weeks.
+        results[index] = null;
+      }
+    }
+  }));
+
+  return results;
 }
 
 export function buildStarterSlots(rosterPositions = []) {
@@ -60,11 +101,20 @@ export function fillWeeklyMax(weeklyPlayers, slots, flexDefs) {
   return { total: result.total, chosen: result.chosen };
 }
 
-export async function calculateSeasonMaxPF({ leagueId }) {
-  const league = await fetchJson(`https://api.sleeper.app/v1/league/${leagueId}`);
+export async function calculateSeasonMaxPF({
+  leagueId,
+  league: providedLeague,
+  state: providedState,
+  playersMeta: providedPlayersMeta,
+  matchupConcurrency = DEFAULT_MATCHUP_CONCURRENCY,
+  deadlineAt,
+}) {
+  const [league, state, playersMeta] = await Promise.all([
+    providedLeague ? Promise.resolve(providedLeague) : fetchJson(`https://api.sleeper.app/v1/league/${leagueId}`, { deadlineAt }),
+    providedState ? Promise.resolve(providedState) : fetchJson('https://api.sleeper.app/v1/state/nfl', { deadlineAt }),
+    providedPlayersMeta ? Promise.resolve(providedPlayersMeta) : getPlayerMetadata(deadlineAt),
+  ]);
   const { slots, flexDefs } = buildStarterSlots(league.roster_positions || []);
-  const playersMeta = await fetchJson('https://api.sleeper.app/v1/players/nfl');
-  const state = await fetchJson('https://api.sleeper.app/v1/state/nfl');
 
   // Determine the last regular-season week for THIS league.
   // Sleeper stores the playoff start week; regular season ends the week before.
@@ -83,14 +133,10 @@ export async function calculateSeasonMaxPF({ leagueId }) {
       ? Math.min(regularSeasonLastWeek, currentWeek)
       : regularSeasonLastWeek;
 
+  const weeklyMatchups = await fetchMatchupsByWeek(leagueId, lastWeek, matchupConcurrency, deadlineAt);
   const maxPf = {};
-  for (let week = 1; week <= lastWeek; week++) {
-    let matchups;
-    try {
-      matchups = await fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`);
-    } catch {
-      continue;
-    }
+  for (const matchups of weeklyMatchups) {
+    if (!Array.isArray(matchups)) continue;
 
     const byRoster = new Map();
     for (const m of matchups) {

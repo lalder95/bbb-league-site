@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { fetchJson, fetchText } from '@/lib/assistant-gm/fetch';
 
 const BBB_USER_ID = '456973480269705216';
 const CONTRACTS_CSV_URL = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/CSV/BBB_Contracts.csv';
@@ -28,24 +29,9 @@ function formatCsvNumber(value) {
   return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`Failed request ${response.status}: ${url}`);
-  }
-  return response.json();
-}
-
-async function fetchText(url) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`Failed request ${response.status}: ${url}`);
-  }
-  return response.text();
-}
-
-export async function resolveBBBLeagueId() {
-  const state = await fetchJson('https://api.sleeper.app/v1/state/nfl');
+export async function resolveBBBLeagueId({ deadlineAt } = {}) {
+  const fetchOptions = { deadlineAt };
+  const state = await fetchJson('https://api.sleeper.app/v1/state/nfl', fetchOptions);
   const currentSeason = state?.season;
   if (!currentSeason) {
     throw new Error('Could not resolve NFL season');
@@ -53,7 +39,7 @@ export async function resolveBBBLeagueId() {
 
   const candidateSeasons = [String(currentSeason), String(Number(currentSeason) - 1)];
   for (const season of candidateSeasons) {
-    const leagues = await fetchJson(`https://api.sleeper.app/v1/user/${BBB_USER_ID}/leagues/nfl/${season}`);
+    const leagues = await fetchJson(`https://api.sleeper.app/v1/user/${BBB_USER_ID}/leagues/nfl/${season}`, fetchOptions);
     const matches = (Array.isArray(leagues) ? leagues : []).filter((league) => {
       const name = String(league?.name || '').toLowerCase();
       return name.includes('budget blitz bowl') || name.includes('bbb') || (name.includes('budget') && name.includes('blitz'));
@@ -67,10 +53,10 @@ export async function resolveBBBLeagueId() {
   throw new Error('No BBB league found for commissioner');
 }
 
-async function fetchSleeperOwnershipMap(leagueId) {
+async function fetchSleeperOwnershipMap(leagueId, fetchOptions) {
   const [users, rosters] = await Promise.all([
-    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`),
-    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`, fetchOptions),
+    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, fetchOptions),
   ]);
 
   const ownerNameByUserId = new Map(
@@ -88,7 +74,7 @@ async function fetchSleeperOwnershipMap(leagueId) {
     }
   }
 
-  return ownerByPlayerId;
+  return { ownerByPlayerId, users, rosters };
 }
 
 function normalizeContractRow(row, ownerByPlayerId) {
@@ -158,13 +144,14 @@ export function serializeContractsCsv(rows, baseFields = []) {
   });
 }
 
-export async function getNormalizedContractsData() {
+export async function getNormalizedContractsData({ deadlineAt } = {}) {
+  const fetchOptions = { deadlineAt };
   const [leagueId, contractsCsvText] = await Promise.all([
-    resolveBBBLeagueId(),
-    fetchText(CONTRACTS_CSV_URL),
+    resolveBBBLeagueId(fetchOptions),
+    fetchText(CONTRACTS_CSV_URL, fetchOptions),
   ]);
 
-  const ownerByPlayerId = await fetchSleeperOwnershipMap(leagueId);
+  const { ownerByPlayerId, users, rosters } = await fetchSleeperOwnershipMap(leagueId, fetchOptions);
   const parseResult = Papa.parse(contractsCsvText, {
     header: true,
     skipEmptyLines: true,
@@ -185,6 +172,8 @@ export async function getNormalizedContractsData() {
     leagueId,
     rows,
     csvText: serializeContractsCsv(rows, baseFields),
+    users,
+    rosters,
   };
 }
 

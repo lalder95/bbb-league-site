@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
 import { getServerSession } from 'next-auth/next';
 import { getAssistantGMSettings } from '@/lib/db-helpers';
+import { createRequestSnapshotProvider } from '@/lib/assistant-gm/request-snapshot';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import {
   evaluateAssistantGMTrade,
+  getAssistantGMLeagueSnapshot,
   getAssistantGMTeamSnapshot,
   getAssistantGMUserTeamSnapshot,
   searchAssistantGMAssets,
@@ -12,8 +14,11 @@ import {
 
 // Force Node.js runtime to ensure OpenAI SDK compatibility in production
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const DEFAULT_ASSISTANT_GM_MODEL = 'gpt-6.1-sol';
+const REQUEST_BUDGET_MS = 55_000;
+const SNAPSHOT_BUDGET_MS = 38_000;
 
 const BASE_SYSTEM_PROMPT = `You are the Budget Blitz Bowl Assistant GM. Give concise, practical fantasy-football advice.
 
@@ -146,26 +151,36 @@ const RESPONSE_TOOLS = ASSISTANT_TOOLS.map(({ function: definition }) => ({
   ...definition,
 }));
 
-async function executeToolCall(toolCall, session) {
+async function executeToolCall(toolCall, session, getSnapshot) {
+  const startedAt = Date.now();
   let args = {};
   try {
     args = JSON.parse(toolCall?.arguments || toolCall?.function?.arguments || '{}');
   } catch {
-    return { error: 'Tool arguments were not valid JSON.' };
+    return { result: { error: 'Tool arguments were not valid JSON.' }, durationMs: Date.now() - startedAt };
   }
 
+  let result;
   switch (toolCall?.name || toolCall?.function?.name) {
     case 'get_my_team_snapshot':
-      return getAssistantGMUserTeamSnapshot({ sleeperId: session.user.sleeperId });
+      result = await getAssistantGMUserTeamSnapshot({
+        sleeperId: session.user.sleeperId,
+        ...(session.user.sleeperId ? { snapshot: await getSnapshot() } : {}),
+      });
+      break;
     case 'get_team_snapshot':
-      return getAssistantGMTeamSnapshot({ teamName: args.teamName });
+      result = await getAssistantGMTeamSnapshot({ teamName: args.teamName, snapshot: await getSnapshot() });
+      break;
     case 'search_league_assets':
-      return searchAssistantGMAssets(args);
+      result = await searchAssistantGMAssets({ ...args, snapshot: await getSnapshot() });
+      break;
     case 'evaluate_trade':
-      return evaluateAssistantGMTrade({ participants: args.participants });
+      result = await evaluateAssistantGMTrade({ participants: args.participants }, { snapshot: await getSnapshot() });
+      break;
     default:
-      return { error: `Unsupported tool: ${toolCall?.name || toolCall?.function?.name || 'unknown'}` };
+      result = { error: `Unsupported tool: ${toolCall?.name || toolCall?.function?.name || 'unknown'}` };
   }
+  return { result, durationMs: Date.now() - startedAt };
 }
 
 function buildEvaluationContext(evaluation) {
@@ -180,7 +195,7 @@ function buildEvaluationContext(evaluation) {
   return `VERIFIED TRADE EVALUATION\nValid: ${evaluation.valid}\nErrors: ${(evaluation.errors || []).map((entry) => entry.message).join(' | ') || 'None'}\nWarnings: ${(evaluation.warnings || []).map((entry) => `${entry.team} ${entry.yearKey}: $${Number(entry.remaining).toFixed(1)}`).join(' | ') || 'None'}\nAssets:\n${assets}\nCap after trade, including projected rookie obligations:\n${capSummary}\nTrade Calculator URL: ${evaluation.tradeUrl}`;
 }
 
-function createDebugTrace({ requestId, model, messages, evaluation, toolTranscript, response, exhaustedToolRounds, tradeCardRequested, startedAt }) {
+function createDebugTrace({ requestId, model, messages, evaluation, toolTranscript, response, exhaustedToolRounds, tradeCardRequested, stageTimings, startedAt }) {
   return {
     requestId,
     model,
@@ -189,6 +204,7 @@ function createDebugTrace({ requestId, model, messages, evaluation, toolTranscri
     tradeCardRequested,
     evaluation,
     toolTranscript,
+    stageTimings,
     terminalResponse: {
       id: response?.id || null,
       status: response?.status || null,
@@ -202,6 +218,8 @@ function createDebugTrace({ requestId, model, messages, evaluation, toolTranscri
 export async function POST(request) {
   try {
     const startedAt = Date.now();
+    const deadlineAt = startedAt + REQUEST_BUDGET_MS;
+    const stageTimings = { modelRoundMs: [], snapshotMs: null, snapshotStages: [], toolMs: 0 };
     const requestId = crypto.randomUUID();
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -211,12 +229,35 @@ export async function POST(request) {
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: 'Server misconfiguration: OPENAI_API_KEY missing' }, { status: 500 });
     }
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 12_000, maxRetries: 0 });
+    const settingsStartedAt = Date.now();
     const settingsResult = await getAssistantGMSettings();
+    stageTimings.settingsMs = Date.now() - settingsStartedAt;
     const model = settingsResult?.success
       ? settingsResult.settings?.model || DEFAULT_ASSISTANT_GM_MODEL
       : DEFAULT_ASSISTANT_GM_MODEL;
-    let evaluation = proposal ? await evaluateAssistantGMTrade(proposal) : null;
+    const getRequestSnapshot = createRequestSnapshotProvider(() => {
+      const snapshotStartedAt = Date.now();
+      const deadlineAt = snapshotStartedAt + SNAPSHOT_BUDGET_MS;
+      const snapshotPromise = getAssistantGMLeagueSnapshot({
+        onStageTiming: (timing) => stageTimings.snapshotStages.push(timing),
+        deadlineAt,
+      }).finally(() => {
+        stageTimings.snapshotMs = Date.now() - snapshotStartedAt;
+      });
+      return Promise.race([
+        snapshotPromise,
+        new Promise((_, reject) => {
+          const timeoutId = setTimeout(() => reject(Object.assign(new Error('League data loading exceeded its time budget.'), { name: 'TimeoutError' })), SNAPSHOT_BUDGET_MS);
+          snapshotPromise.finally(() => clearTimeout(timeoutId)).catch(() => {});
+        }),
+      ]);
+    });
+    const evaluationStartedAt = Date.now();
+    let evaluation = proposal
+      ? await evaluateAssistantGMTrade(proposal, { snapshot: await getRequestSnapshot() })
+      : null;
+    if (proposal) stageTimings.initialEvaluationMs = Date.now() - evaluationStartedAt;
     const managerSettingsContext = buildManagerSettingsContext(managerSettings);
     const tradeCardRequested = isTradeCardRequest(messages);
     const outboundMessages = [
@@ -233,6 +274,9 @@ export async function POST(request) {
     let exhaustedToolRounds = true;
 
     for (let iteration = 0; iteration < 6; iteration += 1) {
+      const remainingBudgetMs = deadlineAt - Date.now();
+      if (remainingBudgetMs < 3_000) break;
+      const modelCallStartedAt = Date.now();
       response = await openai.responses.create({
         model,
         input: responseInput,
@@ -240,22 +284,23 @@ export async function POST(request) {
         ...(tradeCardRequested && !evaluation ? { tool_choice: 'required' } : {}),
         max_output_tokens: 600,
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-      });
+      }, { timeout: Math.max(1_500, Math.min(12_000, remainingBudgetMs - 1_000)) });
+      stageTimings.modelRoundMs.push(Date.now() - modelCallStartedAt);
       const toolCalls = (response?.output || []).filter((item) => item?.type === 'function_call');
       if (!toolCalls.length) {
         exhaustedToolRounds = false;
         break;
       }
 
-      const toolOutputs = [];
-      for (const toolCall of toolCalls) {
-        const result = await executeToolCall(toolCall, session);
+      const toolOutputs = await Promise.all(toolCalls.map(async (toolCall) => {
+        const { result, durationMs } = await executeToolCall(toolCall, session, getRequestSnapshot);
+        stageTimings.toolMs += durationMs;
         if (toolCall.name === 'evaluate_trade' && !result?.error) {
           evaluation = result;
         }
-        toolTranscript.push({ id: toolCall.call_id, name: toolCall.name, arguments: toolCall.arguments, result });
-        toolOutputs.push({ type: 'function_call_output', call_id: toolCall.call_id, output: JSON.stringify(result) });
-      }
+        toolTranscript.push({ id: toolCall.call_id, name: toolCall.name, arguments: toolCall.arguments, durationMs, result });
+        return { type: 'function_call_output', call_id: toolCall.call_id, output: JSON.stringify(result) };
+      }));
       responseInput = toolOutputs;
       previousResponseId = response.id;
     }
@@ -270,13 +315,19 @@ export async function POST(request) {
       requestId,
       ...(shouldIncludeDebugTrace ? {
         debugTrace: {
-          ...createDebugTrace({ requestId, model, messages: outboundMessages, evaluation, toolTranscript, response, exhaustedToolRounds, tradeCardRequested, startedAt }),
+          ...createDebugTrace({ requestId, model, messages: outboundMessages, evaluation, toolTranscript, response, exhaustedToolRounds, tradeCardRequested, stageTimings, startedAt }),
           usage: response?.usage || null,
         },
       } : {}),
     });
   } catch (err) {
     const msg = (err && (err.message || String(err))) || 'Internal Server Error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError' || err?.code === 'ETIMEDOUT';
+    const timeoutMessage = msg.includes('League data loading') || err?.name === 'AbortError'
+      ? 'League data is taking too long to load. No trade was evaluated; please retry shortly.'
+      : 'The Assistant GM request timed out. Please retry shortly.';
+    return NextResponse.json({
+      error: isTimeout ? timeoutMessage : msg,
+    }, { status: isTimeout ? 504 : 500 });
   }
 }

@@ -1,11 +1,12 @@
 import { getNormalizedContractsData } from '@/lib/normalized-contracts';
 import { getContractManagementSettings } from '@/lib/db-helpers';
+import { fetchJson, fetchText } from '@/lib/assistant-gm/fetch';
 import {
   calculateTeamCapSnapshot,
   createRookiePickObligation,
   parseTeamFinesCsv,
 } from '@/lib/salary-cap-calculator';
-import { calculateDraftOrderForLeague, resolveLeagueYear, resolveTargetDraftSeason } from '@/utils/draftOrderCalculator';
+import { calculateDraftOrderForLeague, resolveTargetDraftSeason } from '@/utils/draftOrderCalculator';
 import { createDraftPickAsset, getAssetBudgetValue } from '@/utils/draftPickTradeUtils';
 import { buildTradeSharePayload, encodeTradeSharePayload } from '@/utils/tradeShareUtils';
 
@@ -13,16 +14,13 @@ const FINES_CSV_URL = 'https://raw.githubusercontent.com/lalder95/AGS_Data/main/
 const PICK_ROUNDS = [1, 2, 3, 4, 5, 6, 7];
 const PICK_YEARS = 3;
 
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`Failed request ${response.status}: ${url}`);
-  return response.json();
-}
-
-async function fetchText(url) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`Failed request ${response.status}: ${url}`);
-  return response.text();
+async function measureStage(onStageTiming, stage, operation) {
+  const startedAt = Date.now();
+  try {
+    return await operation();
+  } finally {
+    onStageTiming?.({ stage, durationMs: Date.now() - startedAt });
+  }
 }
 
 function getTeamName(user) {
@@ -31,6 +29,11 @@ function getTeamName(user) {
 
 function normalize(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function useOptionalFallback(error) {
+  if (error?.code === 'REQUEST_DEADLINE_EXCEEDED') throw error;
+  return [];
 }
 
 function buildRatios(contracts) {
@@ -103,20 +106,33 @@ function getAssetReference(asset) {
   };
 }
 
-export async function getAssistantGMLeagueSnapshot() {
-  const [{ leagueId, rows: contracts }, contractSettings, leagueYear] = await Promise.all([
-    getNormalizedContractsData(),
-    getContractManagementSettings(),
-    resolveLeagueYear(),
+export async function getAssistantGMLeagueSnapshot({ onStageTiming, deadlineAt } = {}) {
+  const fetchOptions = { deadlineAt };
+  const [{ leagueId, rows: contracts, users, rosters }, contractSettings, state] = await Promise.all([
+    measureStage(onStageTiming, 'normalizedContractsMs', () => getNormalizedContractsData(fetchOptions)),
+    measureStage(onStageTiming, 'contractSettingsMs', () => getContractManagementSettings()),
+    measureStage(onStageTiming, 'leagueStateMs', () => fetchJson('https://api.sleeper.app/v1/state/nfl', fetchOptions)),
   ]);
-  const [users, rosters, tradedPicks, finesText, targetDraftSeason] = await Promise.all([
-    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/users`),
-    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
-    fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`).catch(() => []),
-    fetchText(FINES_CSV_URL),
-    resolveTargetDraftSeason({ leagueId }),
+  const leagueYear = Number(state?.season);
+  if (!Number.isFinite(leagueYear) || leagueYear < 2000) throw new Error('Could not resolve league year from Sleeper state');
+  const [tradedPicks, finesText, drafts, league] = await Promise.all([
+    measureStage(onStageTiming, 'tradedPicksMs', () => fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`, fetchOptions).catch(useOptionalFallback)),
+    measureStage(onStageTiming, 'finesCsvMs', () => fetchText(FINES_CSV_URL, fetchOptions)),
+    measureStage(onStageTiming, 'draftsMs', () => fetchJson(`https://api.sleeper.app/v1/league/${leagueId}/drafts`, fetchOptions).catch(useOptionalFallback)),
+    measureStage(onStageTiming, 'leagueSettingsMs', () => fetchJson(`https://api.sleeper.app/v1/league/${leagueId}`, fetchOptions)),
   ]);
-  const draftOrderResult = await calculateDraftOrderForLeague({ leagueId, targetSeason: targetDraftSeason });
+  const targetDraftSeason = await resolveTargetDraftSeason({ leagueId, leagueYear, drafts });
+  const draftOrderResult = await measureStage(onStageTiming, 'draftOrderMs', () => calculateDraftOrderForLeague({
+    leagueId,
+    targetSeason: targetDraftSeason,
+    users,
+    rosters,
+    tradedPicks,
+    league,
+    state,
+    deadlineAt,
+    onStageTiming,
+  }));
   const teamNameByRosterId = Object.fromEntries((rosters || []).map((roster) => {
     const user = (users || []).find((entry) => String(entry?.user_id) === String(roster?.owner_id));
     return [String(roster?.roster_id), getTeamName(user) || `Team ${roster?.roster_id}`];
@@ -175,12 +191,12 @@ export async function getAssistantGMLeagueSnapshot() {
   };
 }
 
-export async function getAssistantGMUserTeamSnapshot({ sleeperId }) {
+export async function getAssistantGMUserTeamSnapshot({ sleeperId, snapshot: providedSnapshot } = {}) {
   if (!sleeperId) {
     return { available: false, reason: 'No Sleeper ID is attached to this account.' };
   }
 
-  const snapshot = await getAssistantGMLeagueSnapshot();
+  const snapshot = providedSnapshot || await getAssistantGMLeagueSnapshot();
   const roster = snapshot.rosters.find((entry) => String(entry?.owner_id) === String(sleeperId));
   if (!roster) {
     return { available: false, reason: 'Could not find this manager in the active BBB league.' };
@@ -215,8 +231,8 @@ export async function getAssistantGMUserTeamSnapshot({ sleeperId }) {
   };
 }
 
-export async function getAssistantGMTeamSnapshot({ teamName }) {
-  const snapshot = await getAssistantGMLeagueSnapshot();
+export async function getAssistantGMTeamSnapshot({ teamName, snapshot: providedSnapshot } = {}) {
+  const snapshot = providedSnapshot || await getAssistantGMLeagueSnapshot();
   const resolvedTeam = Object.values(snapshot.teamNameByRosterId)
     .find((team) => normalize(team) === normalize(teamName));
   if (!resolvedTeam) {
@@ -251,9 +267,9 @@ export async function getAssistantGMTeamSnapshot({ teamName }) {
   };
 }
 
-export async function searchAssistantGMAssets({ query, teamName }) {
+export async function searchAssistantGMAssets({ query, teamName, snapshot: providedSnapshot } = {}) {
   const normalizedQuery = normalize(query);
-  const snapshot = await getAssistantGMLeagueSnapshot();
+  const snapshot = providedSnapshot || await getAssistantGMLeagueSnapshot();
   const assets = snapshot.contracts
     .filter((contract) => ['Active', 'Future'].includes(String(contract?.Status || '').trim()))
     .filter((contract) => !teamName || normalize(contract?.TeamDisplayName) === normalize(teamName))
@@ -264,8 +280,8 @@ export async function searchAssistantGMAssets({ query, teamName }) {
   return { query: String(query || ''), assets };
 }
 
-export async function evaluateAssistantGMTrade(proposal) {
-  const snapshot = await getAssistantGMLeagueSnapshot();
+export async function evaluateAssistantGMTrade(proposal, { snapshot: providedSnapshot } = {}) {
+  const snapshot = providedSnapshot || await getAssistantGMLeagueSnapshot();
   const participants = getProposalParticipants(proposal);
   const participantTeams = [...new Set(participants.map((participant) => participant.team))];
   const errors = [];
